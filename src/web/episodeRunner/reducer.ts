@@ -6,6 +6,7 @@ export type EpisodeRunnerAction = {
 	type: "KEY_DOWN";
 	key: string;
 	expected: string;
+	repeat?: boolean;
 };
 
 export function episodeRunnerReducer(
@@ -13,6 +14,9 @@ export function episodeRunnerReducer(
 	action: EpisodeRunnerAction,
 ): EpisodeRunnerState {
 	if (action.type !== "KEY_DOWN") {
+		return state;
+	}
+	if (action.repeat) {
 		return state;
 	}
 	// Browser event.key for non-printable keys is always >1 char.
