@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
-import { cleanup, render, waitFor } from "@testing-library/react";
-import { GlobalWindow, type Window } from "happy-dom";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { GlobalWindow, KeyboardEvent, type Window } from "happy-dom";
 import EpisodeRunner from "../../src/web/EpisodeRunner";
 
 const window = new GlobalWindow() as unknown as Window & typeof globalThis;
@@ -39,6 +39,34 @@ describe("EpisodeRunner", () => {
 			expect(el.textContent).toMatch(
 				/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
 			);
+		});
+	});
+
+	it("advances cursorIdx on correct keydown and ignores wrong keys", async () => {
+		const { getByTestId } = render(
+			<EpisodeRunner episodeText="abc" />,
+		);
+
+		await waitFor(() => {
+			expect(getByTestId("cursor-idx").textContent).toBe("0");
+		});
+
+		act(() => {
+			document.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "x", bubbles: true }) as unknown as Event,
+			);
+		});
+		await waitFor(() => {
+			expect(getByTestId("cursor-idx").textContent).toBe("0");
+		});
+
+		act(() => {
+			document.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "a", bubbles: true }) as unknown as Event,
+			);
+		});
+		await waitFor(() => {
+			expect(getByTestId("cursor-idx").textContent).toBe("1");
 		});
 	});
 });
