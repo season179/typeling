@@ -1,15 +1,22 @@
 # typeling
 
-To install dependencies:
+Typing-as-story-time app. Server is Hono on `127.0.0.1`; frontend is React 19 + Vite + Tailwind.
+
+## Install
 
 ```bash
 bun install
 ```
 
-To run:
+## Scripts
 
-```bash
-bun run index.ts
-```
+| Script             | What it does                                                        |
+| ------------------ | ------------------------------------------------------------------- |
+| `bun run dev`      | Run the Hono server (watch mode) and the Vite dev server together. |
+| `bun run server`   | Run the Hono API server only.                                       |
+| `bun run web`      | Run the Vite dev server only.                                       |
+| `bun run lint`     | Biome check on `src/`.                                               |
+| `bun run format`   | Biome format-write on `src/`.                                        |
+| `bun test`         | Run the test suite.                                                  |
 
-This project was created using `bun init` in bun v1.3.13. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+Runtime state is written to `data/state.json` and is gitignored.
