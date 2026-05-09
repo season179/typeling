@@ -19,4 +19,8 @@ bun install
 | `bun run format`   | Biome format-write on `src/`.                                        |
 | `bun test`         | Run the test suite.                                                  |
 
-Runtime state is written to `data/state.json` and is gitignored.
+Runtime state is written to `data/state.json` and is gitignored. The committed `data/state.seed.json` holds the initial Winni-only defaults. On first run, copy the seed into place:
+
+```bash
+cp data/state.seed.json data/state.json
+```
