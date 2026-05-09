@@ -28,7 +28,7 @@ describe("PlayEpisode", () => {
 		const { hook } = memoryLocation({ path: "/play/winni" });
 
 		try {
-			const { getByText } = render(
+			const { getByTestId } = render(
 				<Router hook={hook}>
 					<Route path="/play/:childId">
 						<PlayEpisode />
@@ -37,14 +37,24 @@ describe("PlayEpisode", () => {
 			);
 
 			await waitFor(() => {
-				expect(
-					getByText("The pink unicorn skipped through the meadow."),
-				).toBeDefined();
+				expect(getByTestId("cursor-char").textContent).toBe("T");
 			});
 			expect(requestedUrl).toBe("/api/children/winni/current-episode");
 
-			const textEl = getByText("The pink unicorn skipped through the meadow.");
-			expect(textEl.className).toContain("font-mono");
+			const typed = getByTestId("typed-region");
+			expect(typed.className).toContain("text-gray-400");
+			expect(typed.textContent).toBe("");
+
+			const cursor = getByTestId("cursor-char");
+			expect(cursor.className).toContain("border-b-2");
+			expect(cursor.className).toContain("animate-pulse");
+			expect(cursor.className).toContain("text-gray-900");
+
+			const untyped = getByTestId("untyped-region");
+			expect(untyped.className).toContain("text-gray-900");
+			expect(untyped.textContent).toBe(
+				"he pink unicorn skipped through the meadow.",
+			);
 		} finally {
 			globalThis.fetch = originalFetch;
 		}

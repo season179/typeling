@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "wouter";
+import EpisodeRunner from "./EpisodeRunner";
 
 interface EpisodeData {
 	text: string;
@@ -70,7 +71,7 @@ export default function PlayEpisode() {
 
 	return (
 		<main className="flex min-h-screen items-center justify-center">
-			<p className="font-mono">{episode.text}</p>
+			<EpisodeRunner episodeText={episode.text} />
 		</main>
 	);
 }
