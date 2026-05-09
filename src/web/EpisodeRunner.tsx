@@ -26,11 +26,10 @@ export default function EpisodeRunner({ episodeText }: EpisodeRunnerProps) {
 
 	useEffect(() => {
 		const onKeydown = (e: KeyboardEvent) => {
+			if (e.key.length !== 1 || e.ctrlKey || e.altKey || e.metaKey) return;
 			if (e.key === " ") {
 				e.preventDefault();
-				return;
 			}
-			if (e.key.length !== 1 || e.ctrlKey || e.altKey || e.metaKey) return;
 			cursorDispatch({
 				type: "KEY_DOWN",
 				key: e.key,
