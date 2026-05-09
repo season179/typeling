@@ -1,0 +1,24 @@
+{
+  "name": "typeling",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "portless",
+    "server": "bun run src/server/index.ts"
+  },
+  "portless": {
+    "name": "typeling",
+    "script": "server"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "portless": "^0.13.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "hono": "^4.12.18"
+  }
+}
