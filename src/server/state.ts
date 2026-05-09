@@ -77,6 +77,37 @@ export const ensureStateFile = async (
 	return true;
 };
 
+export type MutateFn = (current: State) => State;
+
+export function createStateQueue(statePath: string): {
+	mutateState: (fn: MutateFn) => Promise<State>;
+	readState: () => Promise<State>;
+} {
+	let queue = Promise.resolve();
+
+	return {
+		mutateState(fn: MutateFn): Promise<State> {
+			const { promise, resolve, reject } = Promise.withResolvers<State>();
+			queue = queue.then(async () => {
+				try {
+					const current = await readState(statePath);
+					const next = fn(current);
+					if (next !== current) {
+						await writeStateAtomic(next, statePath);
+					}
+					resolve(next);
+				} catch (error) {
+					reject(error);
+				}
+			});
+			return promise;
+		},
+		readState(): Promise<State> {
+			return readState(statePath);
+		},
+	};
+}
+
 export const readState = async (path: string): Promise<State> => {
 	let parsed: unknown;
 	try {
