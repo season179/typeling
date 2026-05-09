@@ -1,12 +1,14 @@
 import { describe, it, expect } from "bun:test";
 import { episodeRunnerReducer } from "../../../src/web/episodeRunner/reducer";
 
+const TS0 = 1715300000000;
+
 describe("episodeRunnerReducer KEY_DOWN", () => {
 	const cases = [
-		{ name: "advances cursorIdx for correct char", state: { cursorIdx: 0 }, key: "h", expected: "h", want: 1 },
-		{ name: "no-op for wrong char", state: { cursorIdx: 0 }, key: "x", expected: "h", want: 0 },
-		{ name: "case-sensitive: T != t", state: { cursorIdx: 0 }, key: "t", expected: "T", want: 0 },
-		{ name: "advances past first char", state: { cursorIdx: 2 }, key: "l", expected: "l", want: 3 },
+		{ name: "advances cursorIdx for correct char", state: { cursorIdx: 0, activeMs: 0, lastKeystrokeAt: null }, key: "h", expected: "h", ts: TS0, wantCursor: 1 },
+		{ name: "no-op for wrong char", state: { cursorIdx: 0, activeMs: 0, lastKeystrokeAt: null }, key: "x", expected: "h", ts: TS0, wantCursor: 0 },
+		{ name: "case-sensitive: T != t", state: { cursorIdx: 0, activeMs: 0, lastKeystrokeAt: null }, key: "t", expected: "T", ts: TS0, wantCursor: 0 },
+		{ name: "advances past first char", state: { cursorIdx: 2, activeMs: 0, lastKeystrokeAt: null }, key: "l", expected: "l", ts: TS0, wantCursor: 3 },
 	] as const;
 
 	for (const c of cases) {
@@ -15,8 +17,10 @@ describe("episodeRunnerReducer KEY_DOWN", () => {
 				type: "KEY_DOWN",
 				key: c.key,
 				expected: c.expected,
+				timestamp: c.ts,
 			});
-			expect(next.cursorIdx).toBe(c.want);
+			expect(next.cursorIdx).toBe(c.wantCursor);
+			expect(next.lastKeystrokeAt).toBe(c.ts);
 		});
 	}
 
@@ -50,23 +54,98 @@ describe("episodeRunnerReducer KEY_DOWN", () => {
 
 	for (const key of nonTypingKeys) {
 		it(`ignores non-typing key: ${key}`, () => {
-			const state = { cursorIdx: 5 };
+			const state = { cursorIdx: 5, activeMs: 0, lastKeystrokeAt: null };
 			const next = episodeRunnerReducer(state, {
 				type: "KEY_DOWN",
 				key,
 				expected: "a",
+				timestamp: TS0,
 			});
 			expect(next).toBe(state);
 		});
 	}
 
 	it("ignores empty-string key", () => {
-		const state = { cursorIdx: 3 };
+		const state = { cursorIdx: 3, activeMs: 0, lastKeystrokeAt: null };
 		const next = episodeRunnerReducer(state, {
 			type: "KEY_DOWN",
 			key: "",
 			expected: "a",
+			timestamp: TS0,
 		});
 		expect(next).toBe(state);
+	});
+});
+
+describe("episodeRunnerReducer activeMs accumulator", () => {
+	it("first keystroke: lastKeystrokeAt set, activeMs stays 0", () => {
+		const state = { cursorIdx: 0, activeMs: 0, lastKeystrokeAt: null };
+		const next = episodeRunnerReducer(state, {
+			type: "KEY_DOWN",
+			key: "h",
+			expected: "h",
+			timestamp: TS0,
+		});
+		expect(next.lastKeystrokeAt).toBe(TS0);
+		expect(next.activeMs).toBe(0);
+	});
+
+	it("second keystroke 1000ms later: activeMs = 1000", () => {
+		const state = { cursorIdx: 1, activeMs: 0, lastKeystrokeAt: TS0 };
+		const next = episodeRunnerReducer(state, {
+			type: "KEY_DOWN",
+			key: "e",
+			expected: "e",
+			timestamp: TS0 + 1000,
+		});
+		expect(next.activeMs).toBe(1000);
+		expect(next.lastKeystrokeAt).toBe(TS0 + 1000);
+	});
+
+	it("wrong key updates lastKeystrokeAt without accumulating activeMs", () => {
+		const state = { cursorIdx: 1, activeMs: 500, lastKeystrokeAt: TS0 };
+		const next = episodeRunnerReducer(state, {
+			type: "KEY_DOWN",
+			key: "x",
+			expected: "e",
+			timestamp: TS0 + 1500,
+		});
+		expect(next.activeMs).toBe(500);
+		expect(next.lastKeystrokeAt).toBe(TS0 + 1500);
+		expect(next.cursorIdx).toBe(1);
+	});
+
+	it("5-keystroke sequence accumulates only on correct keystrokes", () => {
+		let state = { cursorIdx: 0, activeMs: 0, lastKeystrokeAt: null as number | null };
+
+		// Keystroke 1: 'h' correct, ts=1000
+		state = episodeRunnerReducer(state, { type: "KEY_DOWN", key: "h", expected: "h", timestamp: TS0 + 1000 });
+		expect(state.activeMs).toBe(0);
+		expect(state.lastKeystrokeAt).toBe(TS0 + 1000);
+		expect(state.cursorIdx).toBe(1);
+
+		// Keystroke 2: 'e' correct, ts=2300 (+1300ms)
+		state = episodeRunnerReducer(state, { type: "KEY_DOWN", key: "e", expected: "e", timestamp: TS0 + 2300 });
+		expect(state.activeMs).toBe(1300);
+		expect(state.lastKeystrokeAt).toBe(TS0 + 2300);
+		expect(state.cursorIdx).toBe(2);
+
+		// Keystroke 3: wrong 'z' for 'l', ts=3800 — resets clock, no accumulation
+		state = episodeRunnerReducer(state, { type: "KEY_DOWN", key: "z", expected: "l", timestamp: TS0 + 3800 });
+		expect(state.activeMs).toBe(1300);
+		expect(state.lastKeystrokeAt).toBe(TS0 + 3800);
+		expect(state.cursorIdx).toBe(2);
+
+		// Keystroke 4: correct 'l', ts=5000 — delta from wrong key (+1200ms)
+		state = episodeRunnerReducer(state, { type: "KEY_DOWN", key: "l", expected: "l", timestamp: TS0 + 5000 });
+		expect(state.activeMs).toBe(2500);
+		expect(state.lastKeystrokeAt).toBe(TS0 + 5000);
+		expect(state.cursorIdx).toBe(3);
+
+		// Keystroke 5: correct 'l', ts=6400 (+1400ms)
+		state = episodeRunnerReducer(state, { type: "KEY_DOWN", key: "l", expected: "l", timestamp: TS0 + 6400 });
+		expect(state.activeMs).toBe(3900);
+		expect(state.lastKeystrokeAt).toBe(TS0 + 6400);
+		expect(state.cursorIdx).toBe(4);
 	});
 });

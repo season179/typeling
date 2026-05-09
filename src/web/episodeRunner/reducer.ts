@@ -1,11 +1,14 @@
 export interface EpisodeRunnerState {
 	cursorIdx: number;
+	activeMs: number;
+	lastKeystrokeAt: number | null;
 }
 
 export type EpisodeRunnerAction = {
 	type: "KEY_DOWN";
 	key: string;
 	expected: string;
+	timestamp: number;
 };
 
 export function episodeRunnerReducer(
@@ -19,8 +22,15 @@ export function episodeRunnerReducer(
 	if (action.key.length !== 1) {
 		return state;
 	}
-	if (action.key === action.expected) {
-		return { ...state, cursorIdx: state.cursorIdx + 1 };
-	}
-	return state;
+	const correct = action.key === action.expected;
+	const delta =
+		state.lastKeystrokeAt != null
+			? Math.max(0, action.timestamp - state.lastKeystrokeAt)
+			: 0;
+	return {
+		...state,
+		activeMs: correct ? state.activeMs + delta : state.activeMs,
+		lastKeystrokeAt: action.timestamp,
+		cursorIdx: correct ? state.cursorIdx + 1 : state.cursorIdx,
+	};
 }

@@ -13,6 +13,8 @@ export default function EpisodeRunner({ episodeText }: EpisodeRunnerProps) {
 
 	const [cursor, cursorDispatch] = useReducer(cursorReducer, {
 		cursorIdx: 0,
+		activeMs: 0,
+		lastKeystrokeAt: null,
 	});
 
 	const cursorRef = useRef(cursor.cursorIdx);
@@ -29,6 +31,7 @@ export default function EpisodeRunner({ episodeText }: EpisodeRunnerProps) {
 				type: "KEY_DOWN",
 				key: e.key,
 				expected: episodeText[cursorRef.current] ?? "",
+				timestamp: Date.now(),
 			});
 		};
 		document.addEventListener("keydown", handler);
@@ -39,6 +42,7 @@ export default function EpisodeRunner({ episodeText }: EpisodeRunnerProps) {
 		<>
 			<span data-testid="session-id">{session.sessionId}</span>
 			<span data-testid="cursor-idx">{cursor.cursorIdx}</span>
+			<span data-testid="active-ms">{cursor.activeMs}</span>
 			<p className="font-mono">{episodeText}</p>
 		</>
 	);

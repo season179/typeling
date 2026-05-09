@@ -49,6 +49,7 @@ describe("EpisodeRunner", () => {
 
 		await waitFor(() => {
 			expect(getByTestId("cursor-idx").textContent).toBe("0");
+			expect(getByTestId("active-ms").textContent).toBe("0");
 		});
 
 		act(() => {
@@ -67,6 +68,7 @@ describe("EpisodeRunner", () => {
 		});
 		await waitFor(() => {
 			expect(getByTestId("cursor-idx").textContent).toBe("1");
+			expect(getByTestId("active-ms").textContent).not.toBe("0");
 		});
 	});
 });
