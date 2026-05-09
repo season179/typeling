@@ -12,10 +12,15 @@ export function episodeRunnerReducer(
 	state: EpisodeRunnerState,
 	action: EpisodeRunnerAction,
 ): EpisodeRunnerState {
-	if (action.type === "KEY_DOWN") {
-		if (action.key === action.expected) {
-			return { ...state, cursorIdx: state.cursorIdx + 1 };
-		}
+	if (action.type !== "KEY_DOWN") {
+		return state;
+	}
+	// Browser event.key for non-printable keys is always >1 char.
+	if (action.key.length !== 1) {
+		return state;
+	}
+	if (action.key === action.expected) {
+		return { ...state, cursorIdx: state.cursorIdx + 1 };
 	}
 	return state;
 }

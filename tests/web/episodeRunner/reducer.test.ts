@@ -19,4 +19,54 @@ describe("episodeRunnerReducer KEY_DOWN", () => {
 			expect(next.cursorIdx).toBe(c.want);
 		});
 	}
+
+	const nonTypingKeys = [
+		"Shift",
+		"Control",
+		"Alt",
+		"Meta",
+		"CapsLock",
+		"Tab",
+		"ArrowLeft",
+		"ArrowRight",
+		"ArrowUp",
+		"ArrowDown",
+		"Backspace",
+		"Delete",
+		"Escape",
+		"F1",
+		"F2",
+		"F3",
+		"F4",
+		"F5",
+		"F6",
+		"F7",
+		"F8",
+		"F9",
+		"F10",
+		"F11",
+		"F12",
+	] as const;
+
+	for (const key of nonTypingKeys) {
+		it(`ignores non-typing key: ${key}`, () => {
+			const state = { cursorIdx: 5 };
+			const next = episodeRunnerReducer(state, {
+				type: "KEY_DOWN",
+				key,
+				expected: "a",
+			});
+			expect(next).toBe(state);
+		});
+	}
+
+	it("ignores empty-string key", () => {
+		const state = { cursorIdx: 3 };
+		const next = episodeRunnerReducer(state, {
+			type: "KEY_DOWN",
+			key: "",
+			expected: "a",
+		});
+		expect(next).toBe(state);
+	});
 });
