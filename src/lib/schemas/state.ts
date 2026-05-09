@@ -34,3 +34,5 @@ export const stateSchema = z.object({
 	children: z.record(z.string().min(1), childSchema),
 	sessions: z.array(sessionSchema),
 });
+
+export type State = z.infer<typeof stateSchema>;
