@@ -1,6 +1,8 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { Route, Router } from "wouter";
 import App from "./App";
+import PlayEpisode from "./PlayEpisode";
 import "./index.css";
 
 const rootElement = document.getElementById("root");
@@ -11,6 +13,9 @@ if (rootElement === null) {
 
 createRoot(rootElement).render(
 	<StrictMode>
-		<App />
+		<Router>
+			<Route path="/" component={App} />
+			<Route path="/play/:childId" component={PlayEpisode} />
+		</Router>
 	</StrictMode>,
 );
