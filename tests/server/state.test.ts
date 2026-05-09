@@ -4,8 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	StateParseError,
+	StateValidationError,
 	ensureStateFile,
 	readState,
+	writeStateAtomic,
 } from "../../src/server/state";
 
 const validState = {
@@ -79,6 +81,59 @@ describe("readState", () => {
 		const err = caught as StateParseError;
 		expect(err.field).toBe("children.winni.target_wpm");
 		expect(err.message).toContain("target_wpm");
+	});
+});
+
+describe("writeStateAtomic", () => {
+	it("writes the validated state as JSON to the target path", async () => {
+		await writeStateAtomic(validState, stateFile);
+
+		expect(await readState(stateFile)).toEqual(validState);
+	});
+
+	it("throws StateValidationError on schema violation and writes nothing", async () => {
+		const invalid = {
+			...validState,
+			children: {
+				winni: { ...validState.children.winni, target_wpm: -1 },
+			},
+		};
+
+		let caught: unknown;
+		try {
+			await writeStateAtomic(invalid as unknown as typeof validState, stateFile);
+		} catch (error) {
+			caught = error;
+		}
+
+		expect(caught).toBeInstanceOf(StateValidationError);
+		const err = caught as StateValidationError;
+		expect(err.field).toBe("children.winni.target_wpm");
+		expect(await Bun.file(stateFile).exists()).toBe(false);
+		const entries = await readdir(workDir);
+		expect(entries).toEqual([]);
+	});
+
+	it("backs up the prior state to state.json.bak before overwriting", async () => {
+		await writeStateAtomic(validState, stateFile);
+		const updated = {
+			...validState,
+			children: {
+				winni: { ...validState.children.winni, current_episode: 1 },
+			},
+		};
+
+		await writeStateAtomic(updated, stateFile);
+
+		expect(await readState(stateFile)).toEqual(updated);
+		const bak = await Bun.file(`${stateFile}.bak`).json();
+		expect(bak).toEqual(validState);
+	});
+
+	it("leaves only state.json on a first write — no .tmp, no .bak", async () => {
+		await writeStateAtomic(validState, stateFile);
+
+		expect(await readdir(workDir)).toEqual(["state.json"]);
 	});
 });
 

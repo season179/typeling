@@ -18,6 +18,53 @@ const fieldFromZodError = (error: ZodError) => {
 	return issue.path.join(".");
 };
 
+type StateErrorCtor = new (
+	message: string,
+	field?: string,
+) => Error & {
+	field?: string;
+};
+
+const toSchemaError = (error: unknown, ErrorCtor: StateErrorCtor): unknown => {
+	if (!(error instanceof ZodError)) return error;
+	const field = fieldFromZodError(error);
+	const detail = field ? ` at ${field}` : "";
+	return new ErrorCtor(
+		`State schema violation${detail}: ${error.issues[0]?.message ?? "unknown"}`,
+		field,
+	);
+};
+
+export class StateValidationError extends Error {
+	readonly field?: string;
+
+	constructor(message: string, field?: string) {
+		super(message);
+		this.name = "StateValidationError";
+		this.field = field;
+	}
+}
+
+export const writeStateAtomic = async (
+	state: State,
+	statePath: string,
+): Promise<void> => {
+	try {
+		stateSchema.parse(state);
+	} catch (error) {
+		throw toSchemaError(error, StateValidationError);
+	}
+
+	const existing = Bun.file(statePath);
+	if (await existing.exists()) {
+		await Bun.write(`${statePath}.bak`, existing);
+	}
+
+	const tmpPath = `${statePath}.tmp`;
+	await Bun.write(tmpPath, JSON.stringify(state));
+	await rename(tmpPath, statePath);
+};
+
 export const ensureStateFile = async (
 	statePath: string,
 	seedPath: string,
@@ -42,14 +89,6 @@ export const readState = async (path: string): Promise<State> => {
 	try {
 		return stateSchema.parse(parsed);
 	} catch (error) {
-		if (error instanceof ZodError) {
-			const field = fieldFromZodError(error);
-			const detail = field ? ` at ${field}` : "";
-			throw new StateParseError(
-				`State schema violation${detail}: ${error.issues[0]?.message ?? "unknown"}`,
-				field,
-			);
-		}
-		throw error;
+		throw toSchemaError(error, StateParseError);
 	}
 };
