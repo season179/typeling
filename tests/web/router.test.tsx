@@ -28,14 +28,14 @@ describe("Router /play/:childId", () => {
 		const { hook } = memoryLocation({ path: "/play/winni" });
 
 		try {
-			const { getByText } = render(
+			const { getByTestId } = render(
 				<Router hook={hook}>
 					<Route path="/play/:childId" component={PlayEpisode} />
 				</Router>,
 			);
 
 			await waitFor(() => {
-				expect(getByText("The fox jumped over the fence.")).toBeDefined();
+				expect(getByTestId("cursor-char").textContent).toBe("T");
 			});
 			expect(requestedUrl).toBe("/api/children/winni/current-episode");
 		} finally {
