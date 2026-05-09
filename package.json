@@ -4,15 +4,11 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "portless",
+    "dev": "concurrently --kill-others --names server,web 'bun --watch src/server/index.ts' 'vite'",
     "server": "bun run src/server/index.ts",
     "web": "vite",
     "lint": "biome check src/",
     "format": "biome format --write src/"
-  },
-  "portless": {
-    "name": "typeling",
-    "script": "server"
   },
   "dependencies": {
     "hono": "^4.12.18",
@@ -22,11 +18,13 @@
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
     "@tailwindcss/vite": "^4.3.0",
+    "@testing-library/react": "^16.3.2",
     "@types/bun": "latest",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
-    "portless": "^0.13.0",
+    "concurrently": "^9.2.1",
+    "happy-dom": "^20.9.0",
     "tailwindcss": "^4.3.0",
     "typescript": "^5.9.3",
     "vite": "^8.0.11"
