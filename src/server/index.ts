@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 
-const DEFAULT_PORT = 3001;
-const HOSTNAME = "127.0.0.1";
+export const DEFAULT_PORT = 3001;
+export const HOSTNAME = "127.0.0.1";
 const WILDCARD_HOSTNAME = "0.0.0.0";
 
 export const app = new Hono();
