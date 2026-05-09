@@ -1,161 +1,111 @@
-# Typeling — Project Conventions
+# Typeling
 
-A typing-as-story-time web app for two kids (Winni, Zack). Each child gets a 14-episode season; correctly typing the current episode unlocks the next. WPM is tracked but never shown to the kid.
+Typing-as-story-time for two kids (Winni, Zack). 14 episodes per season; typing each unlocks the next. WPM tracked, never shown to the kid.
 
-**Source-of-truth artifacts** (read before changing direction):
-- Design doc: `~/.gstack/projects/typeling/season-main-design-20260508-235214.md`
-- Locked implementation plan: `~/.gstack/projects/typeling/season-main-implementation-plan-20260509-090553.md`
-- Test plan: `~/.gstack/projects/typeling/season-main-eng-review-test-plan-20260509-090553.md`
-- Deferred work: `./TODOS.md`
-
-If a decision in this file conflicts with the implementation plan, the plan wins — update this file to match.
+**Source-of-truth:** design doc, implementation plan, test plan (in `~/.gstack/projects/typeling/`). Deferred work in `./TODOS.md`. Implementation plan wins over this file.
 
 ## Stack
 
-- **Runtime:** Bun (server + scripts + tests). No Node.
-- **Server:** Hono. **Bind to `127.0.0.1`, never `0.0.0.0`** — `/parent` must not be LAN-reachable.
-- **Frontend:** React 18 + TypeScript + Vite + Tailwind. Dev = Vite proxy to Hono; prod = `vite build` → Hono serves `dist/` static + `/api/*`.
-- **Validation:** Zod, everywhere data crosses a boundary (HTTP, file I/O, generation output).
+- **Runtime:** Bun. No Node.
+- **Server:** Hono. **Bind `127.0.0.1`, never `0.0.0.0`.**
+- **Frontend:** React 18 + TypeScript + Vite + Tailwind. Vite binds `127.0.0.1`. Prod build → root `dist/` (Hono serves static + `/api/*`).
+- **Validation:** Zod at every boundary (HTTP, file I/O, generation output).
 - **Lint/format:** Biome.
-- **Tests:** `bun test` for unit; `agent-browser` for E2E. **Do not use Playwright** — global rule.
+- **Tests:** `bun test` unit; `agent-browser` E2E. **No Playwright.**
 
-## Persistence — JSON file, not SQLite
+## Before calling done
 
-State lives in `./data/state.json`. There is no database. Single-process, single-writer.
-
-- All writes go through one helper that does **atomic write**: write `state.json.tmp` → `fs.rename` to `state.json`. Keep one `.bak` of the prior version.
-- Read-modify-write must be serialised in-process (one in-flight write at a time).
-- Schema is Zod-validated on every read and every write.
-
-`state.json` shape:
-```json
-{
-  "children": {
-    "winni": {
-      "name": "Winni",
-      "theme": "pink unicorn",
-      "target_wpm": 15,
-      "active_season": "winni-s1",
-      "current_episode": 0,
-      "current_session_id": null
-    }
-  },
-  "sessions": [
-    {
-      "id": "uuid",
-      "child_id": "winni",
-      "season_slug": "winni-s1",
-      "episode_idx": 0,
-      "wpm": 18.4,
-      "char_count": 412,
-      "active_ms": 134000,
-      "started_at": "2026-05-09T...",
-      "finished_at": "2026-05-09T..."
-    }
-  ]
-}
+Run all that apply, fix until green:
+```
+bun test
+bunx tsc --noEmit
+bunx vite build
+bun run web        # then agent-browser verify acceptance criteria
 ```
 
-Seasons themselves are JSON files in `./seasons/<slug>.json`, committed to the repo. Parent reviews via `git diff` before merging.
+## Working conventions
 
-## Charset — intentionally narrow, not "ASCII because lazy"
+- **Match acceptance criteria literally.** If an issue asks for a file or config, include it. Push back explicitly if it's wrong — don't silently skip.
+- **Preserve existing behaviour on rebase/merge.** When adding to the project, keep what's already there and layer on top.
+- **Version pins matter.** Respect pinned versions in CLAUDE.md and package.json. Don't let `bun add` override them.
+- **Run `tsc --noEmit` after adding browser code.** Ensure `tsconfig.json` includes DOM libs (`"lib": ["ESNext", "DOM", "DOM.Iterable"]`).
 
-Episode text is restricted to `[A-Za-z0-9 .,!?'";:\-()\n]+` — straight quotes, hyphens, normal punctuation. Smart quotes, em dashes, ellipses, and any non-ASCII are stripped/normalised. This is a **kid-typability choice**, not an implementation shortcut. The generation pipeline asserts charset after normalisation; a charset failure is a hard error, not a warning.
+## Persistence
+
+`./data/state.json` — single-process, single-writer, no database. Atomic write (write `.tmp` → `rename`), keep one `.bak`. Zod-validated on every read and write. Seasons live in `./seasons/<slug>.json`, committed to repo.
+
+## Charset
+
+`[A-Za-z0-9 .,!?'";:\-()\n]+` — kid-typability choice, not a shortcut. Smart quotes, em dashes, non-ASCII stripped/normalised. Asserted post-gen; charset failure is a hard error.
 
 ## British spelling
 
-Generation prompt asks for British English. Post-process runs an American→British dictionary (`color`→`colour`, `organize`→`organise`, `defense`→`defence`, `behavior`→`behaviour`, `favorite`→`favourite`, `traveled`→`travelled`, etc.). Eval suite asserts zero American tokens remain. Add to dictionary when you spot a miss; don't bypass.
+Prompt requests British English. Post-process American→British dictionary. Zero American tokens tolerated.
 
-## Typing engine — strict correction, no backspace
+## Typing engine
 
-- Document-level `keydown` listener (single-page focus model, no input element).
-- Correct char → cursor advances, char joins the "typed" region (rendered in a different shade).
-- Wrong char → cursor flashes red ~200ms, **does not advance**. No mistake counter is rendered.
-- Backspace, Delete, arrows, function keys, modifiers: no-op.
-- Paste / `Cmd+V`: `preventDefault`, ignored.
-- `event.repeat`: ignored (held-down keys don't auto-type).
-- Space: `preventDefault` (don't scroll the page).
-- Case-sensitive: `T` ≠ `t`.
+- Document-level `keydown`, no input element.
+- Correct char → advance cursor, style as "typed".
+- Wrong char → flash red ~200ms, no advance, no mistake counter.
+- Backspace, Delete, arrows, modifiers, `event.repeat`: no-op.
+- Paste (`Cmd+V`): `preventDefault`.
+- Space: `preventDefault` (don't scroll). Case-sensitive.
 
-## WPM spec
+## WPM
 
-5-character-word convention. Timer starts at first keystroke, stops at last. **Idle pause: 5 seconds with no keystroke pauses the active-typing timer; resume on next keystroke.** `visibilitychange → hidden` also pauses. Recorded WPM = `(char_count / 5) / (active_ms / 60000)`. Clock-time WPM is wrong and not stored.
+5-char-word convention. Timer: first keystroke → last. **5s idle pause** (resume on next keystroke). `visibilitychange → hidden` also pauses. `WPM = (char_count / 5) / (active_ms / 60000)`.
 
-## Idempotency on POST /api/sessions
+## POST /api/sessions
 
-Client generates `sessionId` (crypto.randomUUID) at episode start. Server:
-1. Zod-validate body.
-2. If `sessionId` already in `sessions[]`, return prior result (idempotent).
-3. Verify `episode_idx === child.current_episode` and `season_slug === child.active_season`. Mismatch → 409.
-4. Append session, advance `current_episode` (or freeze at 13 if just finished episode 13), atomic write.
+Client generates `sessionId` (crypto.randomUUID). Server: Zod-validate → if exists, return prior result → verify episode matches `child.current_episode` + `active_season` (mismatch → 409) → append session → advance episode (cap at 13) → atomic write.
 
 ## Mid-episode resume
 
-`localStorage` autosave on every keystroke (`{ sessionId, cursorIdx, activeMs, lastKeystrokeAt }`, keyed by child + episode). On `/play/:childId` mount, restore if same child + same episode + same season. Cleared on completion.
+`localStorage` autosave per keystroke (`{ sessionId, cursorIdx, activeMs, lastKeystrokeAt }`, keyed by child+episode). Restore on mount if same child/episode/season. Clear on completion.
 
-Server-side `beforeunload` POST is deferred — see TODOS.md.
+## Word-count budget
 
-## Word-count budget per episode
-
-`min = max(50, target_wpm × 5)`, `max = min(400, target_wpm × 15)`. Targets ~5–15 minutes of typing for the child's current speed. Generation prompt receives these numbers; eval suite asserts each episode falls in range.
+`min = max(50, target_wpm × 5)`, `max = min(400, target_wpm × 15)`. ~5–15 min typing time.
 
 ## Content guardrails
 
-Generation prompt forbids: death, killing, hate, scary/blood/gore, shame language, anything punitive. Post-gen blacklist regex catches misses. A blacklist hit is a hard fail — regenerate, don't patch.
+No death, killing, hate, scary/blood/gore, shame, punitive language. Blacklist regex post-gen; hit = hard fail, regenerate.
 
 ## File layout
 
 ```
-data/state.json            # runtime state (gitignored)
-seasons/<slug>.json        # committed episode content
-scripts/gen-season.ts      # generation pipeline
-src/server/                # Hono routes, state.json helpers
-src/lib/                   # shared zod schemas, normalize, dictionary, wpm, rolling-3
-src/web/                   # React app (profile select, runner, parent view)
-tests/                     # bun test files for load-bearing logic
+data/state.json         # gitignored runtime state
+seasons/<slug>.json     # committed episodes
+scripts/gen-season.ts   # generation pipeline
+src/server/             # Hono routes, state helpers
+src/lib/                # shared zod schemas, normalize, dictionary, wpm
+src/web/                # React app
+tests/                  # bun test
 ```
 
-Lane parallelisation (after shared schema+lib lands): see implementation plan §Worktree Parallelisation.
+## Test strategy
 
-## Test strategy — load-bearing logic only
+Unit: Zod schemas, EpisodeRunner reducer, WPM calc, British dictionary, charset normalize, rolling-3 graduation. E2E: typing engine (correct flow, wrong-key, idle). Chrome surfaces not E2E-tested yet — wait for Winni's first session.
 
-Unit tests cover: Zod schemas, EpisodeRunner reducer, WPM calc with idle-pause, American→British dictionary, charset normalize, rolling-3 graduation. Three `agent-browser` E2E tests for the typing engine (correct flow, wrong-key isolation, idle handling). **Chrome surfaces (chapter map, profile select, parent view) intentionally not E2E-tested yet** — wait until UI settles after Winni's first real session, then lock down. See TODOS.md.
+## Not building yet
 
-## Things we are NOT building (yet)
+See `TODOS.md`. Don't add: deploy, server-side mid-episode save, PIN gate, episode replay, iPad, illustrations, eval-suite automation, backup rotation, third-child UI.
 
-See `./TODOS.md`. Highlights: deploy target, server-side mid-episode save, PIN gate on `/parent`, episode replay, iPad support, illustrations, eval-suite automation, state.json backup rotation, third-child UI. Don't add these without revisiting the plan.
+## Design gate
 
-## Working with the design
-
-The design doc has an "Assignment" section directing the parent to validate Episode 1 with the kid before scope grows. Treat that as a gate: if you find yourself wanting to expand chrome, polish the parent view, or add features beyond what's in the locked plan, stop and ask whether Episode 1 has actually been kid-tested.
+Validate Episode 1 with the kid before expanding scope. Don't polish chrome or add features beyond the locked plan until that's done.
 
 ## Skill routing
 
-When the user's request matches an available skill, invoke it via the Skill tool. When in doubt, invoke the skill.
-
-- Product ideas/brainstorming → /office-hours
-- Strategy/scope → /plan-ceo-review
-- Architecture → /plan-eng-review
-- Design system/plan review → /design-consultation or /plan-design-review
-- Full review pipeline → /autoplan
-- Bugs/errors → /investigate
-- QA/testing site behavior → /qa or /qa-only
-- Code review/diff check → /review
-- Visual polish → /design-review
-- Ship/deploy/PR → /ship or /land-and-deploy
-- Save progress → /context-save
-- Resume context → /context-restore
+- Brainstorm → /office-hours | Strategy → /plan-ceo-review | Architecture → /plan-eng-review
+- Design → /design-consultation or /plan-design-review | Full review → /autoplan
+- Bugs → /investigate | QA → /qa | Code review → /review | Ship → /ship
+- Save → /context-save | Resume → /context-restore
 
 ## Lessons learned
 
-### Respect the exact export contract
-When an issue specifies an export shape (e.g. "exports a `Bun.serve`-compatible fetch handler"), test that exact public contract. Exporting the Hono app instance instead of a plain `fetch` function passes tests that happen to call `app.fetch(req)`, but it is the wrong contract.
-
-### Run every acceptance check, especially negative ones
-Do not dismiss a failing negative check with an explanation (e.g. "macOS resolves `0.0.0.0` to localhost"). If the acceptance criteria say `curl http://0.0.0.0:3001/api/health` must NOT respond, and it does respond, that is a bug — fix it.
-
-### Honour `PORT`, never hardcode
-Do not hardcode ports. Read `process.env.PORT` and fall back to the documented default (e.g. `3001`). The same rule applies to any other environment-sensitive value.
-
-### Verify branch ancestry before PRing
-Before opening a PR, check that the branch is based on `origin/main` and has a clean linear history. Branches with unrelated history cannot be merged on GitHub.
+- **Respect the exact export contract.** If an issue specifies an export shape, test that exact public contract — don't substitute a close-enough equivalent.
+- **Run every acceptance check, especially negative ones.** A failing negative check is a bug, not a platform quirk. Fix it.
+- **Honour `PORT`, never hardcode.** Read `process.env.PORT` and fall back to the documented default. Same for any environment-sensitive value.
+- **Verify branch ancestry before PRing.** Branch must be based on `origin/main` with clean linear history.
+- **Tailwind config: follow the issue, not your defaults.** If the issue asks for `tailwind.config.js`, include it — even if you think the version doesn't need it.
