@@ -145,3 +145,17 @@ When the user's request matches an available skill, invoke it via the Skill tool
 - Ship/deploy/PR → /ship or /land-and-deploy
 - Save progress → /context-save
 - Resume context → /context-restore
+
+## Lessons learned
+
+### Respect the exact export contract
+When an issue specifies an export shape (e.g. "exports a `Bun.serve`-compatible fetch handler"), test that exact public contract. Exporting the Hono app instance instead of a plain `fetch` function passes tests that happen to call `app.fetch(req)`, but it is the wrong contract.
+
+### Run every acceptance check, especially negative ones
+Do not dismiss a failing negative check with an explanation (e.g. "macOS resolves `0.0.0.0` to localhost"). If the acceptance criteria say `curl http://0.0.0.0:3001/api/health` must NOT respond, and it does respond, that is a bug — fix it.
+
+### Honour `PORT`, never hardcode
+Do not hardcode ports. Read `process.env.PORT` and fall back to the documented default (e.g. `3001`). The same rule applies to any other environment-sensitive value.
+
+### Verify branch ancestry before PRing
+Before opening a PR, check that the branch is based on `origin/main` and has a clean linear history. Branches with unrelated history cannot be merged on GitHub.
