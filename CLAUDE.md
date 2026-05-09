@@ -8,7 +8,7 @@ Typing-as-story-time for two kids (Winni, Zack). 14 episodes per season; typing 
 
 - **Runtime:** Bun. No Node.
 - **Server:** Hono. **Bind `127.0.0.1`, never `0.0.0.0`.**
-- **Frontend:** React 18 + TypeScript + Vite + Tailwind. Vite binds `127.0.0.1`. Prod build → root `dist/` (Hono serves static + `/api/*`).
+- **Frontend:** React 19 + TypeScript + Vite + Tailwind. Vite binds `127.0.0.1`. Prod build → root `dist/` (Hono serves static + `/api/*`).
 - **Validation:** Zod at every boundary (HTTP, file I/O, generation output).
 - **Lint/format:** Biome.
 - **Tests:** `bun test` unit; `agent-browser` E2E. **No Playwright.**
