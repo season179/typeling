@@ -1,46 +1,153 @@
-import { Window, GlobalWindow } from "happy-dom";
-import { describe, it, expect, beforeAll, afterAll, afterEach } from "bun:test";
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { describe, it, expect } from "bun:test";
+import { render, waitFor } from "@testing-library/react";
+import { Router, Route } from "wouter";
+import { memoryLocation } from "wouter/memory-location";
 import App from "../src/web/App";
+import { setupDom } from "./web/setup";
 
-const window = new GlobalWindow() as unknown as Window & typeof globalThis;
+setupDom();
 
-describe("App", () => {
-  beforeAll(() => {
-    // @ts-expect-error happy-dom globals
-    globalThis.window = window;
-    globalThis.document = window.document;
-    globalThis.navigator = window.navigator;
-  });
+function renderApp(initialPath = "/") {
+	const { hook } = memoryLocation({ path: initialPath });
+	const result = render(
+		<Router hook={hook}>
+			<Route path="/" component={App} />
+			<Route path="/play/:childId">
+				<div data-testid="play-page">Playing</div>
+			</Route>
+		</Router>,
+	);
+	return result;
+}
 
-  afterAll(() => {
-    window.close();
-  });
+describe("App (ProfileSelect)", () => {
+	it("shows loading state while fetching children", async () => {
+		const originalFetch = globalThis.fetch;
+		let resolveFetch: (value: Response) => void;
+		globalThis.fetch = (() =>
+			new Promise<Response>((resolve) => {
+				resolveFetch = resolve;
+			})) as unknown as typeof fetch;
 
-  afterEach(() => {
-    cleanup();
-  });
+		try {
+			const { getByText, queryByText } = renderApp();
+			expect(getByText(/loading/i)).toBeDefined();
 
-  it("fetches /api/health on mount and renders the response", async () => {
-    const originalFetch = globalThis.fetch;
-    const requests: Array<RequestInfo | URL> = [];
-    globalThis.fetch = (async (input) => {
-      requests.push(input);
-      return (
-        new Response(JSON.stringify({ ok: true }), {
-          headers: { "content-type": "application/json" },
-        })
-      );
-    }) as typeof fetch;
+			resolveFetch!(
+				new Response(JSON.stringify({}), {
+					headers: { "content-type": "application/json" },
+				}),
+			);
+			await waitFor(() => {
+				expect(queryByText(/loading/i)).toBeNull();
+			});
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
 
-    try {
-      const { getByText } = render(<App />);
-      await waitFor(() => {
-        expect(getByText('{"ok":true}')).toBeDefined();
-      });
-      expect(requests).toEqual(["/api/health"]);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-  });
+	it("shows error state when fetch fails", async () => {
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (() =>
+			Promise.reject(new Error("network error"))) as unknown as typeof fetch;
+
+		try {
+			const { getByText } = renderApp();
+			await waitFor(() => {
+				expect(getByText(/error/i)).toBeDefined();
+			});
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
+	it("renders a card for each child with name and theme", async () => {
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (() =>
+			Promise.resolve(
+				new Response(
+					JSON.stringify({
+						winni: { name: "Winni", theme: "rainbow-unicorn" },
+						zack: { name: "Zack", theme: "robot-builders" },
+					}),
+					{ headers: { "content-type": "application/json" } },
+				),
+			)) as unknown as typeof fetch;
+
+		try {
+			const { getByText } = renderApp();
+			await waitFor(() => {
+				expect(getByText("Winni")).toBeDefined();
+				expect(getByText("Zack")).toBeDefined();
+				expect(getByText("rainbow-unicorn")).toBeDefined();
+				expect(getByText("robot-builders")).toBeDefined();
+			});
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
+	it("shows empty state when no children exist", async () => {
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (() =>
+			Promise.resolve(
+				new Response(JSON.stringify({}), {
+					headers: { "content-type": "application/json" },
+				}),
+			)) as unknown as typeof fetch;
+
+		try {
+			const { getByText } = renderApp();
+			await waitFor(() => {
+				expect(getByText(/no children/i)).toBeDefined();
+			});
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
+	it("shows error when server returns non-ok status", async () => {
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (() =>
+			Promise.resolve(
+				new Response("Internal Server Error", { status: 500 }),
+			)) as unknown as typeof fetch;
+
+		try {
+			const { getByText } = renderApp();
+			await waitFor(() => {
+				expect(getByText(/error/i)).toBeDefined();
+			});
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
+	it("clicking a child card navigates to /play/:childId", async () => {
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (() =>
+			Promise.resolve(
+				new Response(
+					JSON.stringify({
+						winni: { name: "Winni", theme: "rainbow-unicorn" },
+					}),
+					{ headers: { "content-type": "application/json" } },
+				),
+			)) as unknown as typeof fetch;
+
+		try {
+			const { getByText, getByTestId } = renderApp();
+			await waitFor(() => {
+				expect(getByText("Winni")).toBeDefined();
+			});
+
+			getByText("Winni").click();
+
+			await waitFor(() => {
+				expect(getByTestId("play-page")).toBeDefined();
+			});
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
 });
