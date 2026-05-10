@@ -120,4 +120,72 @@ describe("POST /api/sessions", () => {
 		const body = (await res.json()) as { error: string };
 		expect(body.error).toBe("InvalidSession");
 	});
+
+	it("returns 409 with child_not_found when child_id is unknown", async () => {
+		await writeState(fixtureState);
+
+		const res = await postSession({
+			...validSessionBody,
+			child_id: "nonexistent",
+		});
+
+		expect(res.status).toBe(409);
+		const body = (await res.json()) as { error: string };
+		expect(body.error).toBe("child_not_found");
+	});
+
+	it("returns 409 with episode_mismatch when episode_idx doesn't match child.current_episode", async () => {
+		const state = {
+			...fixtureState,
+			children: {
+				winni: {
+					...fixtureState.children.winni,
+					current_episode: 2,
+				},
+			},
+		};
+		await writeState(state);
+
+		const res = await postSession({
+			...validSessionBody,
+			episode_idx: 0,
+		});
+
+		expect(res.status).toBe(409);
+		const body = (await res.json()) as { error: string };
+		expect(body.error).toBe("episode_mismatch");
+	});
+
+	it("returns 409 with season_mismatch when season_slug doesn't match child.active_season", async () => {
+		await writeState(fixtureState);
+
+		const res = await postSession({
+			...validSessionBody,
+			season_slug: "different-season",
+		});
+
+		expect(res.status).toBe(409);
+		const body = (await res.json()) as { error: string };
+		expect(body.error).toBe("season_mismatch");
+	});
+
+	it("idempotency check still succeeds even if child state has advanced (idempotency before mismatch)", async () => {
+		const state = {
+			...fixtureState,
+			children: {
+				winni: {
+					...fixtureState.children.winni,
+					current_episode: 1,
+				},
+			},
+			sessions: [validSessionBody],
+		};
+		await writeState(state);
+
+		const res = await postSession(validSessionBody);
+
+		expect(res.status).toBe(200);
+		const body = await res.json();
+		expect(body).toEqual(validSessionBody);
+	});
 });
