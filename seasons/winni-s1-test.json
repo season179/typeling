@@ -1,11 +1,21 @@
 {
-	"slug": "winni-s1-test",
-	"child_id": "winni",
-	"theme": "pink unicorn",
-	"episodes": [
-		{
-			"idx": 0,
-			"text": "The pink unicorn skipped through the meadow and met a kind, curious little bee."
-		}
-	]
+  "slug": "winni-s1-test",
+  "child_id": "winni",
+  "theme": "pink unicorn",
+  "episodes": [
+    { "idx": 0, "text": "The pink unicorn skipped through the meadow and met a kind, curious little bee." },
+    { "idx": 1, "text": "The bee showed the unicorn a secret garden full of glowing flowers." },
+    { "idx": 2, "text": "In the garden they found a tiny baby dragon who was lost and afraid." },
+    { "idx": 3, "text": "The unicorn and the bee decided to help the dragon find its way home." },
+    { "idx": 4, "text": "They travelled through the whispering woods where the trees could talk." },
+    { "idx": 5, "text": "A wise old owl told them the way to the dragon mountain." },
+    { "idx": 6, "text": "They crossed a sparkling stream and climbed a hill of soft purple moss." },
+    { "idx": 7, "text": "At the top of the hill they saw the dragon mountain in the distance." },
+    { "idx": 8, "text": "The baby dragon recognised its home and flapped its tiny wings with joy." },
+    { "idx": 9, "text": "The mother dragon flew down to meet them and thanked them with a warm smile." },
+    { "idx": 10, "text": "She gave the unicorn a magical flower that would never stop glowing." },
+    { "idx": 11, "text": "The unicorn and the bee said goodbye to their new dragon friends." },
+    { "idx": 12, "text": "On the way home they met a rabbit who told them about another adventure." },
+    { "idx": 13, "text": "The unicorn smiled and knew there would always be more adventures to come." }
+  ]
 }

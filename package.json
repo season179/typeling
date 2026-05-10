@@ -8,7 +8,8 @@
     "server": "bun run src/server/index.ts",
     "web": "vite",
     "lint": "biome check src/",
-    "format": "biome format --write src/"
+    "format": "biome format --write src/",
+    "gen:season": "bun run scripts/gen-season.ts"
   },
   "dependencies": {
     "hono": "^4.12.18",

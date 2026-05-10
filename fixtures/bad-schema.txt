@@ -1,0 +1,5 @@
+{
+  "slug": "winni-s1",
+  "child_id": "winni",
+  "theme": "rainbow unicorn"
+}

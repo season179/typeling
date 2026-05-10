@@ -1,11 +1,21 @@
 {
-	"slug": "zack-s1-test",
-	"child_id": "zack",
-	"theme": "blue robot",
-	"episodes": [
-		{
-			"idx": 0,
-			"text": "The little blue robot beeped happily as it rolled across the workshop floor."
-		}
-	]
+  "slug": "zack-s1-test",
+  "child_id": "zack",
+  "theme": "blue robot",
+  "episodes": [
+    { "idx": 0, "text": "The little blue robot beeped happily as it rolled across the workshop floor." },
+    { "idx": 1, "text": "Its name was Beep and it loved to build things with its shiny metal hands." },
+    { "idx": 2, "text": "One day Beep discovered a mysterious glowing crystal hidden under the workbench." },
+    { "idx": 3, "text": "The crystal hummed with a strange energy that made Beep's circuits tingle." },
+    { "idx": 4, "text": "Beep decided to build a special machine to study the crystal." },
+    { "idx": 5, "text": "It gathered gears and wires and a tiny screen from the spare parts bin." },
+    { "idx": 6, "text": "The machine clicked and whirred as Beep carefully connected all the parts." },
+    { "idx": 7, "text": "When Beep placed the crystal in the machine it projected a star map on the wall." },
+    { "idx": 8, "text": "The star map showed a distant planet full of friendly robots and glowing crystals." },
+    { "idx": 9, "text": "Beep knew it had found something truly special and exciting." },
+    { "idx": 10, "text": "It decided to build a spaceship so it could visit the robot planet someday." },
+    { "idx": 11, "text": "Every day after that Beep worked on its spaceship with great care and joy." },
+    { "idx": 12, "text": "The other toys in the workshop cheered Beep on and offered to help." },
+    { "idx": 13, "text": "Beep smiled with its glowing eyes and knew that any dream was possible with hard work." }
+  ]
 }

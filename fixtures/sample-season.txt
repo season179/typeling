@@ -1,0 +1,63 @@
+{
+  "slug": "winni-s1",
+  "child_id": "winni",
+  "theme": "rainbow unicorn",
+  "episodes": [
+    {
+      "idx": 0,
+      "text": "Once upon a time, in a meadow full of rainbow flowers and candy trees, there lived a small unicorn named Sparkle. Sparkle had a bright pink mane and a golden horn that glittered in the sun. Every morning she would run through the meadow, greeting all the friendly bees and butterflies with a happy neigh. Her best friend was a little blue bird named Pip who loved to sit on her nose and sing happy songs all day long."
+    },
+    {
+      "idx": 1,
+      "text": "One day Sparkle and Pip decided to explore the forest beyond the rainbow hills. The trees were tall and covered in silver leaves that chimed like tiny bells when the wind blew. Sparkle trotted carefully along the mossy path, her hooves making soft thuds on the ground. Pip flew ahead, chirping with excitement at every new flower and mushroom they discovered on the way. It was the most exciting adventure they had ever been on together."
+    },
+    {
+      "idx": 2,
+      "text": "Soon they came to a sparkling river that flowed with water the colour of melted sapphires. A family of talking otters was splashing near the bank, building a little dam out of pebbles and twigs. The smallest otter waved a tiny paw and called out, Hi there, Sparkle. Are you going to the Wishing Tree as well? We hear it is in full bloom today. The flowers are meant to be truly magnificent this season."
+    },
+    {
+      "idx": 3,
+      "text": "Sparkle tilted her head with curiosity. She had heard stories of the Wishing Tree from her grandmother but had never seen it herself. Is it really real, she asked the otter. The little otter nodded eagerly. Oh yes, and its flowers glow with a soft golden light. If you make a wish while touching one of its petals, the wish comes true. But only the kindest wishes work, so you must choose your words carefully."
+    },
+    {
+      "idx": 4,
+      "text": "Sparkle and Pip followed the river until they reached a clearing filled with soft golden light. In the centre stood the most beautiful tree they had ever seen. Its branches reached high into the sky and every leaf shimmered like a tiny star. Pink and gold flowers dotted the branches, each one glowing gently in the afternoon light. Sparkle gasped with wonder and joy at the magical sight. She had never imagined anything could be so beautiful or so full of light."
+    },
+    {
+      "idx": 5,
+      "text": "Pip landed on one of the lower branches and looked at the flowers with wide eyes. Go on, Sparkle, make a wish, he chirped. Sparkle closed her eyes and touched the nearest flower petal with her nose. She thought of all the creatures in the meadow and the forest and how much she loved them. I wish for everyone to feel as happy as I do right now, she whispered softly into the soft golden air."
+    },
+    {
+      "idx": 6,
+      "text": "The flower she touched suddenly bloomed twice as bright, and a cosy golden breeze swirled around the clearing. All the other flowers began to glow too, sending tiny sparks of light into the sky like a fireworks show made of kindness. The otters cheered from the riverbank and even the tall silver-leaf trees seemed to chime more sweetly than before. It was a moment of pure magic that nobody would ever forget. The whole forest seemed to hold its breath in wonder."
+    },
+    {
+      "idx": 7,
+      "text": "As the golden light faded, a tiny seed floated down from the Wishing Tree and landed right in front of Sparkle. A gentle voice whispered from the branches, This is a gift for your kind heart. Plant it wherever you wish and a new Wishing Tree will grow. Sparkle carefully picked up the seed with her mouth and placed it in Pip's little pouch for safekeeping. It felt cosy and tingly against the soft fabric, like a tiny heartbeat."
+    },
+    {
+      "idx": 8,
+      "text": "The journey home felt even more magical than the journey there. Every bird they passed seemed to be singing a little louder and every flower seemed a little brighter. Sparkle could not stop smiling. She thought about where she would plant the seed and decided the best spot was right in the middle of the rainbow meadow where everyone could visit. It was going to be the perfect place for a new magical tree. Pip nodded in agreement and tweeted a few happy notes."
+    },
+    {
+      "idx": 9,
+      "text": "When they reached the meadow, all their friends were waiting for them. The bees buzzed in excited circles and the butterflies danced in the air. Sparkle told them all about the Wishing Tree and the golden light and the kind voice. Then she showed them the tiny seed and explained what she wanted to do with it. Every creature in the meadow was eager to help. A ladybird suggested planting it near the big rock where the morning sun always hit first."
+    },
+    {
+      "idx": 10,
+      "text": "Together Sparkle, Pip, and all their friends dug a small hole in the softest, sunniest part of the meadow. Sparkle gently placed the seed inside and covered it with earth. The bees brought drops of morning dew and the butterflies fanned the soil with their wings to keep it cool. Everyone sat in a big circle around the spot and waited with hopeful hearts. Sparkle could feel the excitement buzzing in the air like a happy song."
+    },
+    {
+      "idx": 11,
+      "text": "Nothing happened at first. But just as the sun began to set, a tiny green shoot pushed through the soil and reached toward the sky. It grew and grew until it was as tall as Sparkle, then it sprouted leaves that shimmered like the ones on the Wishing Tree. Everyone cheered and hugged each other with joy and happy laughter. The little shoot grew stronger and taller with every passing moment, and two tiny new leaves unfurled like little green flags."
+    },
+    {
+      "idx": 12,
+      "text": "By the time the stars came out, the little tree had three golden flowers on its branches. They were small but they glowed with the same cosy light as the great Wishing Tree in the forest. Sparkle knew that someday this tree would grow just as big and beautiful and that many creatures would come to make their kindest wishes here. It was a wonderful feeling to have brought such magic home to share with everyone she loved."
+    },
+    {
+      "idx": 13,
+      "text": "That night as Sparkle lay down in the soft grass, Pip nestled against her neck and whispered, Today was the best day ever. Sparkle smiled and looked up at the stars twinkling above the meadow. She felt so grateful for her friends and her home and the wonderful adventure they had shared. And in her dreams she saw fields of Wishing Trees spreading kindness all across the world, one wish at a time. And Sparkle knew in her heart that her own kind wish had already started to come true."
+    }
+  ]
+}

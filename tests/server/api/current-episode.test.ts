@@ -8,16 +8,12 @@ const fixtureSeason = {
 	slug: "winni-s1-test",
 	child_id: "winni",
 	theme: "pink unicorn",
-	episodes: [
-		{
-			idx: 0,
-			text: "The pink unicorn skipped through the meadow.",
-		},
-		{
-			idx: 1,
-			text: "She met a kind, curious little bee in the clover.",
-		},
-	],
+	episodes: Array.from({ length: 14 }, (_, i) => ({
+		idx: i,
+		text: i === 0
+			? "The pink unicorn skipped through the meadow."
+			: `Episode ${i + 1} text for testing.`,
+	})),
 };
 
 const fixtureState = {

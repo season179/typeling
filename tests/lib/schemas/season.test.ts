@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
 	episodeSchema,
+	MAX_EPISODES,
 	seasonSchema,
 } from "../../../src/lib/schemas/season";
 
@@ -9,11 +10,17 @@ const validEpisode = {
 	text: "Once upon a time, a small dragon learnt to type.",
 };
 
+const makeEpisodes = (count: number) =>
+	Array.from({ length: count }, (_, i) => ({
+		idx: i,
+		text: `Episode ${i + 1} text.`,
+	}));
+
 const validSeason = {
 	slug: "winni-season-01",
 	child_id: "winni",
 	theme: "rainbow-unicorn",
-	episodes: [validEpisode],
+	episodes: makeEpisodes(MAX_EPISODES),
 };
 
 describe("episodeSchema", () => {
@@ -65,12 +72,30 @@ describe("seasonSchema", () => {
 		).toThrow();
 	});
 
+	it("rejects when episodes count is not exactly MAX_EPISODES", () => {
+		expect(() =>
+			seasonSchema.parse({
+				...validSeason,
+				episodes: makeEpisodes(MAX_EPISODES - 1),
+			}),
+		).toThrow();
+		expect(() =>
+			seasonSchema.parse({
+				...validSeason,
+				episodes: makeEpisodes(MAX_EPISODES + 1),
+			}),
+		).toThrow();
+	});
+
 	it("strips unknown fields from a season and from each episode", () => {
-		const parsed = seasonSchema.parse({
+		const input = {
 			...validSeason,
 			extra: "ignore me",
-			episodes: [{ ...validEpisode, extra: "also ignore" }],
-		});
+			episodes: makeEpisodes(MAX_EPISODES).map((ep, i) =>
+				i === 0 ? { ...ep, extra: "also ignore" } : ep,
+			),
+		};
+		const parsed = seasonSchema.parse(input);
 		expect(parsed).toEqual(validSeason);
 		expect(parsed).not.toHaveProperty("extra");
 		expect(parsed.episodes[0]).not.toHaveProperty("extra");
