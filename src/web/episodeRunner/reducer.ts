@@ -16,12 +16,28 @@ export type EpisodeRunnerAction =
 			now: number;
 			repeat?: boolean;
 	  }
-	| { type: "BLUR" };
+	| { type: "BLUR" }
+	| {
+			type: "RESTORE";
+			draft: Pick<
+				EpisodeRunnerState,
+				"cursorIdx" | "activeMs" | "lastKeystrokeAt"
+			>;
+	  };
 
 export function episodeRunnerReducer(
 	state: EpisodeRunnerState,
 	action: EpisodeRunnerAction,
 ): EpisodeRunnerState {
+	if (action.type === "RESTORE") {
+		return {
+			cursorIdx: action.draft.cursorIdx,
+			activeMs: action.draft.activeMs,
+			lastKeystrokeAt: action.draft.lastKeystrokeAt,
+			flashUntil: null,
+			startedAt: null,
+		};
+	}
 	if (action.type === "BLUR") {
 		if (state.lastKeystrokeAt === null) return state;
 		return { ...state, lastKeystrokeAt: null };

@@ -6,6 +6,7 @@ import ClipboardEvent from "happy-dom/lib/event/events/ClipboardEvent";
 import { Router, Route } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 import EpisodeRunner from "../../src/web/EpisodeRunner";
+import { clearDraft, saveDraft } from "../../src/web/episodeRunner/autosave";
 
 const window = new GlobalWindow() as unknown as Window & typeof globalThis;
 
@@ -29,6 +30,7 @@ describe("EpisodeRunner", () => {
 		globalThis.window = window;
 		globalThis.document = window.document;
 		globalThis.navigator = window.navigator;
+		globalThis.localStorage = window.localStorage;
 		// happy-dom doesn't provide crypto.randomUUID; stub it
 		if (!globalThis.crypto) {
 			(globalThis as any).crypto = {};
@@ -45,6 +47,7 @@ describe("EpisodeRunner", () => {
 
 	afterEach(() => {
 		cleanup();
+		window.localStorage.clear();
 	});
 
 	it("generates a sessionId via crypto.randomUUID on mount", async () => {
@@ -432,5 +435,69 @@ describe("EpisodeRunner", () => {
 			document.addEventListener = origAdd;
 			document.removeEventListener = origRemove;
 		}
+	});
+
+	it("restores cursorIdx from localStorage draft on mount", async () => {
+		saveDraft(defaultProps.childId, defaultProps.seasonSlug, defaultProps.episodeIdx, {
+			sessionId: "draft-session-uuid",
+			cursorIdx: 6,
+			activeMs: 5000,
+			lastKeystrokeAt: 1715300000000,
+		});
+
+		const { getByTestId } = renderWithRouter(
+			<EpisodeRunner {...defaultProps} episodeText="Hello world." />,
+		);
+
+		await waitFor(() => {
+			expect(getByTestId("cursor-idx").textContent).toBe("6");
+		});
+	});
+
+	it("restores activeMs from localStorage draft on mount", async () => {
+		saveDraft(defaultProps.childId, defaultProps.seasonSlug, defaultProps.episodeIdx, {
+			sessionId: "draft-session-uuid",
+			cursorIdx: 3,
+			activeMs: 9999,
+			lastKeystrokeAt: 1715300000000,
+		});
+
+		const { getByTestId } = renderWithRouter(
+			<EpisodeRunner {...defaultProps} episodeText="Hello world." />,
+		);
+
+		await waitFor(() => {
+			expect(getByTestId("active-ms").textContent).toBe("9999");
+		});
+	});
+
+	it("restores sessionId from localStorage draft on mount", async () => {
+		saveDraft(defaultProps.childId, defaultProps.seasonSlug, defaultProps.episodeIdx, {
+			sessionId: "existing-session-id",
+			cursorIdx: 0,
+			activeMs: 0,
+			lastKeystrokeAt: null,
+		});
+
+		const { getByTestId } = renderWithRouter(
+			<EpisodeRunner {...defaultProps} episodeText="Hello world." />,
+		);
+
+		await waitFor(() => {
+			expect(getByTestId("session-id").textContent).toBe("existing-session-id");
+		});
+	});
+
+	it("starts fresh when no draft exists", async () => {
+		clearDraft(defaultProps.childId, defaultProps.seasonSlug, defaultProps.episodeIdx);
+
+		const { getByTestId } = renderWithRouter(
+			<EpisodeRunner {...defaultProps} episodeText="Hello world." />,
+		);
+
+		await waitFor(() => {
+			expect(getByTestId("cursor-idx").textContent).toBe("0");
+			expect(getByTestId("active-ms").textContent).toBe("0");
+		});
 	});
 });
