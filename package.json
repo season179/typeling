@@ -9,7 +9,8 @@
     "web": "vite",
     "lint": "biome check src/",
     "format": "biome format --write src/",
-    "gen:season": "bun run scripts/gen-season.ts"
+    "gen:season": "bun run scripts/gen-season.ts",
+    "e2e:happy-path": "bun run scripts/e2e/happy-path.ts"
   },
   "dependencies": {
     "hono": "^4.12.18",
