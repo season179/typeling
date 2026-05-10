@@ -4,6 +4,7 @@ export const TERMS = [
 	"dying",
 	"kill",
 	"killed",
+	"killer",
 	"killing",
 	"hate",
 	"scary",
@@ -23,9 +24,8 @@ export const TERMS = [
 	"hell",
 ];
 
-// Leading \b only (no trailing \b): "killer" matches "kill" but "skill" doesn't.
 const PATTERN = new RegExp(
-	`\\b(${[...TERMS].sort((a, b) => b.length - a.length).join("|")})`,
+	`\\b(${[...TERMS].sort((a, b) => b.length - a.length).join("|")})\\b`,
 	"gi",
 );
 

@@ -17,9 +17,11 @@ describe("contentBlacklist", () => {
 		expect(contentBlacklist("Death")).toEqual(["death"]);
 	});
 
-	test("matches term at word start but not mid-word", () => {
-		expect(contentBlacklist("killer")).toEqual(["kill"]);
+	test("matches explicit inflected terms without matching safe prefixes", () => {
+		expect(contentBlacklist("killer")).toEqual(["killer"]);
 		expect(contentBlacklist("skill")).toEqual([]);
+		expect(contentBlacklist("hello")).toEqual([]);
+		expect(contentBlacklist("warm")).toEqual([]);
 	});
 
 	test("covers every term with positive and negative cases", () => {
@@ -30,6 +32,7 @@ describe("contentBlacklist", () => {
 			dying: "undying",
 			kill: "skill",
 			killed: "skilled",
+			killer: "skiller",
 			killing: "skilling",
 			hate: "chateau",
 			scary: "unscary",
@@ -40,13 +43,13 @@ describe("contentBlacklist", () => {
 			weapon: "sweapons",
 			gun: "begun",
 			knife: "penknife",
-			war: "dwarf",
+			war: "warm",
 			fight: "dogfight",
 			fighting: "dogfighting",
 			evil: "bedevil",
 			demon: "pandemonium",
 			devil: "bedevil",
-			hell: "shell",
+			hell: "hello",
 		};
 
 		for (const term of TERMS) {

@@ -3,7 +3,7 @@ import { mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const TEST_DIR = join(import.meta.dir, "..");
-const OUTPUT_PATH = join(TEST_DIR, "seasons", "winni-s1.json");
+const OUTPUT_PATH = join(TEST_DIR, "seasons", "winni-s1-fixture-test.json");
 const STATE_PATH = join(TEST_DIR, "data", "state.test.json");
 const SEED_PATH = join(TEST_DIR, "data", "state.seed.json");
 const SCRIPT = join(TEST_DIR, "scripts", "gen-season.ts");
@@ -51,7 +51,7 @@ describe("gen-season (fixture mode)", () => {
 
 		const { exitCode, stderr } = await runGen([
 			"--child", "winni",
-			"--slug", "winni-s1",
+			"--slug", "winni-s1-fixture-test",
 			"--fixture", "fixtures/sample-season.txt",
 		]);
 

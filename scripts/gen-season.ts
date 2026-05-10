@@ -2,15 +2,18 @@ import { parseArgs } from "node:util";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import OpenAI from "openai";
+import type { z } from "zod";
 import { seasonSchema } from "../src/lib/schemas/season";
 import { readState } from "../src/server/state";
 import type { Child } from "../src/lib/schemas/state";
 import { asciiNormalize } from "../src/lib/asciiNormalize";
 import { usToBritish } from "../src/lib/usToBritish";
-import { assertCharset } from "../src/lib/assertCharset";
+import { assertCharset, CharsetError } from "../src/lib/assertCharset";
 import { contentBlacklist } from "../src/lib/contentBlacklist";
 import { wordCountBudget } from "../src/lib/wordCountBudget";
 import { buildPrompt } from "./gen-season-prompt";
+
+type Season = z.infer<typeof seasonSchema>;
 
 export class SeasonFixtureError extends Error {
 	constructor(message: string) {
@@ -58,6 +61,28 @@ export class WordCountError extends Error {
 	}
 }
 
+export class PersonalNameError extends Error {
+	readonly episodeIdx: number;
+	readonly childName: string;
+
+	constructor(episodeIdx: number, childName: string) {
+		super(`Child name appears in episode ${episodeIdx}: ${childName}`);
+		this.name = "PersonalNameError";
+		this.episodeIdx = episodeIdx;
+		this.childName = childName;
+	}
+}
+
+export class GenericProtagonistError extends Error {
+	readonly episodeIdx: number;
+
+	constructor(episodeIdx: number) {
+		super(`Generic protagonist label appears in episode ${episodeIdx}`);
+		this.name = "GenericProtagonistError";
+		this.episodeIdx = episodeIdx;
+	}
+}
+
 export class LLMTransportError extends Error {
 	constructor(message: string) {
 		super(message);
@@ -75,6 +100,7 @@ export class LLMResponseError extends Error {
 const ROOT = join(import.meta.dir, "..");
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 const MODEL = "xiaomi/mimo-v2.5-pro";
+const MAX_LLM_ATTEMPTS = 5;
 
 const { values } = parseArgs({
 	args: Bun.argv.slice(2),
@@ -130,7 +156,6 @@ async function loadFromLLM(child: Child): Promise<unknown> {
 	}
 
 	const prompt = buildPrompt({
-		childName: child.name,
 		theme: child.theme,
 		targetWpm: child.target_wpm,
 	});
@@ -144,6 +169,7 @@ async function loadFromLLM(child: Child): Promise<unknown> {
 	try {
 		const completion = await client.chat.completions.create({
 			model: MODEL,
+			temperature: 0.4,
 			messages: [
 				{ role: "system", content: prompt.system },
 				{ role: "user", content: prompt.user },
@@ -192,17 +218,7 @@ async function loadFromLLM(child: Child): Promise<unknown> {
 	};
 }
 
-async function main() {
-	const state = await readState(statePath);
-	const child = state.children[cid];
-	if (!child) {
-		throw new SeasonFixtureError(`Child "${cid}" not found in state.json`);
-	}
-
-	const raw = fixturePath
-		? await loadFromFixture(fixturePath)
-		: await loadFromLLM(child);
-
+function validateSeason(raw: unknown, child: Child): Season {
 	const seasonResult = seasonSchema.safeParse(raw);
 	if (!seasonResult.success) {
 		throw new SeasonSchemaError(seasonResult.error.message);
@@ -223,6 +239,14 @@ async function main() {
 			throw new ContentBlacklistError(episode.idx, hits);
 		}
 
+		if (text.toLowerCase().includes(child.name.toLowerCase())) {
+			throw new PersonalNameError(episode.idx, child.name);
+		}
+
+		if (/\bthe child\b/i.test(text)) {
+			throw new GenericProtagonistError(episode.idx);
+		}
+
 		const wordCount = text.split(/\s+/).filter(Boolean).length;
 		if (wordCount < budget.min || wordCount > budget.max) {
 			throw new WordCountError(
@@ -235,6 +259,58 @@ async function main() {
 
 		episode.text = text;
 	}
+
+	return season;
+}
+
+function isRetryableGenerationError(err: unknown): boolean {
+	return (
+		err instanceof SeasonSchemaError ||
+		err instanceof LLMResponseError ||
+		err instanceof CharsetError ||
+		err instanceof ContentBlacklistError ||
+		err instanceof PersonalNameError ||
+		err instanceof GenericProtagonistError ||
+		err instanceof WordCountError
+	);
+}
+
+async function generateFromLLMWithRetries(child: Child): Promise<Season> {
+	let lastError: unknown;
+
+	for (let attempt = 1; attempt <= MAX_LLM_ATTEMPTS; attempt += 1) {
+		try {
+			const raw = await loadFromLLM(child);
+			return validateSeason(raw, child);
+		} catch (err) {
+			if (!isRetryableGenerationError(err)) {
+				throw err;
+			}
+
+			lastError = err;
+			const name = err instanceof Error ? err.name : "Error";
+			const message = err instanceof Error ? err.message : String(err);
+			if (attempt < MAX_LLM_ATTEMPTS) {
+				console.error(
+					`Attempt ${attempt}/${MAX_LLM_ATTEMPTS} failed validation: [${name}] ${message}. Retrying...`,
+				);
+			}
+		}
+	}
+
+	throw lastError;
+}
+
+async function main() {
+	const state = await readState(statePath);
+	const child = state.children[cid];
+	if (!child) {
+		throw new SeasonFixtureError(`Child "${cid}" not found in state.json`);
+	}
+
+	const season = fixturePath
+		? validateSeason(await loadFromFixture(fixturePath), child)
+		: await generateFromLLMWithRetries(child);
 
 	const output = JSON.stringify(season, null, 2);
 	await writeFile(join(ROOT, "seasons", `${slg}.json`), output);
