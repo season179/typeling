@@ -7,6 +7,14 @@
       "active_season": "winni-s1-test",
       "current_episode": 0,
       "current_session_id": null
+    },
+    "zack": {
+      "name": "Zack",
+      "theme": "blue robot",
+      "target_wpm": 18,
+      "active_season": "zack-s1-test",
+      "current_episode": 0,
+      "current_session_id": null
     }
   },
   "sessions": []
