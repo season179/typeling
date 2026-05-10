@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 const MAX_EPISODE_IDX = 13;
+export const MAX_EPISODES = MAX_EPISODE_IDX + 1;
 
 export const episodeSchema = z.object({
 	idx: z.number().int().min(0).max(MAX_EPISODE_IDX),

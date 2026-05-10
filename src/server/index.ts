@@ -39,6 +39,23 @@ app.onError((error, c) => {
 	return c.json({ error: error.name }, 500);
 });
 
+async function loadChildSeason(childId: string) {
+	const state = await readState(statePath());
+	const child = state.children[childId];
+	if (!child) {
+		return { error: "ChildNotFound" as const, status: 404 as const };
+	}
+
+	const seasonPath = join(seasonsDir(), `${child.active_season}.json`);
+	const seasonFile = Bun.file(seasonPath);
+	if (!(await seasonFile.exists())) {
+		throw new SeasonFileNotFoundError(child.active_season);
+	}
+	const season = seasonSchema.parse(await seasonFile.json());
+
+	return { child, season };
+}
+
 const stateQueues = new Map<string, ReturnType<typeof createStateQueue>>();
 
 const getStateQueue = () => {
@@ -120,20 +137,25 @@ app.get("/api/children/:id/sessions", async (c) => {
 	return c.json(childSessions);
 });
 
-app.get("/api/children/:id/current-episode", async (c) => {
-	const childId = c.req.param("id");
-	const state = await readState(statePath());
-	const child = state.children[childId];
-	if (!child) {
-		return c.json({ error: "ChildNotFound" }, 404);
+app.get("/api/children/:id/season", async (c) => {
+	const result = await loadChildSeason(c.req.param("id"));
+	if ("error" in result) {
+		return c.json({ error: result.error }, result.status);
 	}
 
-	const seasonPath = join(seasonsDir(), `${child.active_season}.json`);
-	const seasonFile = Bun.file(seasonPath);
-	if (!(await seasonFile.exists())) {
-		throw new SeasonFileNotFoundError(child.active_season);
+	return c.json({
+		slug: result.season.slug,
+		total_episodes: result.season.episodes.length,
+	});
+});
+
+app.get("/api/children/:id/current-episode", async (c) => {
+	const result = await loadChildSeason(c.req.param("id"));
+	if ("error" in result) {
+		return c.json({ error: result.error }, result.status);
 	}
-	const season = seasonSchema.parse(await seasonFile.json());
+
+	const { child, season } = result;
 
 	if (child.current_episode >= season.episodes.length) {
 		return c.json({ complete: true });
