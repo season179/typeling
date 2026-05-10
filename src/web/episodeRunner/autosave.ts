@@ -31,12 +31,13 @@ export function loadDraft(
 	seasonSlug: string,
 	episodeIdx: number,
 ): Draft | null {
-	const raw = localStorage.getItem(keyFor(childId, seasonSlug, episodeIdx));
+	const key = keyFor(childId, seasonSlug, episodeIdx);
+	const raw = localStorage.getItem(key);
 	if (raw === null) return null;
 	try {
 		return JSON.parse(raw) as Draft;
 	} catch {
-		localStorage.removeItem(keyFor(childId, seasonSlug, episodeIdx));
+		localStorage.removeItem(key);
 		return null;
 	}
 }

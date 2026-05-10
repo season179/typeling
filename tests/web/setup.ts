@@ -10,6 +10,8 @@ export function setupDom() {
 		globalThis.window = window;
 		globalThis.document = window.document;
 		globalThis.navigator = window.navigator;
+		globalThis.localStorage = window.localStorage;
+		window.localStorage.clear();
 	});
 
 	afterAll(() => {

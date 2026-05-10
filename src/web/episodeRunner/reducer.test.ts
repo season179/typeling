@@ -209,4 +209,67 @@ describe("episodeRunnerReducer", () => {
 		);
 		expect(next.cursorIdx).toBe(3);
 	});
+
+	describe("RESTORE", () => {
+		test("applies cursorIdx, activeMs, and lastKeystrokeAt from draft", () => {
+			const next = episodeRunnerReducer(base, {
+				type: "RESTORE",
+				draft: { cursorIdx: 7, activeMs: 4200, lastKeystrokeAt: 1000 },
+			});
+			expect(next.cursorIdx).toBe(7);
+			expect(next.activeMs).toBe(4200);
+			expect(next.lastKeystrokeAt).toBe(1000);
+		});
+
+		test("resets flashUntil to null", () => {
+			const withFlash: EpisodeRunnerState = {
+				...base,
+				flashUntil: 5000,
+			};
+			const next = episodeRunnerReducer(withFlash, {
+				type: "RESTORE",
+				draft: { cursorIdx: 0, activeMs: 0, lastKeystrokeAt: null },
+			});
+			expect(next.flashUntil).toBeNull();
+		});
+
+		test("resets startedAt to null", () => {
+			const withStarted: EpisodeRunnerState = {
+				...base,
+				startedAt: 500,
+			};
+			const next = episodeRunnerReducer(withStarted, {
+				type: "RESTORE",
+				draft: { cursorIdx: 0, activeMs: 0, lastKeystrokeAt: null },
+			});
+			expect(next.startedAt).toBeNull();
+		});
+
+		test("handles null lastKeystrokeAt in draft", () => {
+			const next = episodeRunnerReducer(base, {
+				type: "RESTORE",
+				draft: { cursorIdx: 3, activeMs: 1000, lastKeystrokeAt: null },
+			});
+			expect(next.cursorIdx).toBe(3);
+			expect(next.activeMs).toBe(1000);
+			expect(next.lastKeystrokeAt).toBeNull();
+		});
+
+		test("overwrites existing state values", () => {
+			const typed: EpisodeRunnerState = {
+				cursorIdx: 5,
+				activeMs: 3000,
+				lastKeystrokeAt: 2000,
+				flashUntil: null,
+				startedAt: 500,
+			};
+			const next = episodeRunnerReducer(typed, {
+				type: "RESTORE",
+				draft: { cursorIdx: 2, activeMs: 800, lastKeystrokeAt: 700 },
+			});
+			expect(next.cursorIdx).toBe(2);
+			expect(next.activeMs).toBe(800);
+			expect(next.lastKeystrokeAt).toBe(700);
+		});
+	});
 });

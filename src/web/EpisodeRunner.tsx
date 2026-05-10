@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { wpmFromCharsAndMs } from "../lib/wpm";
+import { clearDraft, loadDraft, saveDraft } from "./episodeRunner/autosave";
 import { episodeRunnerReducer as cursorReducer } from "./episodeRunner/reducer";
 import { episodeRunnerReducer as sessionReducer } from "./episodeRunnerReducer";
 
@@ -40,8 +41,21 @@ export default function EpisodeRunner({
 	const [now, setNow] = useState(Date.now());
 
 	useEffect(() => {
-		sessionDispatch({ type: "INIT", sessionId: crypto.randomUUID() });
-	}, []);
+		const draft = loadDraft(childId, seasonSlug, episodeIdx);
+		if (draft) {
+			sessionDispatch({ type: "INIT", sessionId: draft.sessionId });
+			cursorDispatch({
+				type: "RESTORE",
+				draft: {
+					cursorIdx: draft.cursorIdx,
+					activeMs: draft.activeMs,
+					lastKeystrokeAt: draft.lastKeystrokeAt,
+				},
+			});
+		} else {
+			sessionDispatch({ type: "INIT", sessionId: crypto.randomUUID() });
+		}
+	}, [childId, seasonSlug, episodeIdx]);
 
 	// Tick now for flash expiry
 	useEffect(() => {
@@ -88,6 +102,28 @@ export default function EpisodeRunner({
 
 	const flash = cursor.flashUntil != null && cursor.flashUntil > now;
 
+	useEffect(() => {
+		if (session.sessionId === null) return;
+		try {
+			saveDraft(childId, seasonSlug, episodeIdx, {
+				sessionId: session.sessionId,
+				cursorIdx: cursor.cursorIdx,
+				activeMs: cursor.activeMs,
+				lastKeystrokeAt: cursor.lastKeystrokeAt,
+			});
+		} catch {
+			// localStorage unavailable or full — non-critical, session still proceeds
+		}
+	}, [
+		session.sessionId,
+		cursor.cursorIdx,
+		cursor.activeMs,
+		cursor.lastKeystrokeAt,
+		childId,
+		seasonSlug,
+		episodeIdx,
+	]);
+
 	// Completion effect
 	useEffect(() => {
 		if (cursor.cursorIdx !== episodeText.length) return;
@@ -115,6 +151,7 @@ export default function EpisodeRunner({
 		})
 			.then((res) => {
 				if (res.ok) {
+					clearDraft(childId, seasonSlug, episodeIdx);
 					navigate(`/play/${childId}/complete/${episodeIdx}`);
 				} else {
 					setError(`Failed to save session (${res.status})`);
