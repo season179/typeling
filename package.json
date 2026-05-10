@@ -11,6 +11,7 @@
     "format": "biome format --write src/",
     "gen:season": "bun run scripts/gen-season.ts",
     "e2e:happy-path": "bun run scripts/e2e/happy-path.ts",
+    "e2e:wrong-key": "bun run scripts/e2e/wrong-key.ts",
     "e2e:idle": "bun run scripts/e2e/idle.ts"
   },
   "dependencies": {
