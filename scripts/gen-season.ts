@@ -1,13 +1,16 @@
 import { parseArgs } from "node:util";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import OpenAI from "openai";
 import { seasonSchema } from "../src/lib/schemas/season";
 import { readState } from "../src/server/state";
+import type { Child } from "../src/lib/schemas/state";
 import { asciiNormalize } from "../src/lib/asciiNormalize";
 import { usToBritish } from "../src/lib/usToBritish";
 import { assertCharset } from "../src/lib/assertCharset";
 import { contentBlacklist } from "../src/lib/contentBlacklist";
 import { wordCountBudget } from "../src/lib/wordCountBudget";
+import { buildPrompt } from "./gen-season-prompt";
 
 export class SeasonFixtureError extends Error {
 	constructor(message: string) {
@@ -55,7 +58,23 @@ export class WordCountError extends Error {
 	}
 }
 
+export class LLMTransportError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "LLMTransportError";
+	}
+}
+
+export class LLMResponseError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "LLMResponseError";
+	}
+}
+
 const ROOT = join(import.meta.dir, "..");
+const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+const MODEL = "xiaomi/mimo-v2.5-pro";
 
 const { values } = parseArgs({
 	args: Bun.argv.slice(2),
@@ -71,55 +90,127 @@ const childId = values.child;
 const slug = values.slug;
 const fixturePath = values.fixture;
 
-if (!childId || !slug || !fixturePath) {
-	console.error("Usage: gen-season --child <id> --slug <slug> --fixture <path>");
+if (!childId || !slug) {
+	console.error(
+		"Usage: gen-season --child <id> --slug <slug> [--fixture <path>]",
+	);
 	process.exit(1);
 }
 
-// TS doesn't narrow across async function boundaries — work around it.
-const cid = childId!;
-const slg = slug!;
-const fix = fixturePath!;
+const cid: string = childId;
+const slg: string = slug;
 
 const statePath =
 	process.env.TYPELING_STATE_PATH ?? join(ROOT, "data", "state.json");
 
-async function main() {
-	let rawFixture: string;
+async function loadFromFixture(path: string): Promise<unknown> {
+	let raw: string;
 	try {
-		rawFixture = await readFile(join(ROOT, fix), "utf-8");
+		raw = await readFile(join(ROOT, path), "utf-8");
 	} catch (err) {
 		throw new SeasonFixtureError(
 			`Cannot read fixture: ${err instanceof Error ? err.message : String(err)}`,
 		);
 	}
-
-	let parsed: unknown;
 	try {
-		parsed = JSON.parse(rawFixture);
+		return JSON.parse(raw);
 	} catch (err) {
 		throw new SeasonFixtureError(
 			`Fixture JSON parse error: ${err instanceof Error ? err.message : String(err)}`,
 		);
 	}
+}
 
-	const seasonResult = seasonSchema.safeParse(parsed);
+async function loadFromLLM(child: Child): Promise<unknown> {
+	const apiKey = process.env.OPENROUTER_API_KEY;
+	if (!apiKey) {
+		throw new LLMTransportError(
+			"OPENROUTER_API_KEY is not set. Use --fixture for offline development.",
+		);
+	}
+
+	const prompt = buildPrompt({
+		childName: child.name,
+		theme: child.theme,
+		targetWpm: child.target_wpm,
+	});
+
+	const client = new OpenAI({
+		apiKey,
+		baseURL: OPENROUTER_BASE_URL,
+	});
+
+	let content: string | null;
+	try {
+		const completion = await client.chat.completions.create({
+			model: MODEL,
+			messages: [
+				{ role: "system", content: prompt.system },
+				{ role: "user", content: prompt.user },
+			],
+		});
+		content = completion.choices[0]?.message?.content ?? null;
+	} catch (err) {
+		throw new LLMTransportError(
+			`OpenRouter call failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
+	}
+
+	if (!content) {
+		throw new LLMResponseError("OpenRouter returned empty content");
+	}
+
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(content);
+	} catch (err) {
+		throw new LLMResponseError(
+			`LLM response JSON parse error: ${err instanceof Error ? err.message : String(err)}`,
+		);
+	}
+
+	if (!Array.isArray(parsed)) {
+		throw new LLMResponseError(
+			`LLM response must be a JSON array, got ${typeof parsed}`,
+		);
+	}
+
+	const episodes = parsed.map((text, idx) => {
+		if (typeof text !== "string") {
+			throw new LLMResponseError(
+				`LLM response episode ${idx} is not a string (got ${typeof text})`,
+			);
+		}
+		return { idx, text };
+	});
+
+	return {
+		slug: slg,
+		child_id: cid,
+		theme: child.theme,
+		episodes,
+	};
+}
+
+async function main() {
+	const state = await readState(statePath);
+	const child = state.children[cid];
+	if (!child) {
+		throw new SeasonFixtureError(`Child "${cid}" not found in state.json`);
+	}
+
+	const raw = fixturePath
+		? await loadFromFixture(fixturePath)
+		: await loadFromLLM(child);
+
+	const seasonResult = seasonSchema.safeParse(raw);
 	if (!seasonResult.success) {
 		throw new SeasonSchemaError(seasonResult.error.message);
 	}
 	const season = seasonResult.data;
 
-	const state = await readState(statePath);
-	const child = state.children[cid];
-	if (!child) {
-		throw new SeasonFixtureError(
-			`Child "${cid}" not found in state.json`,
-		);
-	}
-
 	const budget = wordCountBudget(child.target_wpm);
 
-	// Normalise, spell-check, validate charset, and enforce budget.
 	for (const episode of season.episodes) {
 		let text = episode.text;
 
@@ -147,7 +238,9 @@ async function main() {
 
 	const output = JSON.stringify(season, null, 2);
 	await writeFile(join(ROOT, "seasons", `${slg}.json`), output);
-	console.log(`Wrote seasons/${slg}.json (${season.episodes.length} episodes)`);
+	console.log(
+		`Wrote seasons/${slg}.json (${season.episodes.length} episodes)`,
+	);
 }
 
 main().catch((err) => {
