@@ -3,7 +3,7 @@ import { episodeRunnerReducer, IDLE_THRESHOLD } from "../../../src/web/episodeRu
 
 const TS0 = 1715300000000;
 
-const base = { cursorIdx: 0, activeMs: 0, lastKeystrokeAt: null, flashUntil: null } as const;
+const base = { cursorIdx: 0, activeMs: 0, lastKeystrokeAt: null, flashUntil: null, startedAt: null } as const;
 
 describe("episodeRunnerReducer KEY_DOWN", () => {
 	const cases = [
@@ -58,7 +58,7 @@ describe("episodeRunnerReducer KEY_DOWN", () => {
 
 	for (const key of nonTypingKeys) {
 		it(`ignores non-typing key: ${key}`, () => {
-			const state = { cursorIdx: 5, activeMs: 0, lastKeystrokeAt: null, flashUntil: null };
+			const state = { cursorIdx: 5, activeMs: 0, lastKeystrokeAt: null, flashUntil: null, startedAt: null };
 			const next = episodeRunnerReducer(state, {
 				type: "KEY_DOWN",
 				key,
@@ -70,7 +70,7 @@ describe("episodeRunnerReducer KEY_DOWN", () => {
 	}
 
 	it("ignores empty-string key", () => {
-		const state = { cursorIdx: 3, activeMs: 0, lastKeystrokeAt: null, flashUntil: null };
+		const state = { cursorIdx: 3, activeMs: 0, lastKeystrokeAt: null, flashUntil: null, startedAt: null };
 		const next = episodeRunnerReducer(state, {
 			type: "KEY_DOWN",
 			key: "",
@@ -83,7 +83,7 @@ describe("episodeRunnerReducer KEY_DOWN", () => {
 
 describe("episodeRunnerReducer activeMs accumulator", () => {
 	it("first keystroke: lastKeystrokeAt set, activeMs stays 0", () => {
-		const state = { cursorIdx: 0, activeMs: 0, lastKeystrokeAt: null, flashUntil: null };
+		const state = { cursorIdx: 0, activeMs: 0, lastKeystrokeAt: null, flashUntil: null, startedAt: null };
 		const next = episodeRunnerReducer(state, {
 			type: "KEY_DOWN",
 			key: "h",
@@ -95,7 +95,7 @@ describe("episodeRunnerReducer activeMs accumulator", () => {
 	});
 
 	it("second keystroke 1000ms later: activeMs = 1000", () => {
-		const state = { cursorIdx: 1, activeMs: 0, lastKeystrokeAt: TS0, flashUntil: null };
+		const state = { cursorIdx: 1, activeMs: 0, lastKeystrokeAt: TS0, flashUntil: null, startedAt: null };
 		const next = episodeRunnerReducer(state, {
 			type: "KEY_DOWN",
 			key: "e",
@@ -107,7 +107,7 @@ describe("episodeRunnerReducer activeMs accumulator", () => {
 	});
 
 	it("wrong key updates lastKeystrokeAt without accumulating activeMs", () => {
-		const state = { cursorIdx: 1, activeMs: 500, lastKeystrokeAt: TS0, flashUntil: null };
+		const state = { cursorIdx: 1, activeMs: 500, lastKeystrokeAt: TS0, flashUntil: null, startedAt: null };
 		const next = episodeRunnerReducer(state, {
 			type: "KEY_DOWN",
 			key: "x",
@@ -120,7 +120,7 @@ describe("episodeRunnerReducer activeMs accumulator", () => {
 	});
 
 	it("5-keystroke sequence accumulates only on correct keystrokes", () => {
-		let state = { cursorIdx: 0, activeMs: 0, lastKeystrokeAt: null as number | null, flashUntil: null as number | null };
+		let state = { cursorIdx: 0, activeMs: 0, lastKeystrokeAt: null as number | null, flashUntil: null as number | null, startedAt: null as number | null };
 
 		state = episodeRunnerReducer(state, { type: "KEY_DOWN", key: "h", expected: "h", now: TS0 + 1000 });
 		expect(state.activeMs).toBe(0);
@@ -151,7 +151,7 @@ describe("episodeRunnerReducer activeMs accumulator", () => {
 
 describe("episodeRunnerReducer idle pause", () => {
 	it("delta within IDLE_THRESHOLD is added to activeMs", () => {
-		const state = { cursorIdx: 0, activeMs: 0, lastKeystrokeAt: 0 as number | null, flashUntil: null };
+		const state = { cursorIdx: 0, activeMs: 0, lastKeystrokeAt: 0 as number | null, flashUntil: null, startedAt: null as number | null };
 		const next = episodeRunnerReducer(state, {
 			type: "KEY_DOWN",
 			key: "T",
@@ -163,7 +163,7 @@ describe("episodeRunnerReducer idle pause", () => {
 	});
 
 	it("delta exceeding IDLE_THRESHOLD is not added but lastKeystrokeAt still updates", () => {
-		const state = { cursorIdx: 0, activeMs: 0, lastKeystrokeAt: 0 as number | null, flashUntil: null };
+		const state = { cursorIdx: 0, activeMs: 0, lastKeystrokeAt: 0 as number | null, flashUntil: null, startedAt: null as number | null };
 		const next = episodeRunnerReducer(state, {
 			type: "KEY_DOWN",
 			key: "T",
@@ -176,7 +176,7 @@ describe("episodeRunnerReducer idle pause", () => {
 	});
 
 	it("AC sequence: activeMs = 2000 after t=0,1000,10000,11000", () => {
-		let s = { cursorIdx: 0, activeMs: 0, lastKeystrokeAt: null as number | null, flashUntil: null as number | null };
+		let s = { cursorIdx: 0, activeMs: 0, lastKeystrokeAt: null as number | null, flashUntil: null as number | null, startedAt: null as number | null };
 
 		// t=0: first keystroke
 		s = episodeRunnerReducer(s, { type: "KEY_DOWN", key: "T", expected: "T", now: 0 });
@@ -200,7 +200,7 @@ describe("episodeRunnerReducer idle pause", () => {
 	});
 
 	it("30s idle: activeMs excludes the idle gap", () => {
-		let s: { cursorIdx: number; activeMs: number; lastKeystrokeAt: number | null; flashUntil: number | null } = { cursorIdx: 0, activeMs: 0, lastKeystrokeAt: 0, flashUntil: null };
+		let s: { cursorIdx: number; activeMs: number; lastKeystrokeAt: number | null; flashUntil: number | null; startedAt: number | null } = { cursorIdx: 0, activeMs: 0, lastKeystrokeAt: 0, flashUntil: null, startedAt: null };
 
 		s = episodeRunnerReducer(s, { type: "KEY_DOWN", key: "a", expected: "a", now: 1000 });
 		expect(s.activeMs).toBe(1000);

@@ -5,6 +5,7 @@ export interface EpisodeRunnerState {
 	activeMs: number;
 	lastKeystrokeAt: number | null;
 	flashUntil: number | null;
+	startedAt: number | null;
 }
 
 export type EpisodeRunnerAction =
@@ -49,5 +50,6 @@ export function episodeRunnerReducer(
 		lastKeystrokeAt: action.now,
 		cursorIdx: correct ? state.cursorIdx + 1 : state.cursorIdx,
 		flashUntil: correct ? null : action.now + 200,
+		startedAt: state.startedAt ?? action.now,
 	};
 }
