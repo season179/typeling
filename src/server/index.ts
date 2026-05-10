@@ -105,6 +105,21 @@ app.get("/api/children", async (c) => {
 	return c.json(state.children);
 });
 
+app.get("/api/children/:id/sessions", async (c) => {
+	const childId = c.req.param("id");
+	const state = await readState(statePath());
+	const child = state.children[childId];
+	if (!child) {
+		return c.json({ error: "ChildNotFound" }, 404);
+	}
+
+	const childSessions = state.sessions
+		.filter((s) => s.child_id === childId)
+		.sort((a, b) => b.finished_at.localeCompare(a.finished_at));
+
+	return c.json(childSessions);
+});
+
 app.get("/api/children/:id/current-episode", async (c) => {
 	const childId = c.req.param("id");
 	const state = await readState(statePath());
