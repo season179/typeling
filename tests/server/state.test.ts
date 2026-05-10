@@ -59,9 +59,9 @@ describe("readState", () => {
 		});
 		expect(seed.children.zack).toMatchObject({
 			name: "Zack",
-			theme: "blue robot",
+			theme: "blue robot / science",
 			target_wpm: 18,
-			active_season: "zack-s1-test",
+			active_season: "zack-s1",
 			current_episode: 0,
 			current_session_id: null,
 		});
