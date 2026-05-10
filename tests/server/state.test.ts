@@ -16,7 +16,7 @@ const validState = {
 			name: "Winni",
 			theme: "rainbow-unicorn",
 			target_wpm: 15,
-			active_season: "winni-s1-test",
+			active_season: "winni-s1",
 			current_episode: 0,
 			current_session_id: null,
 		},
@@ -53,7 +53,7 @@ describe("readState", () => {
 			name: "Winni",
 			theme: "rainbow-unicorn",
 			target_wpm: 15,
-			active_season: "winni-s1-test",
+			active_season: "winni-s1",
 			current_episode: 0,
 			current_session_id: null,
 		});
