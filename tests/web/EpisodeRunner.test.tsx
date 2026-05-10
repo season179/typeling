@@ -1,10 +1,27 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
+import React from "react";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { GlobalWindow, KeyboardEvent, type Window } from "happy-dom";
 import ClipboardEvent from "happy-dom/lib/event/events/ClipboardEvent";
+import { Router, Route } from "wouter";
+import { memoryLocation } from "wouter/memory-location";
 import EpisodeRunner from "../../src/web/EpisodeRunner";
 
 const window = new GlobalWindow() as unknown as Window & typeof globalThis;
+
+const defaultProps = {
+	episodeText: "Hello world.",
+	childId: "test-child",
+	seasonSlug: "test-season",
+	episodeIdx: 0,
+} as const;
+
+function renderWithRouter(ui: React.ReactElement) {
+	const { hook } = memoryLocation({ path: "/play/test-child" });
+	return {
+		...render(<Router hook={hook}>{ui}</Router>),
+	};
+}
 
 describe("EpisodeRunner", () => {
 	beforeAll(() => {
@@ -31,8 +48,8 @@ describe("EpisodeRunner", () => {
 	});
 
 	it("generates a sessionId via crypto.randomUUID on mount", async () => {
-		const { getByTestId } = render(
-			<EpisodeRunner episodeText="Hello world." />,
+		const { getByTestId } = renderWithRouter(
+			<EpisodeRunner {...defaultProps} episodeText="Hello world." />,
 		);
 
 		await waitFor(() => {
@@ -44,8 +61,8 @@ describe("EpisodeRunner", () => {
 	});
 
 	it("advances cursorIdx on correct keydown and ignores wrong keys", async () => {
-		const { getByTestId } = render(
-			<EpisodeRunner episodeText="abc" />,
+		const { getByTestId } = renderWithRouter(
+			<EpisodeRunner {...defaultProps} episodeText="abc" />,
 		);
 
 		await waitFor(() => {
@@ -74,8 +91,8 @@ describe("EpisodeRunner", () => {
 	});
 
 	it("renders typed region dimmed and untyped region with full contrast", () => {
-		const { getByTestId } = render(
-			<EpisodeRunner episodeText="Hello" />,
+		const { getByTestId } = renderWithRouter(
+			<EpisodeRunner {...defaultProps} episodeText="Hello" />,
 		);
 
 		const typed = getByTestId("typed-region");
@@ -94,8 +111,8 @@ describe("EpisodeRunner", () => {
 	});
 
 	it("moves cursor and updates regions after correct keystroke", async () => {
-		const { getByTestId } = render(
-			<EpisodeRunner episodeText="abc" />,
+		const { getByTestId } = renderWithRouter(
+			<EpisodeRunner {...defaultProps} episodeText="abc" />,
 		);
 
 		await waitFor(() => {
@@ -116,7 +133,7 @@ describe("EpisodeRunner", () => {
 	});
 
 	it("prevents default on paste events", async () => {
-		const { getByTestId } = render(<EpisodeRunner episodeText="abc" />);
+		const { getByTestId } = renderWithRouter(<EpisodeRunner {...defaultProps} episodeText="abc" />);
 
 		await waitFor(() => {
 			expect(getByTestId("cursor-idx").textContent).toBe("0");
@@ -132,7 +149,7 @@ describe("EpisodeRunner", () => {
 	});
 
 	it("prevents default browser scroll on space key", async () => {
-		const { getByTestId } = render(<EpisodeRunner episodeText="abc" />);
+		const { getByTestId } = renderWithRouter(<EpisodeRunner {...defaultProps} episodeText="abc" />);
 
 		await waitFor(() => {
 			expect(getByTestId("cursor-idx").textContent).toBe("0");
@@ -148,8 +165,8 @@ describe("EpisodeRunner", () => {
 	});
 
 	it("pauses activeMs accumulation when tab becomes hidden", async () => {
-		const { getByTestId } = render(
-			<EpisodeRunner episodeText="abc" />,
+		const { getByTestId } = renderWithRouter(
+			<EpisodeRunner {...defaultProps} episodeText="abc" />,
 		);
 
 		await waitFor(() => {
@@ -198,6 +215,182 @@ describe("EpisodeRunner", () => {
 		});
 	});
 
+	it("POSTs /api/sessions on completion and navigates on 200", async () => {
+		const originalFetch = globalThis.fetch;
+		let fetchBody: unknown = null;
+		let fetchUrl = "";
+		globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+			fetchUrl = String(input);
+			fetchBody = JSON.parse(init?.body as string);
+			return Promise.resolve(new Response("{}", { status: 200 }));
+		}) as typeof fetch;
+
+		const { hook, history } = memoryLocation({ path: "/play/winni", record: true });
+
+		try {
+			const { getByTestId } = render(
+				<Router hook={hook}>
+					<Route path="/play/:childId">
+						<EpisodeRunner
+							episodeText="ab"
+							childId="winni"
+							seasonSlug="winni-s1"
+							episodeIdx={0}
+						/>
+					</Route>
+				</Router>,
+			);
+
+			await waitFor(() => {
+				expect(getByTestId("cursor-idx").textContent).toBe("0");
+			});
+
+			// Type first char
+			act(() => {
+				document.dispatchEvent(
+					new KeyboardEvent("keydown", { key: "a", bubbles: true }) as unknown as Event,
+				);
+			});
+			await waitFor(() => {
+				expect(getByTestId("cursor-idx").textContent).toBe("1");
+			});
+
+			// Type second char to complete
+			act(() => {
+				document.dispatchEvent(
+					new KeyboardEvent("keydown", { key: "b", bubbles: true }) as unknown as Event,
+				);
+			});
+
+			await waitFor(() => {
+				expect(fetchUrl).toBe("/api/sessions");
+			});
+
+			expect(fetchBody).toMatchObject({
+				id: expect.any(String) as string,
+				child_id: "winni",
+				season_slug: "winni-s1",
+				episode_idx: 0,
+				wpm: expect.any(Number) as number,
+				char_count: 2,
+				active_ms: expect.any(Number) as number,
+				started_at: expect.any(String) as string,
+				finished_at: expect.any(String) as string,
+			});
+
+			// Navigation should have happened
+			await waitFor(() => {
+				expect(history[history.length - 1]).toBe(
+					"/play/winni/complete/0",
+				);
+			});
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
+	it("shows error on non-200 response and does not navigate", async () => {
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (() =>
+			Promise.resolve(new Response("{}", { status: 400 }))) as unknown as typeof fetch;
+
+		const { hook, history } = memoryLocation({ path: "/play/winni", record: true });
+
+		try {
+			const { getByTestId } = render(
+				<Router hook={hook}>
+					<Route path="/play/:childId">
+						<EpisodeRunner
+							episodeText="a"
+							childId="winni"
+							seasonSlug="winni-s1"
+							episodeIdx={0}
+						/>
+					</Route>
+				</Router>,
+			);
+
+			await waitFor(() => {
+				expect(getByTestId("cursor-idx").textContent).toBe("0");
+			});
+
+			act(() => {
+				document.dispatchEvent(
+					new KeyboardEvent("keydown", { key: "a", bubbles: true }) as unknown as Event,
+				);
+			});
+
+			await waitFor(() => {
+				expect(getByTestId("session-error").textContent).toBe(
+					"Failed to save session (400)",
+				);
+			});
+
+			// Navigation should NOT have happened
+			expect(history.length).toBe(1);
+			expect(history[0]).toBe("/play/winni");
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
+	it("prevents double-fire of POST on completion", async () => {
+		const originalFetch = globalThis.fetch;
+		let fetchCount = 0;
+		globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+			fetchCount++;
+			return Promise.resolve(new Response("{}", { status: 200 }));
+		}) as typeof fetch;
+
+		const { hook } = memoryLocation({ path: "/play/winni" });
+
+		try {
+			const { getByTestId } = render(
+				<Router hook={hook}>
+					<Route path="/play/:childId">
+						<EpisodeRunner
+							episodeText="a"
+							childId="winni"
+							seasonSlug="winni-s1"
+							episodeIdx={0}
+						/>
+					</Route>
+				</Router>,
+			);
+
+			await waitFor(() => {
+				expect(getByTestId("cursor-idx").textContent).toBe("0");
+			});
+
+			// Complete the episode
+			act(() => {
+				document.dispatchEvent(
+					new KeyboardEvent("keydown", { key: "a", bubbles: true }) as unknown as Event,
+				);
+			});
+
+			await waitFor(() => {
+				expect(getByTestId("cursor-idx").textContent).toBe("1");
+			});
+
+			// Allow the effect to fire
+			await new Promise((r) => setTimeout(r, 50));
+
+			// Dispatch another key after completion - should not trigger second POST
+			act(() => {
+				document.dispatchEvent(
+					new KeyboardEvent("keydown", { key: "b", bubbles: true }) as unknown as Event,
+				);
+			});
+
+			await new Promise((r) => setTimeout(r, 50));
+
+			expect(fetchCount).toBe(1);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
 	it("removes visibilitychange listener on unmount", () => {
 		const addSpy = {
 			calls: [] as Array<{ type: string; handler: EventListener }>,
@@ -225,7 +418,7 @@ describe("EpisodeRunner", () => {
 		};
 
 		try {
-			const { unmount } = render(<EpisodeRunner episodeText="abc" />);
+			const { unmount } = renderWithRouter(<EpisodeRunner {...defaultProps} episodeText="abc" />);
 
 			const visAddCalls = addSpy.calls.filter((c) => c.type === "visibilitychange");
 			expect(visAddCalls.length).toBe(1);

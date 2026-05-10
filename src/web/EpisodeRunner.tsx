@@ -1,12 +1,24 @@
 import { useEffect, useReducer, useRef, useState } from "react";
+import { useLocation } from "wouter";
+import { wpmFromCharsAndMs } from "../lib/wpm";
 import { episodeRunnerReducer as cursorReducer } from "./episodeRunner/reducer";
 import { episodeRunnerReducer as sessionReducer } from "./episodeRunnerReducer";
 
 interface EpisodeRunnerProps {
 	episodeText: string;
+	childId: string;
+	seasonSlug: string;
+	episodeIdx: number;
 }
 
-export default function EpisodeRunner({ episodeText }: EpisodeRunnerProps) {
+export default function EpisodeRunner({
+	episodeText,
+	childId,
+	seasonSlug,
+	episodeIdx,
+}: EpisodeRunnerProps) {
+	const [_, navigate] = useLocation();
+
 	const [session, sessionDispatch] = useReducer(sessionReducer, {
 		sessionId: null,
 	});
@@ -16,10 +28,14 @@ export default function EpisodeRunner({ episodeText }: EpisodeRunnerProps) {
 		activeMs: 0,
 		lastKeystrokeAt: null,
 		flashUntil: null,
+		startedAt: null,
 	});
 
 	const cursorRef = useRef(cursor.cursorIdx);
 	cursorRef.current = cursor.cursorIdx;
+
+	const sentRef = useRef(false);
+	const [error, setError] = useState<string | null>(null);
 
 	const [now, setNow] = useState(Date.now());
 
@@ -72,6 +88,53 @@ export default function EpisodeRunner({ episodeText }: EpisodeRunnerProps) {
 
 	const flash = cursor.flashUntil != null && cursor.flashUntil > now;
 
+	// Completion effect
+	useEffect(() => {
+		if (cursor.cursorIdx !== episodeText.length) return;
+		if (sentRef.current) return;
+		sentRef.current = true;
+
+		const body = {
+			id: session.sessionId,
+			child_id: childId,
+			season_slug: seasonSlug,
+			episode_idx: episodeIdx,
+			wpm: wpmFromCharsAndMs(cursor.cursorIdx, cursor.activeMs),
+			char_count: cursor.cursorIdx,
+			active_ms: cursor.activeMs,
+			started_at: cursor.startedAt
+				? new Date(cursor.startedAt).toISOString()
+				: new Date().toISOString(),
+			finished_at: new Date().toISOString(),
+		};
+
+		fetch("/api/sessions", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(body),
+		})
+			.then((res) => {
+				if (res.ok) {
+					navigate(`/play/${childId}/complete/${episodeIdx}`);
+				} else {
+					setError(`Failed to save session (${res.status})`);
+				}
+			})
+			.catch(() => {
+				setError("Failed to save session");
+			});
+	}, [
+		cursor.cursorIdx,
+		episodeText.length,
+		session.sessionId,
+		childId,
+		seasonSlug,
+		episodeIdx,
+		cursor.activeMs,
+		cursor.startedAt,
+		navigate,
+	]);
+
 	const typed = episodeText.slice(0, cursor.cursorIdx);
 	const cursorChar = episodeText[cursor.cursorIdx] ?? "";
 	const untyped = episodeText.slice(cursor.cursorIdx + 1);
@@ -81,6 +144,7 @@ export default function EpisodeRunner({ episodeText }: EpisodeRunnerProps) {
 			<span data-testid="session-id">{session.sessionId}</span>
 			<span data-testid="cursor-idx">{cursor.cursorIdx}</span>
 			<span data-testid="active-ms">{cursor.activeMs}</span>
+			{error && <span data-testid="session-error">{error}</span>}
 			<p className="font-mono">
 				<span data-testid="typed-region" className="text-gray-400">
 					{typed}

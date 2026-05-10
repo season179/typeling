@@ -71,7 +71,12 @@ export default function PlayEpisode() {
 
 	return (
 		<main className="flex min-h-screen items-center justify-center">
-			<EpisodeRunner episodeText={episode.text} />
+			<EpisodeRunner
+				episodeText={episode.text}
+				childId={childId}
+				seasonSlug={episode.season_slug}
+				episodeIdx={episode.episode_idx}
+			/>
 		</main>
 	);
 }

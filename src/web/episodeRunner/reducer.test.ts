@@ -7,15 +7,88 @@ const base: EpisodeRunnerState = {
 	activeMs: 0,
 	lastKeystrokeAt: null,
 	flashUntil: null,
+	startedAt: null,
 };
 
 describe("episodeRunnerReducer", () => {
+	test("first keystroke sets startedAt", () => {
+		const next = episodeRunnerReducer(base, {
+			type: "KEY_DOWN",
+			key: "a",
+			expected: "a",
+			now: 1000,
+		});
+		expect(next.startedAt).toBe(1000);
+	});
+
+	test("startedAt persists through subsequent keystrokes", () => {
+		let state = episodeRunnerReducer(base, {
+			type: "KEY_DOWN",
+			key: "a",
+			expected: "a",
+			now: 1000,
+		});
+		expect(state.startedAt).toBe(1000);
+
+		state = episodeRunnerReducer(state, {
+			type: "KEY_DOWN",
+			key: "b",
+			expected: "b",
+			now: 2000,
+		});
+		expect(state.startedAt).toBe(1000);
+	});
+
+	test("wrong first keystroke sets startedAt", () => {
+		const next = episodeRunnerReducer(base, {
+			type: "KEY_DOWN",
+			key: "x",
+			expected: "a",
+			now: 1000,
+		});
+		expect(next.startedAt).toBe(1000);
+	});
+
+	test("BLUR does not clear startedAt", () => {
+		const state: EpisodeRunnerState = {
+			cursorIdx: 5,
+			activeMs: 3000,
+			lastKeystrokeAt: 1000,
+			flashUntil: null,
+			startedAt: 500,
+		};
+		const next = episodeRunnerReducer(state, { type: "BLUR" });
+		expect(next.startedAt).toBe(500);
+	});
+
+	test("repeat key does not set startedAt", () => {
+		const next = episodeRunnerReducer(base, {
+			type: "KEY_DOWN",
+			key: "a",
+			expected: "a",
+			now: 1000,
+			repeat: true,
+		});
+		expect(next.startedAt).toBeNull();
+	});
+
+	test("non-printable key does not set startedAt", () => {
+		const next = episodeRunnerReducer(base, {
+			type: "KEY_DOWN",
+			key: "Shift",
+			expected: "S",
+			now: 1000,
+		});
+		expect(next.startedAt).toBeNull();
+	});
+
 	test("BLUR clears lastKeystrokeAt", () => {
 		const state: EpisodeRunnerState = {
 			cursorIdx: 5,
 			activeMs: 3000,
 			lastKeystrokeAt: 1000,
 			flashUntil: null,
+			startedAt: null,
 		};
 		const next = episodeRunnerReducer(state, { type: "BLUR" });
 		expect(next.cursorIdx).toBe(5);
