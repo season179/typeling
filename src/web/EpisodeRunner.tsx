@@ -25,6 +25,18 @@ export default function EpisodeRunner({ episodeText }: EpisodeRunnerProps) {
 	}, []);
 
 	useEffect(() => {
+		const onVisibilityChange = () => {
+			if (document.visibilityState === "hidden") {
+				cursorDispatch({ type: "BLUR" });
+			}
+		};
+		document.addEventListener("visibilitychange", onVisibilityChange);
+		return () => {
+			document.removeEventListener("visibilitychange", onVisibilityChange);
+		};
+	}, []);
+
+	useEffect(() => {
 		const onKeydown = (e: KeyboardEvent) => {
 			if (e.key.length !== 1 || e.ctrlKey || e.altKey || e.metaKey) return;
 			if (e.key === " ") {

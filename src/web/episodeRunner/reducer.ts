@@ -4,18 +4,24 @@ export interface EpisodeRunnerState {
 	lastKeystrokeAt: number | null;
 }
 
-export type EpisodeRunnerAction = {
-	type: "KEY_DOWN";
-	key: string;
-	expected: string;
-	timestamp: number;
-	repeat?: boolean;
-};
+export type EpisodeRunnerAction =
+	| {
+			type: "KEY_DOWN";
+			key: string;
+			expected: string;
+			timestamp: number;
+			repeat?: boolean;
+	  }
+	| { type: "BLUR" };
 
 export function episodeRunnerReducer(
 	state: EpisodeRunnerState,
 	action: EpisodeRunnerAction,
 ): EpisodeRunnerState {
+	if (action.type === "BLUR") {
+		if (state.lastKeystrokeAt === null) return state;
+		return { ...state, lastKeystrokeAt: null };
+	}
 	if (action.type !== "KEY_DOWN") {
 		return state;
 	}

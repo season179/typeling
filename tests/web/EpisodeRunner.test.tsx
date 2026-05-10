@@ -146,4 +146,98 @@ describe("EpisodeRunner", () => {
 
 		expect(spaceEvent.defaultPrevented).toBe(true);
 	});
+
+	it("pauses activeMs accumulation when tab becomes hidden", async () => {
+		const { getByTestId } = render(
+			<EpisodeRunner episodeText="abc" />,
+		);
+
+		await waitFor(() => {
+			expect(getByTestId("cursor-idx").textContent).toBe("0");
+		});
+
+		act(() => {
+			document.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "a", bubbles: true }) as unknown as Event,
+			);
+		});
+
+		await waitFor(() => {
+			expect(getByTestId("cursor-idx").textContent).toBe("1");
+		});
+		const activeMsAfterFirst = Number(getByTestId("active-ms").textContent);
+
+		// Simulate tab hidden
+		act(() => {
+			Object.defineProperty(document, "visibilityState", {
+				value: "hidden",
+				configurable: true,
+			});
+			document.dispatchEvent(
+				new (window as any).Event("visibilitychange", { bubbles: true }) as Event,
+			);
+		});
+
+		// Type second char after returning — activeMs should NOT include hidden time
+		act(() => {
+			Object.defineProperty(document, "visibilityState", {
+				value: "visible",
+				configurable: true,
+			});
+			document.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "b", bubbles: true }) as unknown as Event,
+			);
+		});
+
+		await waitFor(() => {
+			expect(getByTestId("cursor-idx").textContent).toBe("2");
+			const finalMs = Number(getByTestId("active-ms").textContent);
+			expect(finalMs).toBeGreaterThanOrEqual(activeMsAfterFirst);
+			// Delta should be tiny — synchronous execution, not accumulated hidden time
+			expect(finalMs - activeMsAfterFirst).toBeLessThan(5000);
+		});
+	});
+
+	it("removes visibilitychange listener on unmount", () => {
+		const addSpy = {
+			calls: [] as Array<{ type: string; handler: EventListener }>,
+		};
+		const removeSpy = {
+			calls: [] as Array<{ type: string; handler: EventListener }>,
+		};
+
+		const origAdd = document.addEventListener.bind(document);
+		const origRemove = document.removeEventListener.bind(document);
+
+		document.addEventListener = (
+			type: string,
+			handler: EventListenerOrEventListenerObject,
+		) => {
+			addSpy.calls.push({ type, handler: handler as EventListener });
+			return origAdd(type, handler);
+		};
+		document.removeEventListener = (
+			type: string,
+			handler: EventListenerOrEventListenerObject,
+		) => {
+			removeSpy.calls.push({ type, handler: handler as EventListener });
+			return origRemove(type, handler);
+		};
+
+		try {
+			const { unmount } = render(<EpisodeRunner episodeText="abc" />);
+
+			const visAddCalls = addSpy.calls.filter((c) => c.type === "visibilitychange");
+			expect(visAddCalls.length).toBe(1);
+
+			unmount();
+
+			const visRemoveCalls = removeSpy.calls.filter((c) => c.type === "visibilitychange");
+			expect(visRemoveCalls.length).toBe(1);
+			expect(visRemoveCalls[0]!.handler).toBe(visAddCalls[0]!.handler);
+		} finally {
+			document.addEventListener = origAdd;
+			document.removeEventListener = origRemove;
+		}
+	});
 });
