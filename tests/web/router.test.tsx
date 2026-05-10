@@ -2,6 +2,7 @@ import { describe, it, expect } from "bun:test";
 import { render, waitFor } from "@testing-library/react";
 import { Router, Route } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
+import CompleteEpisode from "../../src/web/CompleteEpisode";
 import PlayEpisode from "../../src/web/PlayEpisode";
 import { setupDom } from "./setup";
 
@@ -38,6 +39,40 @@ describe("Router /play/:childId", () => {
 				expect(getByTestId("cursor-char").textContent).toBe("T");
 			});
 			expect(requestedUrl).toBe("/api/children/winni/current-episode");
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+});
+
+describe("Router /play/:childId/complete/:episodeIdx", () => {
+	it("renders CompleteEpisode at the completion route", async () => {
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (() =>
+			Promise.resolve(
+				new Response(
+					JSON.stringify({
+						winni: { name: "Winni" },
+					}),
+					{ headers: { "content-type": "application/json" } },
+				),
+			)) as unknown as typeof fetch;
+
+		const { hook } = memoryLocation({ path: "/play/winni/complete/0" });
+
+		try {
+			const { getByTestId } = render(
+				<Router hook={hook}>
+					<Route
+						path="/play/:childId/complete/:episodeIdx"
+						component={CompleteEpisode}
+					/>
+				</Router>,
+			);
+
+			await waitFor(() => {
+				expect(getByTestId("complete-episode")).toBeDefined();
+			});
 		} finally {
 			globalThis.fetch = originalFetch;
 		}
