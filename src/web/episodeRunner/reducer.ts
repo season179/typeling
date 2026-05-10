@@ -1,3 +1,5 @@
+export const IDLE_THRESHOLD = 5000;
+
 export interface EpisodeRunnerState {
 	cursorIdx: number;
 	activeMs: number;
@@ -39,7 +41,10 @@ export function episodeRunnerReducer(
 			: 0;
 	return {
 		...state,
-		activeMs: correct ? state.activeMs + delta : state.activeMs,
+		activeMs:
+			correct && delta <= IDLE_THRESHOLD
+				? state.activeMs + delta
+				: state.activeMs,
 		lastKeystrokeAt: action.timestamp,
 		cursorIdx: correct ? state.cursorIdx + 1 : state.cursorIdx,
 	};
