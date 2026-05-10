@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
+import { clearStaleDrafts } from "./episodeRunner/autosave";
 
 interface ChildSummary {
 	name: string;
 	theme: string;
+	active_season: string;
 }
 
 export default function App() {
@@ -28,6 +30,7 @@ export default function App() {
 				const data = await res.json();
 				if (!controller.signal.aborted) {
 					setChildren(data);
+					clearStaleDrafts(data);
 				}
 			} catch (err) {
 				if (!controller.signal.aborted) {
