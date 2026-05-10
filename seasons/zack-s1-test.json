@@ -1,0 +1,11 @@
+{
+	"slug": "zack-s1-test",
+	"child_id": "zack",
+	"theme": "blue robot",
+	"episodes": [
+		{
+			"idx": 0,
+			"text": "The little blue robot beeped happily as it rolled across the workshop floor."
+		}
+	]
+}

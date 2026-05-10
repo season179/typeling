@@ -45,13 +45,23 @@ describe("readState", () => {
 		expect(result).toEqual(validState);
 	});
 
-	it("loads the committed data/state.seed.json with Winni-only defaults", async () => {
+	it("loads the committed data/state.seed.json with Winni and Zack defaults", async () => {
 		const seed = await readState("data/state.seed.json");
 
-		expect(Object.keys(seed.children)).toEqual(["winni"]);
+		expect(Object.keys(seed.children).sort()).toEqual(["winni", "zack"]);
 		expect(seed.children.winni).toMatchObject({
+			name: "Winni",
+			theme: "rainbow-unicorn",
 			target_wpm: 15,
 			active_season: "winni-s1-test",
+			current_episode: 0,
+			current_session_id: null,
+		});
+		expect(seed.children.zack).toMatchObject({
+			name: "Zack",
+			theme: "blue robot",
+			target_wpm: 18,
+			active_season: "zack-s1-test",
 			current_episode: 0,
 			current_session_id: null,
 		});
