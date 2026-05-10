@@ -1,7 +1,8 @@
 import { join } from "node:path";
 import { Hono } from "hono";
 import { seasonSchema } from "../lib/schemas/season";
-import { readState } from "./state";
+import { sessionSchema } from "../lib/schemas/state";
+import { createStateQueue, readState } from "./state";
 
 export const DEFAULT_PORT = 3001;
 export const HOSTNAME = "127.0.0.1";
@@ -33,6 +34,33 @@ export const app = new Hono();
 app.onError((error, c) => {
 	console.error(error);
 	return c.json({ error: error.name }, 500);
+});
+
+const stateQueues = new Map<string, ReturnType<typeof createStateQueue>>();
+
+const getStateQueue = () => {
+	const path = statePath();
+	let q = stateQueues.get(path);
+	if (!q) {
+		q = createStateQueue(path);
+		stateQueues.set(path, q);
+	}
+	return q;
+};
+
+app.post("/api/sessions", async (c) => {
+	const body = await c.req.json().catch(() => null);
+	const parsed = sessionSchema.safeParse(body);
+	if (!parsed.success) {
+		return c.json({ error: "InvalidSession" }, 400);
+	}
+
+	await getStateQueue().mutateState((current) => ({
+		...current,
+		sessions: [...current.sessions, parsed.data],
+	}));
+
+	return c.json(parsed.data, 200);
 });
 
 app.get("/api/health", (c) => {
