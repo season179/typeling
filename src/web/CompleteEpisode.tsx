@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "wouter";
+import { useLocation, useParams } from "wouter";
 import { MAX_EPISODES } from "../lib/schemas/season";
 
 interface ChildSummary {
@@ -52,6 +52,7 @@ function ChapterMap({ totalEpisodes, completedUpTo }: ChapterMapProps) {
 }
 
 export default function CompleteEpisode() {
+	const [_, navigate] = useLocation();
 	const { childId, episodeIdx } = useParams<{
 		childId: string;
 		episodeIdx: string;
@@ -148,6 +149,19 @@ export default function CompleteEpisode() {
 				<p className="text-xl text-gray-600">Great job, {childName}!</p>
 			)}
 			<ChapterMap totalEpisodes={totalEpisodes} completedUpTo={completedIdx} />
+			{completedIdx === totalEpisodes - 1 ? (
+				<p className="text-2xl font-bold text-purple-600 animate-bounce">
+					🎉 You finished the whole season! 🎉
+				</p>
+			) : (
+				<button
+					type="button"
+					className="rounded-lg bg-blue-500 px-6 py-3 text-lg font-semibold text-white hover:bg-blue-600 transition-colors"
+					onClick={() => navigate(`/play/${childId}`)}
+				>
+					Start next
+				</button>
+			)}
 		</main>
 	);
 }
