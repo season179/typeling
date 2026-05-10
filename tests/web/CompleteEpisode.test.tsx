@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { render, waitFor } from "@testing-library/react";
+import { fireEvent, render, waitFor } from "@testing-library/react";
 import { Router, Route } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 import CompleteEpisode from "../../src/web/CompleteEpisode";
@@ -359,6 +359,115 @@ describe("CompleteEpisode chapter map", () => {
 			});
 		} finally {
 			globalThis.fetch = originalFetch;
+		}
+	});
+});
+
+function stubFetchForComplete(totalEpisodes: number, childId: string) {
+	return ((input: RequestInfo | URL) => {
+		const url = String(input);
+		if (url === "/api/children") {
+			return Promise.resolve(
+				new Response(
+					JSON.stringify({ [childId]: { name: "Winni" } }),
+					{ headers: { "content-type": "application/json" } },
+				),
+			);
+		}
+		if (url === `/api/children/${childId}/season`) {
+			return Promise.resolve(
+				new Response(
+					JSON.stringify({ slug: `${childId}-s1`, total_episodes: totalEpisodes }),
+					{ headers: { "content-type": "application/json" } },
+				),
+			);
+		}
+		return Promise.resolve(new Response("Not Found", { status: 404 }));
+	}) as unknown as typeof fetch;
+}
+
+function renderCompleteWithStub(childId: string, episodeIdx: number) {
+	const { hook } = memoryLocation({
+		path: `/play/${childId}/complete/${episodeIdx}`,
+	});
+	const result = render(
+		<Router hook={hook}>
+			<Route path="/play/:childId/complete/:episodeIdx">
+				<CompleteEpisode />
+			</Route>
+			<Route path="/play/:childId">
+				<div data-testid="play-page">Playing</div>
+			</Route>
+		</Router>,
+	);
+	return { ...result, hook };
+}
+
+function stubAndRender(
+	totalEpisodes: number,
+	childId: string,
+	episodeIdx: number,
+) {
+	const originalFetch = globalThis.fetch;
+	globalThis.fetch = stubFetchForComplete(totalEpisodes, childId);
+	const rendered = renderCompleteWithStub(childId, episodeIdx);
+	return {
+		...rendered,
+		restoreFetch() {
+			globalThis.fetch = originalFetch;
+		},
+	};
+}
+
+describe("CompleteEpisode start-next CTA", () => {
+	it("renders a Start next button for non-final completion", async () => {
+		const { getByRole, restoreFetch } = stubAndRender(7, "winni", 0);
+		try {
+			await waitFor(() => {
+				expect(getByRole("button", { name: /start next/i })).toBeDefined();
+			});
+		} finally {
+			restoreFetch();
+		}
+	});
+
+	it("clicking Start next navigates to /play/:childId", async () => {
+		const { getByRole, getByTestId, restoreFetch } = stubAndRender(
+			7,
+			"winni",
+			0,
+		);
+		try {
+			await waitFor(() => {
+				expect(getByRole("button", { name: /start next/i })).toBeDefined();
+			});
+
+			fireEvent.click(getByRole("button", { name: /start next/i }));
+
+			await waitFor(() => {
+				expect(getByTestId("play-page")).toBeDefined();
+			});
+		} finally {
+			restoreFetch();
+		}
+	});
+
+	it("shows celebration text and no button for final-episode completion", async () => {
+		const { getByText, queryByRole, restoreFetch } = stubAndRender(
+			3,
+			"winni",
+			2,
+		);
+		try {
+			await waitFor(() => {
+				expect(getByText(/you finished the whole season/i)).toBeDefined();
+			});
+
+			expect(
+				queryByRole("button", { name: /start next/i }),
+			).toBeNull();
+		} finally {
+			restoreFetch();
 		}
 	});
 });
