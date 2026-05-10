@@ -1,7 +1,4 @@
-import type { z } from "zod";
-import type { sessionSchema } from "./schemas/state";
-
-type Session = z.infer<typeof sessionSchema>;
+import type { Session } from "./schemas/state";
 
 export interface Rolling3Opts {
 	seasonSlug?: string;

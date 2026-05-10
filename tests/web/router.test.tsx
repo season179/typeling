@@ -3,6 +3,7 @@ import { render, waitFor } from "@testing-library/react";
 import { Router, Route } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 import CompleteEpisode from "../../src/web/CompleteEpisode";
+import ParentView from "../../src/web/ParentView";
 import PlayEpisode from "../../src/web/PlayEpisode";
 import { setupDom } from "./setup";
 
@@ -72,6 +73,51 @@ describe("Router /play/:childId/complete/:episodeIdx", () => {
 
 			await waitFor(() => {
 				expect(getByTestId("complete-episode")).toBeDefined();
+			});
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+});
+
+describe("Router /parent", () => {
+	it("renders ParentView at /parent", async () => {
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = ((input: RequestInfo | URL) => {
+			const url = String(input);
+			if (url.includes("/api/children/")) {
+				return Promise.resolve(
+					new Response("[]", {
+						headers: { "content-type": "application/json" },
+					}),
+				);
+			}
+			return Promise.resolve(
+				new Response(
+					JSON.stringify({
+						winni: {
+							name: "Winni",
+							theme: "rainbow-unicorn",
+							target_wpm: 15,
+							active_season: "winni-s1-test",
+						},
+					}),
+					{ headers: { "content-type": "application/json" } },
+				),
+			);
+		}) as unknown as typeof fetch;
+
+		const { hook } = memoryLocation({ path: "/parent" });
+
+		try {
+			const { getByText } = render(
+				<Router hook={hook}>
+					<Route path="/parent" component={ParentView} />
+				</Router>,
+			);
+
+			await waitFor(() => {
+				expect(getByText("Parent View")).toBeDefined();
 			});
 		} finally {
 			globalThis.fetch = originalFetch;
