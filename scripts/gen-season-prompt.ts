@@ -13,8 +13,6 @@ export interface PromptInputs {
 export interface BuiltPrompt {
 	system: string;
 	user: string;
-	minWords: number;
-	maxWords: number;
 }
 
 export function buildPrompt({
@@ -48,5 +46,5 @@ export function buildPrompt({
 		"Return only the JSON array of 14 episode texts.",
 	].join("\n");
 
-	return { system, user, minWords: min, maxWords: max };
+	return { system, user };
 }

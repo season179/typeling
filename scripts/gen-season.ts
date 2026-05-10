@@ -2,7 +2,7 @@ import { parseArgs } from "node:util";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import OpenAI from "openai";
-import { MAX_EPISODES, seasonSchema } from "../src/lib/schemas/season";
+import { seasonSchema } from "../src/lib/schemas/season";
 import { readState } from "../src/server/state";
 import type { Child } from "../src/lib/schemas/state";
 import { asciiNormalize } from "../src/lib/asciiNormalize";
@@ -97,8 +97,8 @@ if (!childId || !slug) {
 	process.exit(1);
 }
 
-const cid = childId;
-const slg = slug;
+const cid: string = childId;
+const slg: string = slug;
 
 const statePath =
 	process.env.TYPELING_STATE_PATH ?? join(ROOT, "data", "state.json");
@@ -174,17 +174,21 @@ async function loadFromLLM(child: Child): Promise<unknown> {
 			`LLM response must be a JSON array, got ${typeof parsed}`,
 		);
 	}
-	if (!parsed.every((s): s is string => typeof s === "string")) {
-		throw new LLMResponseError(
-			"LLM response array must contain only strings",
-		);
-	}
+
+	const episodes = parsed.map((text, idx) => {
+		if (typeof text !== "string") {
+			throw new LLMResponseError(
+				`LLM response episode ${idx} is not a string (got ${typeof text})`,
+			);
+		}
+		return { idx, text };
+	});
 
 	return {
 		slug: slg,
 		child_id: cid,
 		theme: child.theme,
-		episodes: parsed.map((text, idx) => ({ idx, text })),
+		episodes,
 	};
 }
 
@@ -204,12 +208,6 @@ async function main() {
 		throw new SeasonSchemaError(seasonResult.error.message);
 	}
 	const season = seasonResult.data;
-
-	if (season.episodes.length !== MAX_EPISODES) {
-		throw new SeasonSchemaError(
-			`Expected ${MAX_EPISODES} episodes, got ${season.episodes.length}`,
-		);
-	}
 
 	const budget = wordCountBudget(child.target_wpm);
 
