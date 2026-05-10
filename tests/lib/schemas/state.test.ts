@@ -72,7 +72,7 @@ describe("childSchema", () => {
 
 	it("rejects current_episode above the max episode index", () => {
 		expect(() =>
-			childSchema.parse({ ...validChild, current_episode: 14 }),
+			childSchema.parse({ ...validChild, current_episode: 15 }),
 		).toThrow();
 	});
 });
