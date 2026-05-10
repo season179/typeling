@@ -8,15 +8,10 @@ const fixtureSeason = {
 	slug: "winni-s1-test",
 	child_id: "winni",
 	theme: "pink unicorn",
-	episodes: [
-		{ idx: 0, text: "The pink unicorn skipped through the meadow." },
-		{ idx: 1, text: "She met a kind, curious little bee in the clover." },
-		{ idx: 2, text: "Together they explored the enchanted forest." },
-		{ idx: 3, text: "They found a hidden waterfall behind the old oak." },
-		{ idx: 4, text: "A friendly fox joined their adventure." },
-		{ idx: 5, text: "They crossed the rainbow bridge together." },
-		{ idx: 6, text: "At last they reached the sparkling crystal cave." },
-	],
+	episodes: Array.from({ length: 14 }, (_, i) => ({
+		idx: i,
+		text: `Episode ${i + 1} text for testing.`,
+	})),
 };
 
 const fixtureState = {
@@ -84,7 +79,7 @@ describe("GET /api/children/:id/season", () => {
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({
 			slug: "winni-s1-test",
-			total_episodes: 7,
+			total_episodes: 14,
 		});
 	});
 
