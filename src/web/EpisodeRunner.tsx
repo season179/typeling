@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { episodeRunnerReducer as cursorReducer } from "./episodeRunner/reducer";
 import { episodeRunnerReducer as sessionReducer } from "./episodeRunnerReducer";
 
@@ -15,13 +15,22 @@ export default function EpisodeRunner({ episodeText }: EpisodeRunnerProps) {
 		cursorIdx: 0,
 		activeMs: 0,
 		lastKeystrokeAt: null,
+		flashUntil: null,
 	});
 
 	const cursorRef = useRef(cursor.cursorIdx);
 	cursorRef.current = cursor.cursorIdx;
 
+	const [now, setNow] = useState(Date.now());
+
 	useEffect(() => {
 		sessionDispatch({ type: "INIT", sessionId: crypto.randomUUID() });
+	}, []);
+
+	// Tick now for flash expiry
+	useEffect(() => {
+		const id = setInterval(() => setNow(Date.now()), 50);
+		return () => clearInterval(id);
 	}, []);
 
 	useEffect(() => {
@@ -46,7 +55,7 @@ export default function EpisodeRunner({ episodeText }: EpisodeRunnerProps) {
 				type: "KEY_DOWN",
 				key: e.key,
 				expected: episodeText[cursorRef.current] ?? "",
-				timestamp: Date.now(),
+				now: Date.now(),
 				repeat: e.repeat,
 			});
 		};
@@ -60,6 +69,8 @@ export default function EpisodeRunner({ episodeText }: EpisodeRunnerProps) {
 			document.removeEventListener("paste", onPaste);
 		};
 	}, [episodeText]);
+
+	const flash = cursor.flashUntil != null && cursor.flashUntil > now;
 
 	const typed = episodeText.slice(0, cursor.cursorIdx);
 	const cursorChar = episodeText[cursor.cursorIdx] ?? "";
@@ -76,7 +87,9 @@ export default function EpisodeRunner({ episodeText }: EpisodeRunnerProps) {
 				</span>
 				<span
 					data-testid="cursor-char"
-					className="border-b-2 border-black animate-pulse text-gray-900"
+					className={`border-b-2 border-black animate-pulse ${
+						flash ? "text-red-500" : "text-gray-900"
+					}`}
 				>
 					{cursorChar}
 				</span>

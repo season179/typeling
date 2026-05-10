@@ -4,6 +4,7 @@ export interface EpisodeRunnerState {
 	cursorIdx: number;
 	activeMs: number;
 	lastKeystrokeAt: number | null;
+	flashUntil: number | null;
 }
 
 export type EpisodeRunnerAction =
@@ -11,7 +12,7 @@ export type EpisodeRunnerAction =
 			type: "KEY_DOWN";
 			key: string;
 			expected: string;
-			timestamp: number;
+			now: number;
 			repeat?: boolean;
 	  }
 	| { type: "BLUR" };
@@ -37,7 +38,7 @@ export function episodeRunnerReducer(
 	const correct = action.key === action.expected;
 	const delta =
 		state.lastKeystrokeAt != null
-			? Math.max(0, action.timestamp - state.lastKeystrokeAt)
+			? Math.max(0, action.now - state.lastKeystrokeAt)
 			: 0;
 	return {
 		...state,
@@ -45,7 +46,8 @@ export function episodeRunnerReducer(
 			correct && delta <= IDLE_THRESHOLD
 				? state.activeMs + delta
 				: state.activeMs,
-		lastKeystrokeAt: action.timestamp,
+		lastKeystrokeAt: action.now,
 		cursorIdx: correct ? state.cursorIdx + 1 : state.cursorIdx,
+		flashUntil: correct ? null : action.now + 200,
 	};
 }
