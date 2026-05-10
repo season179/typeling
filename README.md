@@ -37,7 +37,14 @@ The happy-path test:
 4. Asserts the browser lands on the completion page
 5. Asserts episode 0 is marked "completed" in the chapter map
 
-The test exits 0 on success and non-zero on any assertion failure.
+The idle handling test:
+1. Opens the app and starts episode 0
+2. Types the first 10 chars, then sleeps 8 seconds (>5s idle threshold)
+3. Types the rest of the episode
+4. Asserts the recorded `active_ms` is significantly less than wall-clock
+   elapsed, proving the idle gap was excluded
+
+Both tests exit 0 on success and non-zero on any assertion failure.
 
 ## Scripts
 
@@ -50,6 +57,7 @@ The test exits 0 on success and non-zero on any assertion failure.
 | `bun run format`   | Biome format-write on `src/`.                                        |
 | `bun test`         | Run the test suite.                                                  |
 | `bun run e2e:happy-path` | Run the end-to-end happy path test via agent-browser.    |
+| `bun run e2e:idle`       | Run the end-to-end idle handling test via agent-browser. |
 
 Runtime state is written to `data/state.json` and is gitignored. The committed `data/state.seed.json` holds the initial Winni-only defaults. On first run, copy the seed into place:
 
