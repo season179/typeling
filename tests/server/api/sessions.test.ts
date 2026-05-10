@@ -77,6 +77,24 @@ describe("POST /api/sessions", () => {
 		expect(onDisk.sessions[0]).toEqual(validSessionBody);
 	});
 
+	it("is idempotent by session id — second POST returns same response and does not append", async () => {
+		await writeState(fixtureState);
+
+		const res1 = await postSession(validSessionBody);
+		const body1 = await res1.json();
+
+		const res2 = await postSession(validSessionBody);
+		const body2 = await res2.json();
+
+		expect(res1.status).toBe(200);
+		expect(res2.status).toBe(200);
+		expect(body2).toEqual(body1);
+
+		const onDisk = await readState(stateFile);
+		expect(onDisk.sessions).toHaveLength(1);
+		expect(onDisk.sessions[0]).toEqual(validSessionBody);
+	});
+
 	it("returns 400 with a named error on an invalid body", async () => {
 		await writeState(fixtureState);
 

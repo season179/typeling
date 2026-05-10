@@ -55,12 +55,14 @@ app.post("/api/sessions", async (c) => {
 		return c.json({ error: "InvalidSession" }, 400);
 	}
 
-	await getStateQueue().mutateState((current) => ({
-		...current,
-		sessions: [...current.sessions, parsed.data],
-	}));
+	const nextState = await getStateQueue().mutateState((current) => {
+		if (current.sessions.some((s) => s.id === parsed.data.id)) return current;
+		return { ...current, sessions: [...current.sessions, parsed.data] };
+	});
 
-	return c.json(parsed.data, 200);
+	const session = nextState.sessions.find((s) => s.id === parsed.data.id);
+	// session is guaranteed to exist: either just appended or already present
+	return c.json(session, 200);
 });
 
 app.get("/api/health", (c) => {
