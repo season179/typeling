@@ -29,6 +29,18 @@ export class EpisodeIndexOutOfRangeError extends Error {
 	}
 }
 
+export type MismatchCode =
+	| "child_not_found"
+	| "season_mismatch"
+	| "episode_mismatch";
+
+export class SessionMismatchError extends Error {
+	constructor(code: MismatchCode) {
+		super(code);
+		this.name = "SessionMismatchError";
+	}
+}
+
 export const app = new Hono();
 
 app.onError((error, c) => {
@@ -55,14 +67,32 @@ app.post("/api/sessions", async (c) => {
 		return c.json({ error: "InvalidSession" }, 400);
 	}
 
-	const nextState = await getStateQueue().mutateState((current) => {
-		if (current.sessions.some((s) => s.id === parsed.data.id)) return current;
-		return { ...current, sessions: [...current.sessions, parsed.data] };
-	});
+	try {
+		const nextState = await getStateQueue().mutateState((current) => {
+			if (current.sessions.some((s) => s.id === parsed.data.id)) return current;
 
-	const session = nextState.sessions.find((s) => s.id === parsed.data.id);
-	// session is guaranteed to exist: either just appended or already present
-	return c.json(session, 200);
+			const child = current.children[parsed.data.child_id];
+			if (!child) {
+				throw new SessionMismatchError("child_not_found");
+			}
+			if (parsed.data.season_slug !== child.active_season) {
+				throw new SessionMismatchError("season_mismatch");
+			}
+			if (parsed.data.episode_idx !== child.current_episode) {
+				throw new SessionMismatchError("episode_mismatch");
+			}
+
+			return { ...current, sessions: [...current.sessions, parsed.data] };
+		});
+
+		const session = nextState.sessions.find((s) => s.id === parsed.data.id);
+		return c.json(session, 200);
+	} catch (error) {
+		if (error instanceof SessionMismatchError) {
+			return c.json({ error: error.message }, 409);
+		}
+		throw error;
+	}
 });
 
 app.get("/api/health", (c) => {
