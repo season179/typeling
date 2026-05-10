@@ -20,15 +20,6 @@ export class SeasonFileNotFoundError extends Error {
 	}
 }
 
-export class EpisodeIndexOutOfRangeError extends Error {
-	constructor(seasonSlug: string, episodeIdx: number, episodeCount: number) {
-		super(
-			`Episode index ${episodeIdx} is past the end of season ${seasonSlug} (${episodeCount} episodes)`,
-		);
-		this.name = "EpisodeIndexOutOfRangeError";
-	}
-}
-
 export type MismatchCode =
 	| "child_not_found"
 	| "season_mismatch"
@@ -82,7 +73,17 @@ app.post("/api/sessions", async (c) => {
 				throw new SessionMismatchError("episode_mismatch");
 			}
 
-			return { ...current, sessions: [...current.sessions, parsed.data] };
+			return {
+				...current,
+				children: {
+					...current.children,
+					[parsed.data.child_id]: {
+						...child,
+						current_episode: parsed.data.episode_idx + 1,
+					},
+				},
+				sessions: [...current.sessions, parsed.data],
+			};
 		});
 
 		const session = nextState.sessions.find((s) => s.id === parsed.data.id);
@@ -118,13 +119,14 @@ app.get("/api/children/:id/current-episode", async (c) => {
 		throw new SeasonFileNotFoundError(child.active_season);
 	}
 	const season = seasonSchema.parse(await seasonFile.json());
+
+	if (child.current_episode >= season.episodes.length) {
+		return c.json({ complete: true });
+	}
+
 	const episode = season.episodes[child.current_episode];
 	if (!episode) {
-		throw new EpisodeIndexOutOfRangeError(
-			season.slug,
-			child.current_episode,
-			season.episodes.length,
-		);
+		return c.json({ complete: true });
 	}
 
 	return c.json({

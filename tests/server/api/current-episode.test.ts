@@ -118,7 +118,7 @@ describe("GET /api/children/:id/current-episode", () => {
 		}
 	});
 
-	it("returns 500 with a named error when current_episode is past the end of the season's episodes", async () => {
+	it("returns 200 with complete:true when current_episode is past the end of the season's episodes", async () => {
 		const stateBeyondEnd = {
 			...fixtureState,
 			children: {
@@ -130,16 +130,11 @@ describe("GET /api/children/:id/current-episode", () => {
 		};
 		await writeState(stateBeyondEnd);
 		await writeSeason(fixtureSeason.slug, fixtureSeason);
-		const errorSpy = spyOn(console, "error").mockImplementation(() => {});
 
-		try {
-			const res = await getCurrentEpisode("winni");
+		const res = await getCurrentEpisode("winni");
 
-			expect(res.status).toBe(500);
-			const body = (await res.json()) as { error: string };
-			expect(body.error).toBe("EpisodeIndexOutOfRangeError");
-		} finally {
-			errorSpy.mockRestore();
-		}
+		expect(res.status).toBe(200);
+		const body = await res.json();
+		expect(body).toEqual({ complete: true });
 	});
 });

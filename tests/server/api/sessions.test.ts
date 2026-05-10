@@ -188,4 +188,46 @@ describe("POST /api/sessions", () => {
 		const body = await res.json();
 		expect(body).toEqual(validSessionBody);
 	});
+
+	it("advances child.current_episode to episode_idx + 1 on success", async () => {
+		await writeState(fixtureState);
+
+		await postSession(validSessionBody);
+
+		const onDisk = await readState(stateFile);
+		expect(onDisk.children.winni!.current_episode).toBe(1);
+	});
+
+	it("advances child.current_episode to 14 after final episode (idx 13)", async () => {
+		const state = {
+			...fixtureState,
+			children: {
+				winni: {
+					...fixtureState.children.winni,
+					current_episode: 13,
+				},
+			},
+		};
+		await writeState(state);
+
+		await postSession({
+			...validSessionBody,
+			episode_idx: 13,
+		});
+
+		const onDisk = await readState(stateFile);
+		expect(onDisk.children.winni!.current_episode).toBe(14);
+		expect(onDisk.sessions).toHaveLength(1);
+	});
+
+	it("idempotent retry does not double-advance current_episode", async () => {
+		await writeState(fixtureState);
+
+		await postSession(validSessionBody);
+		await postSession(validSessionBody);
+
+		const onDisk = await readState(stateFile);
+		expect(onDisk.children.winni!.current_episode).toBe(1);
+		expect(onDisk.sessions).toHaveLength(1);
+	});
 });
