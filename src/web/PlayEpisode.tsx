@@ -11,6 +11,22 @@ interface EpisodeData {
 	total_episodes: number;
 }
 
+interface ChapterPickerProps {
+	childId: string;
+	episodeIdx: number;
+	currentEpisode: number;
+	totalEpisodes: number;
+	onReset: () => void;
+}
+
+interface StoryReaderProps {
+	childId: string;
+	episodeIdx: number;
+	totalEpisodes: number;
+	text: string;
+	onTypeAgain: () => void;
+}
+
 function themeForChild(childId: string): "winni" | "zack" {
 	return childId.toLowerCase().includes("zack") ? "zack" : "winni";
 }
@@ -42,13 +58,7 @@ function ChapterPicker({
 	currentEpisode,
 	totalEpisodes,
 	onReset,
-}: {
-	childId: string;
-	episodeIdx: number;
-	currentEpisode: number;
-	totalEpisodes: number;
-	onReset: () => void;
-}) {
+}: ChapterPickerProps) {
 	const [_, navigate] = useLocation();
 
 	const latestOpen = Math.min(currentEpisode, totalEpisodes - 1);
@@ -92,6 +102,63 @@ function ChapterPicker({
 	);
 }
 
+function StoryReader({
+	childId,
+	episodeIdx,
+	totalEpisodes,
+	text,
+	onTypeAgain,
+}: StoryReaderProps) {
+	const theme = themeForChild(childId);
+
+	return (
+		<section
+			className={`reader-world typeling-game theme-${theme}`}
+			aria-label={`Read chapter ${episodeIdx + 1}`}
+		>
+			<div className="game-sky" aria-hidden="true">
+				<div className="moon-or-planet" />
+				<div className="drift-shape drift-shape-a" />
+				<div className="drift-shape drift-shape-b" />
+				<div className="ground-glow" />
+			</div>
+			<div className="reader-shell">
+				<div className="reader-topbar">
+					<div>
+						<span className="hud-label">Story time</span>
+						<h1>Chapter {episodeIdx + 1}</h1>
+					</div>
+					<span className="reader-count">
+						{episodeIdx + 1}/{totalEpisodes}
+					</span>
+				</div>
+				<fieldset className="reader-actions" aria-label="Chapter mode">
+					<button
+						type="button"
+						className="reader-mode reader-mode-active"
+						aria-pressed="true"
+					>
+						Read story
+					</button>
+					<button type="button" className="reader-mode" onClick={onTypeAgain}>
+						Type again
+					</button>
+				</fieldset>
+				<article className="reader-story" data-testid="story-reader">
+					{text.split(/\n+/).map((paragraph, i) => (
+						<p
+							// biome-ignore lint/suspicious/noArrayIndexKey: story paragraphs are static for the loaded chapter
+							key={i}
+						>
+							{paragraph}
+						</p>
+					))}
+				</article>
+			</div>
+		</section>
+	);
+}
+
 export default function PlayEpisode() {
 	const { childId, episodeIdx } = useParams<{
 		childId: string;
@@ -102,6 +169,7 @@ export default function PlayEpisode() {
 	const [episode, setEpisode] = useState<EpisodeData | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
+	const [practiceMode, setPracticeMode] = useState(false);
 
 	const loadPath =
 		episodeIdx === undefined
@@ -109,6 +177,7 @@ export default function PlayEpisode() {
 			: `/api/children/${childId}/episodes/${episodeIdx}`;
 
 	useEffect(() => {
+		setPracticeMode(false);
 		if (!childId) {
 			setLoading(false);
 			setError("Missing child id");
@@ -190,6 +259,8 @@ export default function PlayEpisode() {
 		return null;
 	}
 
+	const isFinishedChapter = episode.episode_idx < episode.current_episode;
+
 	return (
 		<main className="flex min-h-screen items-center justify-center">
 			<ChapterPicker
@@ -199,13 +270,23 @@ export default function PlayEpisode() {
 				totalEpisodes={episode.total_episodes}
 				onReset={handleReset}
 			/>
-			<EpisodeRunner
-				episodeText={episode.text}
-				childId={childId}
-				seasonSlug={episode.season_slug}
-				episodeIdx={episode.episode_idx}
-				totalEpisodes={episode.total_episodes}
-			/>
+			{isFinishedChapter && !practiceMode ? (
+				<StoryReader
+					childId={childId}
+					episodeIdx={episode.episode_idx}
+					totalEpisodes={episode.total_episodes}
+					text={episode.text}
+					onTypeAgain={() => setPracticeMode(true)}
+				/>
+			) : (
+				<EpisodeRunner
+					episodeText={episode.text}
+					childId={childId}
+					seasonSlug={episode.season_slug}
+					episodeIdx={episode.episode_idx}
+					totalEpisodes={episode.total_episodes}
+				/>
+			)}
 		</main>
 	);
 }

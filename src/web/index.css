@@ -263,6 +263,117 @@
 	color: var(--game-muted);
 }
 
+.reader-world {
+	display: flex;
+	justify-content: center;
+	align-items: stretch;
+	overflow: hidden;
+	padding: 5.6rem 1rem 1.2rem;
+}
+
+.reader-shell {
+	position: relative;
+	z-index: 1;
+	display: grid;
+	grid-template-rows: auto auto minmax(0, 1fr);
+	gap: 1rem;
+	width: min(52rem, 100%);
+	min-height: 0;
+	border: 1px solid var(--game-border);
+	border-radius: 1.4rem;
+	background: var(--game-panel-strong);
+	box-shadow: 0 26px 70px var(--game-shadow);
+	padding: clamp(1rem, 3vw, 1.6rem);
+	backdrop-filter: blur(18px);
+}
+
+.reader-topbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	color: var(--game-ink);
+}
+
+.reader-topbar h1 {
+	font-size: clamp(1.6rem, 5vw, 2.6rem);
+	font-weight: 950;
+	line-height: 1;
+	letter-spacing: 0;
+}
+
+.reader-count {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 4.3rem;
+	border-radius: 999px;
+	background: linear-gradient(
+		135deg,
+		var(--game-primary),
+		var(--game-secondary)
+	);
+	padding: 0.45rem 0.8rem;
+	box-shadow: 0 12px 30px var(--game-shadow);
+	color: #ffffff;
+	font-weight: 900;
+}
+
+.reader-actions {
+	display: grid;
+	grid-template-columns: 1fr auto;
+	gap: 0.7rem;
+	margin: 0;
+	border: 0;
+	padding: 0;
+}
+
+.reader-mode {
+	border: 1px solid rgba(255, 255, 255, 0.86);
+	border-radius: 0.8rem;
+	background: rgba(255, 255, 255, 0.6);
+	padding: 0.75rem 1rem;
+	box-shadow: 0 12px 28px var(--game-shadow);
+	color: var(--game-ink);
+	font-weight: 900;
+	letter-spacing: 0;
+	transition:
+		transform 160ms ease,
+		background 160ms ease;
+}
+
+.reader-mode:hover {
+	transform: translateY(-1px);
+	background: rgba(255, 255, 255, 0.82);
+}
+
+.reader-mode-active {
+	background: color-mix(in srgb, var(--game-accent) 35%, white);
+}
+
+.reader-story {
+	min-height: 0;
+	overflow-y: auto;
+	border-radius: 1rem;
+	background: rgba(255, 255, 255, 0.5);
+	padding: clamp(1rem, 3vw, 1.6rem);
+	scrollbar-gutter: stable;
+}
+
+.reader-story p {
+	margin: 0 auto 1rem;
+	max-width: 42rem;
+	font-family: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+	font-size: clamp(1.08rem, 2.4vw, 1.35rem);
+	line-height: 1.75;
+	text-wrap: pretty;
+	color: var(--game-ink);
+}
+
+.reader-story p:last-child {
+	margin-bottom: 0;
+}
+
 .game-hud {
 	position: relative;
 	z-index: 4;
@@ -708,6 +819,18 @@
 
 	.moon-or-planet {
 		opacity: 0.45;
+	}
+
+	.reader-world {
+		padding-top: 8.2rem;
+	}
+
+	.reader-shell {
+		border-radius: 1rem;
+	}
+
+	.reader-actions {
+		grid-template-columns: 1fr;
 	}
 }
 
