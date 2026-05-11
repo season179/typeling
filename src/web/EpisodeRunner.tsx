@@ -41,6 +41,18 @@ function labelForKey(char: string) {
 	return char;
 }
 
+function cursorDisplayChar(char: string): string {
+	switch (char) {
+		case "":
+		case " ":
+			return "\u00A0";
+		case "\n":
+			return "\u21B5";
+		default:
+			return char;
+	}
+}
+
 function cursorLetterClass(isFlashing: boolean) {
 	const base = "cursor-letter inline-block border-b-[3px]";
 	if (isFlashing) {
@@ -291,6 +303,7 @@ export default function EpisodeRunner({
 	const currentWord =
 		episodeText.slice(cursor.cursorIdx).match(/^[A-Za-z0-9'-]+/)?.[0] ?? "";
 	const expectedKey = labelForKey(cursorCharInSentence);
+	const cursorChar = cursorDisplayChar(cursorCharInSentence);
 
 	// Completed sentence text content for the story-so-far area
 	const completedTexts = useMemo(
@@ -410,7 +423,7 @@ export default function EpisodeRunner({
 							<div className="target-word" aria-hidden="true">
 								{currentWord || "Keep going"}
 							</div>
-							<p className="font-serif text-2xl sm:text-3xl leading-relaxed text-stone-800 tracking-normal">
+							<p className="font-mono text-2xl sm:text-3xl leading-relaxed text-stone-800 tracking-normal">
 								<span data-testid="typed-region" className="text-stone-300">
 									{typedInSentence}
 								</span>
@@ -418,7 +431,7 @@ export default function EpisodeRunner({
 									data-testid="cursor-char"
 									className={cursorLetterClass(flash)}
 								>
-									{cursorCharInSentence || "\u00A0"}
+									{cursorChar}
 								</span>
 								<span data-testid="untyped-region" className="text-stone-800">
 									{untypedInSentence}
