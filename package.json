@@ -4,7 +4,8 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "concurrently --kill-others --names server,web 'bun --watch src/server/index.ts' 'vite'",
+    "dev": "portless typeling concurrently --kill-others --names server,web 'PORT=3001 bun --watch src/server/index.ts' 'vite'",
+    "dev:direct": "concurrently --kill-others --names server,web 'PORT=3001 bun --watch src/server/index.ts' 'vite'",
     "server": "bun run src/server/index.ts",
     "web": "vite",
     "lint": "biome check src/",
@@ -22,6 +23,7 @@
     "wouter": "^3.9.0",
     "zod": "^4.4.3"
   },
+
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
     "@tailwindcss/vite": "^4.3.0",
@@ -32,6 +34,7 @@
     "@vitejs/plugin-react": "^6.0.1",
     "concurrently": "^9.2.1",
     "happy-dom": "^20.9.0",
+    "portless": "^0.13.0",
     "tailwindcss": "^4.3.0",
     "typescript": "^5.9.3",
     "vite": "^8.0.11"
