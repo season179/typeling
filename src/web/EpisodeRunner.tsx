@@ -88,6 +88,7 @@ export default function EpisodeRunner({
 	const sentRef = useRef(false);
 	const navTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const storyRef = useRef<HTMLDivElement | null>(null);
+	const shouldFollowStoryRef = useRef(true);
 	const [error, setError] = useState<string | null>(null);
 
 	const [now, setNow] = useState(Date.now());
@@ -315,13 +316,25 @@ export default function EpisodeRunner({
 	const prevCompletedLen = useRef(completedSentences.length);
 	useEffect(() => {
 		if (completedSentences.length > prevCompletedLen.current) {
-			storyRef.current?.scrollTo({
-				top: storyRef.current.scrollHeight,
-				behavior: "smooth",
-			});
+			const story = storyRef.current;
+			if (story && shouldFollowStoryRef.current) {
+				story.scrollTo({
+					top: story.scrollHeight,
+					behavior: "smooth",
+				});
+			}
 		}
 		prevCompletedLen.current = completedSentences.length;
 	}, [completedSentences.length]);
+
+	function handleStoryScroll() {
+		const story = storyRef.current;
+		if (!story) return;
+
+		const distanceFromBottom =
+			story.scrollHeight - story.clientHeight - story.scrollTop;
+		shouldFollowStoryRef.current = distanceFromBottom < 56;
+	}
 
 	return (
 		<>
@@ -393,7 +406,11 @@ export default function EpisodeRunner({
 					</div>
 
 					{/* ── Story so far area ── */}
-					<div ref={storyRef} className="story-scroll">
+					<div
+						ref={storyRef}
+						className="story-scroll"
+						onScroll={handleStoryScroll}
+					>
 						<div className="mx-auto max-w-3xl space-y-3">
 							{completedTexts.map((text, i) => (
 								<p

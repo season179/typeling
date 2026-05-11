@@ -146,6 +146,22 @@ describe("CompleteEpisode success state", () => {
 			globalThis.fetch = originalFetch;
 		}
 	});
+
+	it("clamps out-of-range episodeIdx to the final episode", async () => {
+		const { getByText, getAllByTestId, restoreFetch } = stubAndRender(
+			7,
+			"winni",
+			999,
+		);
+		try {
+			await waitFor(() => {
+				expect(getByText(/episode 7 complete/i)).toBeDefined();
+				expect(getAllByTestId("chapter-cell")).toHaveLength(7);
+			});
+		} finally {
+			restoreFetch();
+		}
+	});
 });
 
 describe("CompleteEpisode chapter map", () => {
@@ -361,6 +377,49 @@ describe("CompleteEpisode chapter map", () => {
 			globalThis.fetch = originalFetch;
 		}
 	});
+
+	it(`defaults to ${MAX_EPISODES} cells when season payload is missing total_episodes`, async () => {
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = ((input: RequestInfo | URL) => {
+			const url = String(input);
+			if (url === "/api/children") {
+				return Promise.resolve(
+					new Response(
+						JSON.stringify({ winni: { name: "Winni" } }),
+						{ headers: { "content-type": "application/json" } },
+					),
+				);
+			}
+			if (url === "/api/children/winni/season") {
+				return Promise.resolve(
+					new Response(
+						JSON.stringify({ slug: "winni-s1" }),
+						{ headers: { "content-type": "application/json" } },
+					),
+				);
+			}
+			return Promise.resolve(new Response("Not Found", { status: 404 }));
+		}) as unknown as typeof fetch;
+
+		const { hook } = memoryLocation({ path: "/play/winni/complete/0" });
+
+		try {
+			const { getAllByTestId } = render(
+				<Router hook={hook}>
+					<Route path="/play/:childId/complete/:episodeIdx">
+						<CompleteEpisode />
+					</Route>
+				</Router>,
+			);
+
+			await waitFor(() => {
+				const cells = getAllByTestId("chapter-cell");
+				expect(cells).toHaveLength(MAX_EPISODES);
+			});
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
 });
 
 function stubFetchForComplete(totalEpisodes: number, childId: string) {
@@ -397,6 +456,9 @@ function renderCompleteWithStub(childId: string, episodeIdx: number) {
 			</Route>
 			<Route path="/play/:childId">
 				<div data-testid="play-page">Playing</div>
+			</Route>
+			<Route path="/play/:childId/episode/:episodeIdx">
+				<div data-testid="episode-page">Reading</div>
 			</Route>
 		</Router>,
 	);
@@ -466,6 +528,43 @@ describe("CompleteEpisode start-next CTA", () => {
 			expect(
 				queryByRole("button", { name: /start next/i }),
 			).toBeNull();
+		} finally {
+			restoreFetch();
+		}
+	});
+});
+
+describe("CompleteEpisode chapter replay", () => {
+	it("navigates to a completed chapter when its chapter cell is clicked", async () => {
+		const { getByRole, getByTestId, restoreFetch } = stubAndRender(
+			7,
+			"winni",
+			3,
+		);
+		try {
+			await waitFor(() => {
+				expect(getByRole("button", { name: "Read chapter 2" })).toBeDefined();
+			});
+
+			fireEvent.click(getByRole("button", { name: "Read chapter 2" }));
+
+			await waitFor(() => {
+				expect(getByTestId("episode-page")).toBeDefined();
+			});
+		} finally {
+			restoreFetch();
+		}
+	});
+
+	it("keeps unread future chapters disabled", async () => {
+		const { getAllByTestId, restoreFetch } = stubAndRender(7, "winni", 3);
+		try {
+			await waitFor(() => {
+				const cells = getAllByTestId("chapter-cell");
+				expect(cells[4]).toBeDefined();
+				expect((cells[4] as HTMLButtonElement).disabled).toBe(true);
+				expect(cells[4]!.getAttribute("aria-label")).toBe("Chapter 5 locked");
+			});
 		} finally {
 			restoreFetch();
 		}

@@ -8,6 +8,7 @@ interface ChildSummary {
 }
 
 interface ChapterMapProps {
+	childId: string;
 	totalEpisodes: number;
 	completedUpTo: number;
 }
@@ -36,25 +37,39 @@ function themeForComplete(childId: string | undefined, childTheme: string) {
 	return "winni";
 }
 
-function ChapterMap({ totalEpisodes, completedUpTo }: ChapterMapProps) {
+function ChapterMap({
+	childId,
+	totalEpisodes,
+	completedUpTo,
+}: ChapterMapProps) {
+	const [_, navigate] = useLocation();
+
 	return (
 		<div data-testid="chapter-map" className="chapter-map">
 			{Array.from({ length: totalEpisodes }, (_, i) => {
+				const chapterNumber = i + 1;
 				const isCompleted = i <= completedUpTo;
 				const isCurrent = i === completedUpTo;
+				const label = isCompleted
+					? `Read chapter ${chapterNumber}`
+					: `Chapter ${chapterNumber} locked`;
 
 				return (
-					<div
+					<button
 						// biome-ignore lint/suspicious/noArrayIndexKey: episode grid is static, never reordered
 						key={i}
+						type="button"
+						disabled={!isCompleted}
+						aria-label={label}
 						data-testid="chapter-cell"
 						data-episode-idx={i}
 						data-status={isCompleted ? "completed" : "upcoming"}
 						data-current={isCurrent ? "true" : undefined}
 						className={chapterCellClass(isCurrent, isCompleted)}
+						onClick={() => navigate(`/play/${childId}/episode/${i}`)}
 					>
-						{i + 1}
-					</div>
+						{chapterNumber}
+					</button>
 				);
 			})}
 		</div>
@@ -109,7 +124,9 @@ export default function CompleteEpisode() {
 						r.ok ? (r.json() as Promise<{ total_episodes: number }>) : null,
 					)
 					.then((d) => {
-						if (!cancelled && d) setTotalEpisodes(d.total_episodes);
+						if (!cancelled && typeof d?.total_episodes === "number") {
+							setTotalEpisodes(d.total_episodes);
+						}
 					})
 					.catch(() => {});
 			} catch (err) {
@@ -148,8 +165,10 @@ export default function CompleteEpisode() {
 	}
 
 	const rawIdx = Number.parseInt(episodeIdx ?? "", 10);
-	const episodeNumber = Number.isNaN(rawIdx) ? 1 : rawIdx + 1;
-	const completedIdx = Number.isNaN(rawIdx) ? 0 : rawIdx;
+	const completedIdx = Number.isNaN(rawIdx)
+		? 0
+		: Math.max(0, Math.min(rawIdx, totalEpisodes - 1));
+	const episodeNumber = completedIdx + 1;
 	const theme = themeForComplete(childId, childTheme);
 
 	return (
@@ -174,6 +193,7 @@ export default function CompleteEpisode() {
 					<p className="text-xl text-gray-600">Great job, {childName}!</p>
 				)}
 				<ChapterMap
+					childId={childId}
 					totalEpisodes={totalEpisodes}
 					completedUpTo={completedIdx}
 				/>
