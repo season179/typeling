@@ -23,7 +23,8 @@ export type EpisodeRunnerAction =
 				EpisodeRunnerState,
 				"cursorIdx" | "activeMs" | "lastKeystrokeAt"
 			>;
-	  };
+	  }
+	| { type: "SKIP_SPACES"; count: number; now: number };
 
 export function episodeRunnerReducer(
 	state: EpisodeRunnerState,
@@ -43,6 +44,16 @@ export function episodeRunnerReducer(
 		return { ...state, lastKeystrokeAt: null };
 	}
 	if (action.type !== "KEY_DOWN") {
+		if (action.type === "SKIP_SPACES") {
+			return {
+				...state,
+				cursorIdx: state.cursorIdx + action.count,
+				// Don't count auto-skipped spaces as active typing time,
+				// but update lastKeystrokeAt so the next real keystroke's
+				// delta is measured correctly.
+				lastKeystrokeAt: action.now,
+			};
+		}
 		return state;
 	}
 	if (action.repeat) {

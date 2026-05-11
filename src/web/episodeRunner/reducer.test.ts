@@ -272,4 +272,35 @@ describe("episodeRunnerReducer", () => {
 			expect(next.lastKeystrokeAt).toBe(700);
 		});
 	});
+
+	describe("SKIP_SPACES", () => {
+		test("advances cursor by count", () => {
+			const state: EpisodeRunnerState = {
+				...base,
+				cursorIdx: 5,
+				lastKeystrokeAt: 100,
+			};
+			const next = episodeRunnerReducer(state, {
+				type: "SKIP_SPACES",
+				count: 2,
+				now: 200,
+			});
+			expect(next.cursorIdx).toBe(7);
+		});
+
+		test("does not change activeMs", () => {
+			const state: EpisodeRunnerState = {
+				...base,
+				activeMs: 500,
+				lastKeystrokeAt: 100,
+			};
+			const next = episodeRunnerReducer(state, {
+				type: "SKIP_SPACES",
+				count: 3,
+				now: 200,
+			});
+			expect(next.activeMs).toBe(500);
+			expect(next.lastKeystrokeAt).toBe(200);
+		});
+	});
 });

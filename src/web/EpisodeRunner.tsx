@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import {
+	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useReducer,
+	useRef,
+	useState,
+} from "react";
 import { useLocation } from "wouter";
 import { sentenceBoundaries } from "../lib/sentenceBoundaries";
 import { wpmFromCharsAndMs } from "../lib/wpm";
@@ -114,6 +121,37 @@ export default function EpisodeRunner({
 
 	const flash = cursor.flashUntil != null && cursor.flashUntil > now;
 
+	const sentences = useMemo(
+		() => sentenceBoundaries(episodeText),
+		[episodeText],
+	);
+
+	// Auto-advance past inter-sentence whitespace.
+	// useLayoutEffect runs synchronously after DOM mutation but before
+	// the browser paints, so the cursor never visibly lands on the space.
+	useLayoutEffect(() => {
+		const idx = cursor.cursorIdx;
+		if (idx >= episodeText.length) return;
+		if (episodeText[idx] !== " ") return;
+
+		// Count consecutive whitespace at current position
+		let peek = idx;
+		while (peek < episodeText.length && episodeText[peek] === " ") peek++;
+
+		// Only auto-skip if this is inter-sentence whitespace
+		// (the first non-space character starts a new sentence)
+		const atBoundary = sentences.some((s) => s.start === peek && s.start > idx);
+		if (!atBoundary) return;
+
+		cursorDispatch({
+			type: "SKIP_SPACES",
+			count: peek - idx,
+			now: Date.now(),
+		});
+	}, [cursor.cursorIdx, episodeText, sentences]);
+
+	// Autosave draft
+
 	useEffect(() => {
 		if (session.sessionId === null) return;
 		try {
@@ -188,11 +226,6 @@ export default function EpisodeRunner({
 	]);
 
 	// ── Sentence-level derived state ──
-
-	const sentences = useMemo(
-		() => sentenceBoundaries(episodeText),
-		[episodeText],
-	);
 
 	const currentSentenceIdx = useMemo(() => {
 		const idx = sentences.findIndex((s) => cursor.cursorIdx < s.end);
