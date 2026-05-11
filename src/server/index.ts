@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { Hono } from "hono";
 import { seasonSchema } from "../lib/schemas/season";
 import { sessionSchema } from "../lib/schemas/state";
-import { createStateQueue, readState } from "./state";
+import { createStateQueue, ensureStateFile, readState } from "./state";
 
 export const DEFAULT_PORT = 3001;
 export const HOSTNAME = "127.0.0.1";
@@ -202,6 +202,12 @@ export const fetch = (request: Request) => {
 };
 
 if (import.meta.main) {
+	const seedPath = join(import.meta.dir, "..", "..", "data", "state.seed.json");
+	const seeded = await ensureStateFile(statePath(), seedPath);
+	if (seeded) {
+		console.log(`Seeded state from ${seedPath}`);
+	}
+
 	const port = readPort();
 
 	Bun.serve({
