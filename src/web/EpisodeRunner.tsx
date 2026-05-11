@@ -18,6 +18,35 @@ interface EpisodeRunnerProps {
 	childId: string;
 	seasonSlug: string;
 	episodeIdx: number;
+	totalEpisodes?: number;
+}
+
+function themeForChild(childId: string): "winni" | "zack" {
+	return childId.toLowerCase().includes("zack") ? "zack" : "winni";
+}
+
+function progressForCursor(cursorIdx: number, textLength: number) {
+	if (textLength === 0) return 0;
+	return Math.min(100, (cursorIdx / textLength) * 100);
+}
+
+function chapterProgress(episodeIdx: number, totalEpisodes: number) {
+	if (totalEpisodes <= 1) return 100;
+	return (episodeIdx / (totalEpisodes - 1)) * 100;
+}
+
+function labelForKey(char: string) {
+	if (char === " ") return "Space";
+	if (char === "\n") return "Enter";
+	return char;
+}
+
+function cursorLetterClass(isFlashing: boolean) {
+	const base = "cursor-letter inline-block border-b-[3px]";
+	if (isFlashing) {
+		return `${base} wrong-key border-red-400 text-red-400`;
+	}
+	return `${base} border-amber-400 text-stone-800 cursor-glow`;
 }
 
 export default function EpisodeRunner({
@@ -25,6 +54,7 @@ export default function EpisodeRunner({
 	childId,
 	seasonSlug,
 	episodeIdx,
+	totalEpisodes = 14,
 }: EpisodeRunnerProps) {
 	const [_, navigate] = useLocation();
 
@@ -242,6 +272,12 @@ export default function EpisodeRunner({
 
 	const allDone =
 		episodeText.length > 0 && cursor.cursorIdx >= episodeText.length;
+	const progressPercent = progressForCursor(
+		cursor.cursorIdx,
+		episodeText.length,
+	);
+	const chapterPercent = chapterProgress(episodeIdx, totalEpisodes);
+	const theme = themeForChild(childId);
 
 	// Sentence-relative cursor position for the current sentence
 	const sentenceStart = currentSentence?.start ?? 0;
@@ -252,6 +288,9 @@ export default function EpisodeRunner({
 	const typedInSentence = sentenceText.slice(0, relativeCursor);
 	const cursorCharInSentence = sentenceText[relativeCursor] ?? "";
 	const untypedInSentence = sentenceText.slice(relativeCursor + 1);
+	const currentWord =
+		episodeText.slice(cursor.cursorIdx).match(/^[A-Za-z0-9'-]+/)?.[0] ?? "";
+	const expectedKey = labelForKey(cursorCharInSentence);
 
 	// Completed sentence text content for the story-so-far area
 	const completedTexts = useMemo(
@@ -289,53 +328,95 @@ export default function EpisodeRunner({
 				</span>
 			)}
 
-			<main className="fixed inset-0 flex flex-col bg-[#fefaf2] overflow-hidden">
-				{/* ── Story so far area ── */}
-				<div
-					ref={storyRef}
-					className="flex-shrink-0 overflow-y-auto px-6 pt-6 sm:px-12 sm:pt-10"
-				>
-					<div className="mx-auto max-w-2xl space-y-3">
-						{completedTexts.map((text, i) => (
-							<p
-								key={completedSentences[i]?.start ?? i}
-								className="animate-fade-slide-up font-serif text-base leading-relaxed text-stone-400 sm:text-lg"
-							>
-								{text}
-							</p>
-						))}
-						{/* Show all remaining sentences when fully done */}
-						{allDone &&
-							sentences.slice(completedSentences.length).map((s, i) => (
-								<p
-									key={s.start}
-									className="animate-fade-slide-up font-serif text-base leading-relaxed text-stone-400 sm:text-lg"
-									style={{ animationDelay: `${i * 0.08}s` }}
-								>
-									{episodeText.slice(s.start, s.end)}
-								</p>
-							))}
-					</div>
+			<main
+				className={`typeling-game fixed inset-0 flex flex-col overflow-hidden theme-${theme}`}
+			>
+				<div className="game-sky" aria-hidden="true">
+					<div className="moon-or-planet" />
+					<div className="drift-shape drift-shape-a" />
+					<div className="drift-shape drift-shape-b" />
+					<div className="ground-glow" />
 				</div>
 
-				{/* ── Spacer ── */}
-				<div className="flex-1 min-h-0" />
+				<section className="game-hud" aria-label="Typing quest status">
+					<div className="hud-panel hud-panel-primary">
+						<span className="hud-label">Chapter</span>
+						<strong>
+							{episodeIdx + 1}/{totalEpisodes}
+						</strong>
+						<div className="chapter-rail" aria-hidden="true">
+							<span style={{ width: `${chapterPercent}%` }} />
+						</div>
+					</div>
+					<div className="hud-panel hud-panel-primary">
+						<span className="hud-label">Power</span>
+						<strong>{Math.round(progressPercent)}%</strong>
+						<div className="chapter-rail" aria-hidden="true">
+							<span style={{ width: `${progressPercent}%` }} />
+						</div>
+					</div>
+					{!allDone && (
+						<div className="hud-panel key-panel">
+							<span className="hud-label">Next key</span>
+							<strong>{expectedKey}</strong>
+						</div>
+					)}
+				</section>
 
-				{/* ── Current sentence area ── */}
-				{!allDone && currentSentence && (
-					<div className="flex-shrink-0 px-6 pb-16 sm:px-12 sm:pb-24">
-						<div className="mx-auto max-w-2xl text-center">
+				<div className="playfield">
+					<div className="quest-scene" aria-hidden="true">
+						<div
+							className="hero-token"
+							style={{ left: `${7 + progressPercent * 0.75}%` }}
+						>
+							<div className="hero-face" />
+						</div>
+						<div className="finish-gate">
+							<span />
+						</div>
+						<div className="quest-path">
+							<span style={{ width: `${progressPercent}%` }} />
+						</div>
+					</div>
+
+					{/* ── Story so far area ── */}
+					<div ref={storyRef} className="story-scroll">
+						<div className="mx-auto max-w-3xl space-y-3">
+							{completedTexts.map((text, i) => (
+								<p
+									key={completedSentences[i]?.start ?? i}
+									className="animate-fade-slide-up font-serif text-base leading-relaxed text-stone-400 sm:text-lg"
+								>
+									{text}
+								</p>
+							))}
+							{/* Show all remaining sentences when fully done */}
+							{allDone &&
+								sentences.slice(completedSentences.length).map((s, i) => (
+									<p
+										key={s.start}
+										className="animate-fade-slide-up font-serif text-base leading-relaxed text-stone-400 sm:text-lg"
+										style={{ animationDelay: `${i * 0.08}s` }}
+									>
+										{episodeText.slice(s.start, s.end)}
+									</p>
+								))}
+						</div>
+					</div>
+
+					{/* ── Current sentence area ── */}
+					{!allDone && currentSentence && (
+						<div className="typing-stage">
+							<div className="target-word" aria-hidden="true">
+								{currentWord || "Keep going"}
+							</div>
 							<p className="font-serif text-2xl sm:text-3xl leading-relaxed text-stone-800 tracking-normal">
 								<span data-testid="typed-region" className="text-stone-300">
 									{typedInSentence}
 								</span>
 								<span
 									data-testid="cursor-char"
-									className={`inline-block border-b-[3px] ${
-										flash
-											? "border-red-400 text-red-400"
-											: "border-amber-400 text-stone-800 cursor-glow"
-									}`}
+									className={cursorLetterClass(flash)}
 								>
 									{cursorCharInSentence || "\u00A0"}
 								</span>
@@ -344,17 +425,17 @@ export default function EpisodeRunner({
 								</span>
 							</p>
 						</div>
-					</div>
-				)}
+					)}
 
-				{/* ── Completion celebration ── */}
-				{allDone && (
-					<div className="flex-shrink-0 px-6 pb-16 sm:px-12 sm:pb-24 text-center">
-						<p className="animate-celebrate-pop font-serif text-2xl sm:text-3xl text-amber-600 font-semibold">
-							Well done! ✨
-						</p>
-					</div>
-				)}
+					{/* ── Completion celebration ── */}
+					{allDone && (
+						<div className="typing-stage complete-stage text-center">
+							<p className="animate-celebrate-pop font-serif text-2xl sm:text-3xl font-semibold">
+								Chapter unlocked
+							</p>
+						</div>
+					)}
+				</div>
 			</main>
 		</>
 	);

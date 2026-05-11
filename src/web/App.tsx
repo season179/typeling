@@ -49,16 +49,16 @@ export default function App() {
 
 	if (loading) {
 		return (
-			<main className="flex min-h-screen items-center justify-center">
-				Loading...
+			<main className="typeling-game flex min-h-screen items-center justify-center theme-winni">
+				<div className="loading-card">Loading story keys...</div>
 			</main>
 		);
 	}
 
 	if (error) {
 		return (
-			<main className="flex min-h-screen items-center justify-center">
-				Error: {error}
+			<main className="typeling-game flex min-h-screen items-center justify-center theme-zack">
+				<div className="loading-card">Error: {error}</div>
 			</main>
 		);
 	}
@@ -67,23 +67,32 @@ export default function App() {
 
 	if (childEntries.length === 0) {
 		return (
-			<main className="flex min-h-screen items-center justify-center">
+			<main className="typeling-game flex min-h-screen items-center justify-center theme-winni">
 				<p className="text-lg text-gray-500">No children configured yet.</p>
 			</main>
 		);
 	}
 
 	return (
-		<main className="flex min-h-screen flex-col items-center justify-center gap-4 p-8">
-			<h1 className="text-3xl font-bold">Typeling</h1>
-			<div className="flex flex-wrap gap-4">
+		<main className="home-world typeling-game flex min-h-screen flex-col items-center justify-center gap-6 p-8 theme-winni">
+			<div className="game-sky" aria-hidden="true">
+				<div className="moon-or-planet" />
+				<div className="drift-shape drift-shape-a" />
+				<div className="drift-shape drift-shape-b" />
+				<div className="ground-glow" />
+			</div>
+			<h1 className="home-title text-3xl font-bold">Typeling</h1>
+			<div className="child-select flex flex-wrap justify-center gap-4">
 				{childEntries.map(([id, child]) => (
 					<button
 						key={id}
 						type="button"
-						className="rounded-lg border-2 border-gray-200 p-6 text-left hover:border-blue-400 hover:shadow-md transition-all"
+						className={`child-card rounded-lg border-2 border-gray-200 p-6 text-left transition-all hover:border-blue-400 hover:shadow-md ${
+							id.toLowerCase().includes("zack") ? "zack-card" : "winni-card"
+						}`}
 						onClick={() => navigate(`/play/${id}`)}
 					>
+						<span className="child-token" aria-hidden="true" />
 						<span className="block text-xl font-semibold">{child.name}</span>
 						<span className="block text-sm text-gray-500">{child.theme}</span>
 					</button>
