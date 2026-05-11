@@ -11,10 +11,11 @@ describe("PlayEpisode loading state", () => {
 	it("shows a loading indicator while the fetch is in-flight", async () => {
 		const originalFetch = globalThis.fetch;
 		let resolveFetch!: (v: Response) => void;
-		globalThis.fetch = (() =>
-			new Promise<Response>((resolve) => {
+		globalThis.fetch = (() => {
+			return new Promise<Response>((resolve) => {
 				resolveFetch = resolve;
-			})) as unknown as typeof fetch;
+			});
+		}) as unknown as typeof fetch;
 
 		const { hook } = memoryLocation({ path: "/play/winni" });
 
@@ -36,7 +37,9 @@ describe("PlayEpisode loading state", () => {
 					JSON.stringify({
 						text: "Hello world.",
 						episode_idx: 0,
+						current_episode: 0,
 						season_slug: "winni-s1-test",
+						total_episodes: 14,
 					}),
 					{ headers: { "content-type": "application/json" } },
 				),

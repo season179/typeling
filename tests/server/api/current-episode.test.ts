@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import fetch from "../../../src/server/index.ts";
+import { readState } from "../../../src/server/state";
 
 const fixtureSeason = {
 	slug: "winni-s1-test",
@@ -69,6 +70,21 @@ const getCurrentEpisode = (childId: string) =>
 		),
 	);
 
+const getEpisode = (childId: string, episodeIdx: number) =>
+	fetch(
+		new Request(
+			`http://127.0.0.1:3001/api/children/${childId}/episodes/${episodeIdx}`,
+		),
+	);
+
+const resetEpisode = (childId: string, episodeIdx: number) =>
+	fetch(
+		new Request(
+			`http://127.0.0.1:3001/api/children/${childId}/episodes/${episodeIdx}/reset`,
+			{ method: "POST" },
+		),
+	);
+
 const writeState = (state: unknown) =>
 	writeFile(stateFile, JSON.stringify(state), "utf8");
 
@@ -86,7 +102,9 @@ describe("GET /api/children/:id/current-episode", () => {
 		expect(await res.json()).toEqual({
 			text: "The pink unicorn skipped through the meadow.",
 			episode_idx: 0,
+			current_episode: 0,
 			season_slug: "winni-s1-test",
+			total_episodes: 14,
 		});
 	});
 
@@ -131,6 +149,113 @@ describe("GET /api/children/:id/current-episode", () => {
 
 		expect(res.status).toBe(200);
 		const body = await res.json();
-		expect(body).toEqual({ complete: true });
+		expect(body).toEqual({
+			complete: true,
+			current_episode: 14,
+			season_slug: "winni-s1-test",
+			total_episodes: 14,
+		});
+	});
+});
+
+describe("GET /api/children/:id/episodes/:episodeIdx", () => {
+	it("returns completed earlier episodes", async () => {
+		const state = {
+			...fixtureState,
+			children: {
+				winni: {
+					...fixtureState.children.winni,
+					current_episode: 2,
+				},
+			},
+		};
+		await writeState(state);
+		await writeSeason(fixtureSeason.slug, fixtureSeason);
+
+		const res = await getEpisode("winni", 0);
+
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({
+			text: "The pink unicorn skipped through the meadow.",
+			episode_idx: 0,
+			current_episode: 2,
+			season_slug: "winni-s1-test",
+			total_episodes: 14,
+		});
+	});
+
+	it("returns the latest open episode", async () => {
+		const state = {
+			...fixtureState,
+			children: {
+				winni: {
+					...fixtureState.children.winni,
+					current_episode: 2,
+				},
+			},
+		};
+		await writeState(state);
+		await writeSeason(fixtureSeason.slug, fixtureSeason);
+
+		const res = await getEpisode("winni", 2);
+
+		expect(res.status).toBe(200);
+		const body = await res.json();
+		expect(body.episode_idx).toBe(2);
+	});
+
+	it("returns 403 for future locked episodes", async () => {
+		await writeState(fixtureState);
+		await writeSeason(fixtureSeason.slug, fixtureSeason);
+
+		const res = await getEpisode("winni", 1);
+
+		expect(res.status).toBe(403);
+		expect(await res.json()).toEqual({ error: "EpisodeLocked" });
+	});
+});
+
+describe("POST /api/children/:id/episodes/:episodeIdx/reset", () => {
+	it("rolls progress back to the requested chapter and removes that chapter plus later sessions", async () => {
+		const sessions = [0, 1, 2].map((episodeIdx) => ({
+			id: `session-${episodeIdx}`,
+			child_id: "winni",
+			season_slug: "winni-s1-test",
+			episode_idx: episodeIdx,
+			wpm: 12,
+			char_count: 50,
+			active_ms: 30000,
+			started_at: "2026-05-10T00:00:00.000Z",
+			finished_at: `2026-05-10T00:0${episodeIdx}:00.000Z`,
+		}));
+		const state = {
+			...fixtureState,
+			children: {
+				winni: {
+					...fixtureState.children.winni,
+					current_episode: 3,
+				},
+			},
+			sessions,
+		};
+		await writeState(state);
+
+		const res = await resetEpisode("winni", 1);
+
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ current_episode: 1 });
+
+		const onDisk = await readState(stateFile);
+		expect(onDisk.children.winni!.current_episode).toBe(1);
+		expect(onDisk.sessions.map((s) => s.episode_idx)).toEqual([0]);
+	});
+
+	it("returns 403 when asked to reset a locked future chapter", async () => {
+		await writeState(fixtureState);
+
+		const res = await resetEpisode("winni", 1);
+
+		expect(res.status).toBe(403);
+		expect(await res.json()).toEqual({ error: "EpisodeLocked" });
 	});
 });

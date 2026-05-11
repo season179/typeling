@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { Hono } from "hono";
-import { seasonSchema } from "../lib/schemas/season";
+import { MAX_EPISODES, seasonSchema } from "../lib/schemas/season";
 import { sessionSchema } from "../lib/schemas/state";
 import { createStateQueue, ensureStateFile, readState } from "./state";
 
@@ -32,6 +32,22 @@ export class SessionMismatchError extends Error {
 	}
 }
 
+export type EpisodeAccessCode =
+	| "ChildNotFound"
+	| "InvalidEpisode"
+	| "EpisodeNotFound"
+	| "EpisodeLocked";
+
+export class EpisodeAccessError extends Error {
+	status: 400 | 403 | 404;
+
+	constructor(code: EpisodeAccessCode, status: 400 | 403 | 404) {
+		super(code);
+		this.name = "EpisodeAccessError";
+		this.status = status;
+	}
+}
+
 export const app = new Hono();
 
 app.onError((error, c) => {
@@ -55,6 +71,27 @@ async function loadChildSeason(childId: string) {
 
 	return { child, season };
 }
+
+const parseEpisodeIdx = (raw: string) => {
+	const episodeIdx = Number.parseInt(raw, 10);
+	if (!Number.isInteger(episodeIdx) || String(episodeIdx) !== raw) {
+		throw new EpisodeAccessError("InvalidEpisode", 400);
+	}
+	return episodeIdx;
+};
+
+const assertEpisodeIsOpen = (
+	episodeIdx: number,
+	currentEpisode: number,
+	totalEpisodes: number,
+) => {
+	if (episodeIdx < 0 || episodeIdx >= totalEpisodes) {
+		throw new EpisodeAccessError("EpisodeNotFound", 404);
+	}
+	if (episodeIdx > currentEpisode) {
+		throw new EpisodeAccessError("EpisodeLocked", 403);
+	}
+};
 
 const stateQueues = new Map<string, ReturnType<typeof createStateQueue>>();
 
@@ -86,7 +123,7 @@ app.post("/api/sessions", async (c) => {
 			if (parsed.data.season_slug !== child.active_season) {
 				throw new SessionMismatchError("season_mismatch");
 			}
-			if (parsed.data.episode_idx !== child.current_episode) {
+			if (parsed.data.episode_idx > child.current_episode) {
 				throw new SessionMismatchError("episode_mismatch");
 			}
 
@@ -96,7 +133,10 @@ app.post("/api/sessions", async (c) => {
 					...current.children,
 					[parsed.data.child_id]: {
 						...child,
-						current_episode: parsed.data.episode_idx + 1,
+						current_episode:
+							parsed.data.episode_idx === child.current_episode
+								? parsed.data.episode_idx + 1
+								: child.current_episode,
 					},
 				},
 				sessions: [...current.sessions, parsed.data],
@@ -146,6 +186,7 @@ app.get("/api/children/:id/season", async (c) => {
 	return c.json({
 		slug: result.season.slug,
 		total_episodes: result.season.episodes.length,
+		current_episode: result.child.current_episode,
 	});
 });
 
@@ -158,19 +199,116 @@ app.get("/api/children/:id/current-episode", async (c) => {
 	const { child, season } = result;
 
 	if (child.current_episode >= season.episodes.length) {
-		return c.json({ complete: true });
+		return c.json({
+			complete: true,
+			current_episode: child.current_episode,
+			season_slug: season.slug,
+			total_episodes: season.episodes.length,
+		});
 	}
 
 	const episode = season.episodes[child.current_episode];
 	if (!episode) {
-		return c.json({ complete: true });
+		return c.json({
+			complete: true,
+			current_episode: child.current_episode,
+			season_slug: season.slug,
+			total_episodes: season.episodes.length,
+		});
 	}
 
 	return c.json({
 		text: episode.text,
 		episode_idx: child.current_episode,
+		current_episode: child.current_episode,
 		season_slug: season.slug,
+		total_episodes: season.episodes.length,
 	});
+});
+
+app.get("/api/children/:id/episodes/:episodeIdx", async (c) => {
+	try {
+		const result = await loadChildSeason(c.req.param("id"));
+		if ("error" in result) {
+			return c.json({ error: result.error }, result.status);
+		}
+
+		const episodeIdx = parseEpisodeIdx(c.req.param("episodeIdx"));
+		const { child, season } = result;
+		assertEpisodeIsOpen(
+			episodeIdx,
+			child.current_episode,
+			season.episodes.length,
+		);
+
+		const episode = season.episodes[episodeIdx];
+		if (!episode) {
+			return c.json({ error: "EpisodeNotFound" }, 404);
+		}
+
+		return c.json({
+			text: episode.text,
+			episode_idx: episodeIdx,
+			current_episode: child.current_episode,
+			season_slug: season.slug,
+			total_episodes: season.episodes.length,
+		});
+	} catch (error) {
+		if (error instanceof EpisodeAccessError) {
+			return c.json({ error: error.message }, error.status);
+		}
+		throw error;
+	}
+});
+
+app.post("/api/children/:id/episodes/:episodeIdx/reset", async (c) => {
+	try {
+		const childId = c.req.param("id");
+		const episodeIdx = parseEpisodeIdx(c.req.param("episodeIdx"));
+
+		const nextState = await getStateQueue().mutateState((current) => {
+			const child = current.children[childId];
+			if (!child) {
+				throw new EpisodeAccessError("ChildNotFound", 404);
+			}
+			assertEpisodeIsOpen(episodeIdx, child.current_episode, MAX_EPISODES);
+
+			const nextSessions = current.sessions.filter(
+				(s) =>
+					s.child_id !== childId ||
+					s.season_slug !== child.active_season ||
+					s.episode_idx < episodeIdx,
+			);
+			if (
+				child.current_episode === episodeIdx &&
+				child.current_session_id === null &&
+				nextSessions.length === current.sessions.length
+			) {
+				return current;
+			}
+
+			return {
+				...current,
+				children: {
+					...current.children,
+					[childId]: {
+						...child,
+						current_episode: episodeIdx,
+						current_session_id: null,
+					},
+				},
+				sessions: nextSessions,
+			};
+		});
+
+		const child = nextState.children[childId];
+		return c.json({ current_episode: child?.current_episode ?? episodeIdx });
+	} catch (error) {
+		if (error instanceof EpisodeAccessError) {
+			return c.json({ error: error.message }, error.status);
+		}
+		throw error;
+	}
 });
 
 const readPort = () => {

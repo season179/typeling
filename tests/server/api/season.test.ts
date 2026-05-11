@@ -80,6 +80,7 @@ describe("GET /api/children/:id/season", () => {
 		expect(await res.json()).toEqual({
 			slug: "winni-s1-test",
 			total_episodes: 14,
+			current_episode: 2,
 		});
 	});
 

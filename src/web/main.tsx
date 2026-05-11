@@ -20,6 +20,10 @@ createRoot(rootElement).render(
 			<Route path="/parent" component={ParentView} />
 			<Route path="/play/:childId" component={PlayEpisode} />
 			<Route
+				path="/play/:childId/episode/:episodeIdx"
+				component={PlayEpisode}
+			/>
+			<Route
 				path="/play/:childId/complete/:episodeIdx"
 				component={CompleteEpisode}
 			/>

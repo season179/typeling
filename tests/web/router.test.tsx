@@ -12,15 +12,18 @@ setupDom();
 describe("Router /play/:childId", () => {
 	it("renders PlayEpisode when path is /play/winni", async () => {
 		const originalFetch = globalThis.fetch;
-		let requestedUrl: string | undefined;
+		const requestedUrls: string[] = [];
 		globalThis.fetch = ((input: RequestInfo | URL) => {
-			requestedUrl = String(input);
+			const url = String(input);
+			requestedUrls.push(url);
 			return Promise.resolve(
 				new Response(
 					JSON.stringify({
 						text: "The fox jumped over the fence.",
 						episode_idx: 0,
+						current_episode: 0,
 						season_slug: "winni-s1-test",
+						total_episodes: 14,
 					}),
 					{ headers: { "content-type": "application/json" } },
 				),
@@ -39,7 +42,7 @@ describe("Router /play/:childId", () => {
 			await waitFor(() => {
 				expect(getByTestId("cursor-char").textContent).toBe("T");
 			});
-			expect(requestedUrl).toBe("/api/children/winni/current-episode");
+			expect(requestedUrls).toContain("/api/children/winni/current-episode");
 		} finally {
 			globalThis.fetch = originalFetch;
 		}

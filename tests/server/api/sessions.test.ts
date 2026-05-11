@@ -134,7 +134,20 @@ describe("POST /api/sessions", () => {
 		expect(body.error).toBe("child_not_found");
 	});
 
-	it("returns 409 with episode_mismatch when episode_idx doesn't match child.current_episode", async () => {
+	it("returns 409 with episode_mismatch when episode_idx is ahead of child.current_episode", async () => {
+		await writeState(fixtureState);
+
+		const res = await postSession({
+			...validSessionBody,
+			episode_idx: 1,
+		});
+
+		expect(res.status).toBe(409);
+		const body = (await res.json()) as { error: string };
+		expect(body.error).toBe("episode_mismatch");
+	});
+
+	it("accepts replay sessions for completed earlier episodes without moving progress backward", async () => {
 		const state = {
 			...fixtureState,
 			children: {
@@ -151,9 +164,11 @@ describe("POST /api/sessions", () => {
 			episode_idx: 0,
 		});
 
-		expect(res.status).toBe(409);
-		const body = (await res.json()) as { error: string };
-		expect(body.error).toBe("episode_mismatch");
+		expect(res.status).toBe(200);
+
+		const onDisk = await readState(stateFile);
+		expect(onDisk.children.winni!.current_episode).toBe(2);
+		expect(onDisk.sessions).toHaveLength(1);
 	});
 
 	it("returns 409 with season_mismatch when season_slug doesn't match child.active_season", async () => {
