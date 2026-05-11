@@ -15,13 +15,16 @@ const STATUS_MAP: Record<
 	GraduationStatus,
 	{ className: string; label: string }
 > = {
-	graduated: { className: "bg-green-100 text-green-800", label: "graduated" },
+	graduated: {
+		className: "bg-emerald-100 text-emerald-800",
+		label: "graduated",
+	},
 	"in progress": {
-		className: "bg-blue-100 text-blue-800",
+		className: "bg-sky-100 text-sky-800",
 		label: "in progress",
 	},
 	"no sessions yet": {
-		className: "bg-gray-100 text-gray-600",
+		className: "bg-stone-100 text-stone-500",
 		label: "no sessions yet",
 	},
 };
@@ -121,7 +124,10 @@ export default function ParentView() {
 	if (loading) {
 		return (
 			<main className="flex min-h-screen items-center justify-center">
-				Loading...
+				<div className="flex flex-col items-center gap-3">
+					<div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-300 border-t-amber-600" />
+					<p className="text-sm text-stone-400">Loading…</p>
+				</div>
 			</main>
 		);
 	}
@@ -129,68 +135,129 @@ export default function ParentView() {
 	if (error) {
 		return (
 			<main className="flex min-h-screen items-center justify-center">
-				Error: {error}
+				<div className="rounded-lg border border-red-200 bg-red-50 px-6 py-4 text-sm text-red-700">
+					<p className="font-semibold">Couldn't load data</p>
+					<p className="mt-1 text-red-600">{error}</p>
+				</div>
 			</main>
 		);
 	}
 
 	return (
-		<main className="min-h-screen p-8 max-w-4xl mx-auto">
-			<h1 className="text-3xl font-bold mb-8">Parent View</h1>
-			<div className="space-y-8">
-				{childEntries.map(({ id, child, rolling3, status, last10 }) => (
-					<section key={id} className="border rounded-lg p-6 shadow-sm">
-						<div className="flex items-baseline justify-between mb-4">
-							<div>
-								<h2 className="text-2xl font-semibold">{child.name}</h2>
-								<p className="text-sm text-gray-500">
-									{child.theme} · Target: {child.target_wpm} WPM
-								</p>
-							</div>
-							<div className="text-right">
-								<span
-									className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${STATUS_MAP[status].className}`}
-								>
-									{STATUS_MAP[status].label}
-								</span>
-								{rolling3 !== null && (
-									<p className="text-sm text-gray-500 mt-1">
-										Rolling-3: {Math.round(rolling3)} WPM
+		<main className="min-h-screen bg-stone-50 p-6 sm:p-10">
+			<div className="mx-auto max-w-3xl">
+				<header className="mb-10">
+					<h1 className="font-serif text-3xl font-bold text-stone-800 tracking-tight">
+						Parent View
+					</h1>
+					<p className="mt-1 text-sm text-stone-400">
+						Typing sessions for each child
+					</p>
+				</header>
+
+				<div className="space-y-10">
+					{childEntries.map(({ id, child, rolling3, status, last10 }) => (
+						<section key={id}>
+							{/* Child header card */}
+							<div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+								<div>
+									<h2 className="font-serif text-2xl font-semibold text-stone-800">
+										{child.name}
+									</h2>
+									<p className="text-sm text-stone-400">
+										{child.theme} · Target {child.target_wpm} WPM
 									</p>
+								</div>
+								<div className="flex items-center gap-3">
+									{rolling3 !== null && (
+										<span className="text-sm text-stone-400">
+											Rolling 3:{" "}
+											<span className="font-semibold text-stone-600">
+												{Math.round(rolling3)}
+											</span>{" "}
+											WPM
+										</span>
+									)}
+									<span
+										className={`inline-block rounded-full px-3 py-0.5 text-xs font-semibold tracking-wide uppercase ${STATUS_MAP[status].className}`}
+									>
+										{STATUS_MAP[status].label}
+									</span>
+								</div>
+							</div>
+
+							{/* Sessions card */}
+							<div className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
+								{last10.length === 0 ? (
+									<div className="px-6 py-12 text-center">
+										<p className="text-sm text-stone-400">
+											No sessions completed yet — time to type!
+										</p>
+									</div>
+								) : (
+									<table className="w-full text-sm">
+										<thead>
+											<tr className="border-b border-stone-100 bg-stone-50/50 text-left">
+												<th className="py-3 pl-6 pr-2 font-medium text-stone-400">
+													Speed{" "}
+													<span className="font-normal text-stone-300">
+														WPM
+													</span>
+												</th>
+												<th className="py-3 px-2 font-medium text-stone-400">
+													Length{" "}
+													<span className="font-normal text-stone-300">
+														chars
+													</span>
+												</th>
+												<th className="py-3 px-2 font-medium text-stone-400">
+													Active time{" "}
+													<span className="font-normal text-stone-300">
+														typing
+													</span>
+												</th>
+												<th className="py-3 pr-4 pl-2 font-medium text-stone-400">
+													Completed
+												</th>
+											</tr>
+										</thead>
+										<tbody>
+											{last10.map((s) => (
+												<tr
+													key={s.id}
+													className="border-b border-stone-50 transition-colors hover:bg-amber-50/40"
+												>
+													<td className="py-3 pl-6 pr-2 font-semibold text-stone-700 tabular-nums">
+														{Math.round(s.wpm)}
+													</td>
+													<td className="py-3 px-2 tabular-nums text-stone-600">
+														{s.char_count}
+													</td>
+													<td className="py-3 px-2 tabular-nums text-stone-600">
+														{formatMs(s.active_ms)}
+													</td>
+													<td className="py-3 pr-4 pl-2 text-stone-500">
+														{formatRelativeTime(s.finished_at, now)}
+													</td>
+												</tr>
+											))}
+										</tbody>
+									</table>
+								)}
+
+								{/* Session ID footer for the most recent session */}
+								{last10.length > 0 && (
+									<div className="border-t border-stone-100 bg-stone-50/30 px-6 py-2.5">
+										<p className="font-mono text-[11px] text-stone-400">
+											<span className="text-stone-300">session id </span>
+											{last10[0]?.id}
+										</p>
+									</div>
 								)}
 							</div>
-						</div>
-
-						{last10.length === 0 ? (
-							<p className="text-sm text-gray-400 italic">
-								No sessions completed yet.
-							</p>
-						) : (
-							<table className="w-full text-sm">
-								<thead>
-									<tr className="text-left text-gray-500 border-b">
-										<th className="pb-2 font-medium">WPM</th>
-										<th className="pb-2 font-medium">Chars</th>
-										<th className="pb-2 font-medium">Time</th>
-										<th className="pb-2 font-medium">Finished</th>
-									</tr>
-								</thead>
-								<tbody>
-									{last10.map((s) => (
-										<tr key={s.id} className="border-b border-gray-100">
-											<td className="py-2">{Math.round(s.wpm)}</td>
-											<td className="py-2">{s.char_count}</td>
-											<td className="py-2">{formatMs(s.active_ms)}</td>
-											<td className="py-2">
-												{formatRelativeTime(s.finished_at, now)}
-											</td>
-										</tr>
-									))}
-								</tbody>
-							</table>
-						)}
-					</section>
-				))}
+						</section>
+					))}
+				</div>
 			</div>
 		</main>
 	);
