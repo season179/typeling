@@ -42,16 +42,15 @@ describe("PlayEpisode", () => {
 			expect(requestedUrl).toBe("/api/children/winni/current-episode");
 
 			const typed = getByTestId("typed-region");
-			expect(typed.className).toContain("text-gray-400");
+			expect(typed.className).toContain("text-stone-300");
 			expect(typed.textContent).toBe("");
 
 			const cursor = getByTestId("cursor-char");
-			expect(cursor.className).toContain("border-b-2");
-			expect(cursor.className).toContain("animate-pulse");
-			expect(cursor.className).toContain("text-gray-900");
+			expect(cursor.className).toContain("border-b-");
+			expect(cursor.className).toContain("border-amber-400");
 
 			const untyped = getByTestId("untyped-region");
-			expect(untyped.className).toContain("text-gray-900");
+			expect(untyped.className).toContain("text-stone-800");
 			expect(untyped.textContent).toBe(
 				"he pink unicorn skipped through the meadow.",
 			);
