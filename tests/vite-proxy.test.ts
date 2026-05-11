@@ -1,14 +1,18 @@
 import { describe, it, expect } from "bun:test";
 import { createServer } from "vite";
 import serverFetch from "../src/server/index.ts";
-import viteConfig from "../vite.config.ts";
+import viteConfig, { resolveServerUrl } from "../vite.config.ts";
 
 describe("vite proxy", () => {
-  it("vite config has /api proxy to 127.0.0.1:3001", () => {
+  it("defaults /api proxy to 127.0.0.1:3001", () => {
     expect(viteConfig.server?.proxy).toBeDefined();
     const proxy = viteConfig.server!.proxy as Record<string, { target: string }>;
     expect(proxy["/api"]).toBeDefined();
     expect(proxy["/api"]!.target).toBe("http://127.0.0.1:3001");
+  });
+
+  it("can proxy /api to a Portless API URL", () => {
+    expect(resolveServerUrl({ SERVER_URL: "https://typeling-api.localhost" })).toBe("https://typeling-api.localhost");
   });
 
   it("proxies /api/health through Vite dev server to Hono", async () => {

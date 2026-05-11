@@ -1,12 +1,24 @@
-import { describe, it, expect } from "bun:test";
+import { describe, expect, it } from "bun:test";
 
-describe("bun run dev", () => {
-  it("starts both Hono server and Vite dev server", async () => {
-    const proc = Bun.spawn(["bun", "run", "dev"], {
+describe("dev scripts", () => {
+  it("runs Hono and Vite as separate Portless apps", async () => {
+    const packageJson = await Bun.file("package.json").json();
+    expect(packageJson.scripts.dev).toContain("portless typeling-api");
+    expect(packageJson.scripts.dev).toContain("portless typeling vite");
+    expect(packageJson.scripts.dev).toContain("SERVER_URL=https://typeling-api.localhost");
+    expect(packageJson.scripts.dev).not.toContain("SERVER_PORT");
+  });
+
+  it("dev:direct starts both Hono server and Vite dev server", async () => {
+    const apiPort = 3101;
+    const proc = Bun.spawn(["bun", "run", "dev:direct"], {
       cwd: process.cwd(),
       stdout: "pipe",
       stderr: "pipe",
-      env: { ...process.env, PORT: "3001" },
+      env: {
+        ...process.env,
+        SERVER_PORT: String(apiPort),
+      },
     });
 
     try {
@@ -16,17 +28,16 @@ describe("bun run dev", () => {
       let viteReady = false;
 
       while (Date.now() < deadline && (!honoReady || !viteReady)) {
-        if (!honoReady) {
-          try {
-            const res = await fetch("http://127.0.0.1:3001/api/health", { signal: AbortSignal.timeout(500) });
-            if (res.status === 200) honoReady = true;
-          } catch { /* ignore */ }
+        const [honoResult, viteResult] = await Promise.allSettled([
+          honoReady ? Promise.resolve(null) : fetch(`http://127.0.0.1:${apiPort}/api/health`, { signal: AbortSignal.timeout(500) }),
+          viteReady ? Promise.resolve(null) : fetch("http://127.0.0.1:5173/api/health", { signal: AbortSignal.timeout(500) }),
+        ]);
+
+        if (!honoReady && honoResult.status === "fulfilled" && honoResult.value?.status === 200) {
+          honoReady = true;
         }
-        if (!viteReady) {
-          try {
-            const res = await fetch("http://127.0.0.1:5173", { signal: AbortSignal.timeout(500) });
-            if (res.status === 200) viteReady = true;
-          } catch { /* ignore */ }
+        if (!viteReady && viteResult.status === "fulfilled" && viteResult.value?.status === 200) {
+          viteReady = true;
         }
         if (!honoReady || !viteReady) {
           await new Promise((r) => setTimeout(r, 200));
