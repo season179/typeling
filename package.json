@@ -13,7 +13,8 @@
     "gen:season": "bun run scripts/gen-season.ts",
     "e2e:happy-path": "bun run scripts/e2e/happy-path.ts",
     "e2e:wrong-key": "bun run scripts/e2e/wrong-key.ts",
-    "e2e:idle": "bun run scripts/e2e/idle.ts"
+    "e2e:idle": "bun run scripts/e2e/idle.ts",
+    "tts:zack-s1-e0": "bun run scripts/generate-zack-ch1-audio.ts"
   },
   "dependencies": {
     "hono": "^4.12.18",
