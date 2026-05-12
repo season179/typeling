@@ -57,6 +57,15 @@ The wrong-key test:
 4. Asserts cursorIdx did not advance
 5. Dispatches the correct key; asserts cursor advances by 1
 
+## Audio generation (TTS)
+
+Typeling generates multi-speaker TTS audio for episodes using the Gemini Speech Generation API. The full workflow is documented in [docs/tts-workflow.md](docs/tts-workflow.md).
+
+```bash
+# Generate Zack chapter 1 audio (requires GEMINI_API_KEY)
+bun run tts:zack-s1-e0
+```
+
 ## Scripts
 
 | Script             | What it does                                                        |
