@@ -1,16 +1,37 @@
-# Zack Chapter 1 — Audio Generation Workflow
+# Episode Audio Generation Workflow
 
-This document describes how to generate TTS audio for Zack's chapter 1 (episode 0) using Gemini's multi-speaker speech synthesis. The pipeline extracts story text from the season file, builds a two-speaker transcript, styles it for performance, and generates a WAV file.
+This document describes how to generate TTS audio for episodes of the Typeling typing stories. The pipeline supports multiple children — currently **Zack** and **Winni**. The TTS provider used in the final stage can vary by episode: **Gemini** is in use today; **MiMo** has an offline contract only.
 
-**This workflow does not modify the typing story source.** The season file (`seasons/zack-s1.json`) is read-only. All derived artifacts are written to `data/audio/`.
+**This workflow does not modify the typing story source.** Season JSON files (e.g. `seasons/zack-s1.json`, `seasons/winni-s1.json`) are read-only. All derived artifacts are written to `data/audio/`.
 
-## Gemini TTS reference
+## Pipeline overview
+
+```
+seasons/<child>-s1.json                              (source — never modified)
+        │
+        ▼  extract-audio-source.ts
+data/audio/<child>-s1-e<n>-source.txt                (raw episode text)
+        │
+        ▼  convert-to-transcript.ts
+data/audio/<child>-s1-e<n>-transcript.txt            (Storyteller/Pixel speaker labels)
+        │
+        ▼  style-transcript.ts                        (requires OPENROUTER_API_KEY)
+data/audio/<child>-s1-e<n>-styled-transcript.txt     (TTS preamble + audio tags)
+        │
+        ▼  TTS provider                               (Gemini today, MiMo experimental)
+data/audio/<child>-s1-e<n>.wav                       (final audio)
+data/audio/<child>-s1-e<n>.meta.json                 (generation metadata)
+```
+
+## Zack chapter 1 (Gemini)
+
+### Gemini TTS reference
 
 This workflow uses the Gemini Speech Generation API. For the full API documentation, voice list, and limitations, see:
 
 https://ai.google.dev/gemini-api/docs/speech-generation
 
-## Prerequisites
+### Prerequisites
 
 | Requirement | Purpose |
 |---|---|
@@ -18,28 +39,9 @@ https://ai.google.dev/gemini-api/docs/speech-generation
 | `OPENROUTER_API_KEY` | Styles the transcript via an LLM (step 3). Only needed if not using `--fixture`. |
 | `bun install` | Dependencies must be installed. |
 
-## Pipeline overview
+### Step-by-step
 
-```
-seasons/zack-s1.json                    (source — never modified)
-        │
-        ▼  extract-audio-source.ts
-data/audio/zack-s1-e0-source.txt        (raw episode text)
-        │
-        ▼  convert-to-transcript.ts
-data/audio/zack-s1-e0-transcript.txt    (Storyteller/Pixel speaker labels)
-        │
-        ▼  style-transcript.ts          (requires OPENROUTER_API_KEY)
-data/audio/zack-s1-e0-styled-transcript.txt  (TTS preamble + audio tags)
-        │
-        ▼  generate-zack-ch1-audio.ts   (requires GEMINI_API_KEY)
-data/audio/zack-s1-e0.wav              (final audio)
-data/audio/zack-s1-e0.meta.json        (generation metadata)
-```
-
-## Step-by-step
-
-### 1. Extract the source text
+#### 1. Extract the source text
 
 Pulls episode 0 from `seasons/zack-s1.json` into a plain-text file. This is the raw story text as typed by the child.
 
@@ -52,7 +54,7 @@ Options:
 - `--episode-idx <n>` — Episode index to extract (default: `0`)
 - `--output <path>` — Output file (default: `data/audio/zack-s1-e0-source.txt`)
 
-### 2. Build the two-speaker transcript
+#### 2. Build the two-speaker transcript
 
 Converts the raw source text into a speaker-labelled transcript. Dialogue (text inside `"quotes"`) is assigned to **Pixel**; narration is assigned to **Storyteller**.
 
@@ -71,7 +73,7 @@ Pixel: What a lovely day!
 Storyteller: said Pixel in a soft, buzzy voice.
 ```
 
-### 3. Style the transcript for TTS
+#### 3. Style the transcript for TTS
 
 Sends the raw transcript to an LLM (via OpenRouter) which adds a TTS preamble and sparse `[audio tags]` for performance direction. The LLM does not change any story words — it only adds `[softly]`, `[gently]`, `[excitedly]`, etc.
 
@@ -95,7 +97,7 @@ Options:
 
 If anything looks wrong, edit the file by hand before proceeding.
 
-### 4. Generate TTS audio
+#### 4. Generate TTS audio
 
 Calls the Gemini TTS API with the styled transcript and writes a WAV file plus metadata.
 
@@ -114,7 +116,7 @@ Options:
 - `--output <path>` — WAV output path (default: `data/audio/zack-s1-e0.wav`)
 - `--max-retries <n>` — Max retry attempts for transient failures (default: `3`)
 
-### 5. Listen and check the output
+#### 5. Listen and check the output
 
 Play the generated WAV file:
 
@@ -133,6 +135,10 @@ Check:
 - Audio tags were respected (gentle/soft delivery where tagged).
 
 If the output is bad, re-run step 4. Gemini occasionally returns degraded audio; the script handles transient non-audio responses automatically, but quality varies.
+
+## Winni chapter 1 (TBD)
+
+To be documented in a follow-up issue.
 
 ## Where artifacts are written
 
@@ -159,3 +165,7 @@ These are known limitations of the Gemini TTS API that affect this workflow:
 - **Rate limits.** Heavy usage may trigger HTTP 429 responses. These are also retried automatically.
 - **Voice quality varies.** The same transcript can produce noticeably different audio on repeated runs. If the output sounds off, re-run the generation. The script does not cache or deduplicate outputs.
 - **Audio tags are hints, not commands.** Gemini interprets `[softly]`, `[gently]`, etc. as best-effort. The model does not always obey them precisely.
+
+## MiMo TTS limitations (TBD)
+
+To be documented in a follow-up issue.
