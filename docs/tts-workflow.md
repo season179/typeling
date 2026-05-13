@@ -190,6 +190,65 @@ Pixel: Look at that butterfly!
 Storyteller: said Pixel, pointing with a tiny paw.
 ```
 
+## MiMo provider (offline contract, experimental)
+
+> **No live MiMo runner script exists yet.** This section documents the offline building blocks already in the codebase. There is no `scripts/generate-*-mimo-audio.ts`, no `tts:*:mimo` npm script, and no documented env var for a MiMo endpoint key — the live caller does not exist, so neither does the wiring around it.
+
+The MiMo path is **experimental** and reaches the model `mimo-v2.5-tts`. Three pure modules in `src/lib/` define the request shape, response shape, and WAV writer. They are exercised by offline tests against `fixtures/mimo-audio-response.json` — no API key and no network are required.
+
+### Building blocks
+
+- `src/lib/mimoTtsRequest.ts` — pure request builder. Validates that style guidance and spoken text are non-empty, then returns a `mimo-v2.5-tts` chat-completion request body with the right message roles, voice, and audio format. Exposes the four built-in English voices (`Mia`, `Chloe`, `Milo`, `Dean`) with `Mia` as the default and `wav` as the default response format. No network calls.
+
+- `src/lib/mimoTtsResponse.ts` — pure response extractor. Reads base64 audio data and the declared format from `choices[0].message.audio`. A separate `validateMimoAudioResponse` helper returns a non-throwing error string so a future caller can drive retries. Reports failures like missing/empty `choices`, a message that returned text content instead of audio (transient non-audio response), and a missing or empty `audio.data` field.
+
+- `src/lib/mimoGenerateWav.ts` — decodes the base64 audio, sanity-checks the `RIFF` header (rejecting payloads under 44 bytes or with a non-RIFF prefix), and writes the bytes straight to the requested `.wav` path. Also writes a sidecar `.meta.json` containing `source_season`, `episode_idx`, `provider` (`"mimo"`), `model` (`"mimo-v2.5-tts"`), `selected_voice`, `audio_format`, `transcript_hash`, and `generated_at` (ISO-8601). The sidecar path is derived from the WAV path by swapping the extension.
+
+### Request shape
+
+MiMo uses an OpenAI-compatible chat-completion endpoint. `buildMimoTtsRequest` produces:
+
+| Field | Value |
+|---|---|
+| `model` | `mimo-v2.5-tts` |
+| `messages[0]` | `{ role: "user", content: <style guidance> }` |
+| `messages[1]` | `{ role: "assistant", content: <spoken text> }` |
+| `audio.voice` | One of `Mia`, `Chloe`, `Milo`, `Dean` (default `Mia`) |
+| `audio.format` | `wav` (default), `mp3`, or `pcm` |
+| `stream` | `false` |
+
+Style guidance — e.g. "Speak warmly and gently, like a parent reading a bedtime story." — goes in the **user** message so MiMo treats it as performance direction rather than text to speak. The text to synthesize goes in the **assistant** message. Voice selection lives on the `audio` object, not inside a message.
+
+### Response shape
+
+MiMo returns an OpenAI-compatible chat-completion response. The audio lives at:
+
+```
+choices[0].message.audio.data    // base64 string
+choices[0].message.audio.format  // optional; defaults to "wav" in the extractor
+```
+
+The base64 payload decodes to a **complete WAV container** — RIFF header and audio samples are already packaged together. `extractMimoAudioData` returns `{ data, format }`.
+
+### MiMo vs Gemini: audio format
+
+Gemini returns raw PCM samples; the Gemini runner (`scripts/generate-zack-ch1-audio.ts`, via helpers in `src/lib/generateWav.ts` and `src/lib/wav.ts`) wraps those samples in a RIFF/WAV header before writing to disk. MiMo is different — the base64 payload **already is** a full WAV file, so `mimoGenerateWav.ts` decodes the base64 and writes the bytes directly with no extra wrapping. Adding a second header would produce a malformed file.
+
+### Offline fixture and tests
+
+The MiMo tests drive the three modules using `fixtures/mimo-audio-response.json`, which mirrors the shape of a real `mimo-v2.5-tts` response. Run them with:
+
+```bash
+bun test src/lib/mimoTtsRequest.test.ts src/lib/mimoTtsResponse.test.ts src/lib/mimoGenerateWav.test.ts
+```
+
+### MiMo quirks
+
+- **Base64-encoded full WAV, not raw PCM.** Decode the base64 and write to disk as-is — do not feed the bytes through any PCM-to-WAV wrapper.
+- **No live caller wired up yet.** MiMo is reachable only through the three offline modules and their fixture-driven tests until a runner is wired up.
+- **Non-streaming only.** `buildMimoTtsRequest` sets `stream: false`; streaming is not yet supported.
+- **Small built-in voice list.** Only the four named voices in the request-shape table above. `mimo_default` exists upstream but varies by deployed cluster, so the documented constant lists explicit names instead.
+
 ## Where artifacts are written
 
 All intermediate and final artifacts go in `data/audio/`:
