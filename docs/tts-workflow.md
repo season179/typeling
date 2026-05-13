@@ -1,6 +1,6 @@
 # Episode Audio Generation Workflow
 
-This document describes how to generate TTS audio for episodes of the Typeling typing stories. The pipeline supports multiple children — currently **Zack** (chapter 1) and **Winni** (chapter 1, audio-prep only). The TTS provider used in the final stage can vary by episode: **Gemini** is in use today; **MiMo** has an offline request/response/WAV-writer contract but no live runner yet.
+This document describes how to generate TTS audio for episodes of the Typeling typing stories. The pipeline supports multiple children — currently **Zack** and **Winni**. The TTS provider used in the final stage can vary by episode: **Gemini** is in use today; **MiMo** has an offline contract only.
 
 **This workflow does not modify the typing story source.** Season JSON files (e.g. `seasons/zack-s1.json`, `seasons/winni-s1.json`) are read-only. All derived artifacts are written to `data/audio/`.
 
