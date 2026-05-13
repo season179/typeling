@@ -14,6 +14,7 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { MIMO_MODEL_BUILT_IN, type MimoModel } from "./mimoTtsRequest";
 import {
 	extractMimoAudioData,
 	type MimoTtsResponse,
@@ -28,7 +29,8 @@ export interface MimoWavMetadata {
 	episode_idx: number;
 	provider: string;
 	model: string;
-	selected_voice: string;
+	/** Built-in voice name; `null` for Director Mode (voice is described in user msg). */
+	selected_voice: string | null;
 	audio_format: string;
 	transcript_hash: string;
 	generated_at: string; // ISO-8601
@@ -44,7 +46,14 @@ export interface MimoGenerateWavInput {
 	/** Metadata fields. */
 	season: string;
 	episodeIdx: number;
-	voice: string;
+	/** Built-in voice name; `null` in Director Mode. */
+	voice: string | null;
+	/**
+	 * MiMo model used for this request. Defaults to {@link MIMO_MODEL_BUILT_IN}
+	 * for back-compat with the built-in-voice path. Set to
+	 * `mimo-v2.5-tts-voicedesign` for Director Mode runs.
+	 */
+	model?: MimoModel;
 	/** SHA-256 hex digest of the styled transcript text. */
 	transcriptHash: string;
 	/** ISO-8601 timestamp for the metadata. */
@@ -62,7 +71,6 @@ export class MimoGenerateWavError extends Error {
 
 // ── Constants ──────────────────────────────────────────────────────
 
-const MODEL = "mimo-v2.5-tts";
 const PROVIDER = "mimo";
 
 // ── Validation ─────────────────────────────────────────────────────
@@ -139,7 +147,7 @@ export async function mimoGenerateWav(
 		source_season: input.season,
 		episode_idx: input.episodeIdx,
 		provider: PROVIDER,
-		model: MODEL,
+		model: input.model ?? MIMO_MODEL_BUILT_IN,
 		selected_voice: input.voice,
 		audio_format: extracted.format,
 		transcript_hash: input.transcriptHash,

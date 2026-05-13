@@ -1,11 +1,15 @@
 /**
- * Pure MiMo TTS request builder for mimo-v2.5-tts.
+ * Pure MiMo TTS request builder.
  * Does NOT read MIMO_API_KEY or call any network API.
  *
  * MiMo uses an OpenAI-compatible chat-completions endpoint where:
- * - Style guidance belongs in a `user` message
+ * - Style guidance / voice description belongs in a `user` message
  * - Spoken text belongs in an `assistant` message
- * - Voice selection is via the `audio` request object
+ *
+ * Two models are supported:
+ * - `mimo-v2.5-tts` — built-in voices; voice is selected via `audio.voice`.
+ * - `mimo-v2.5-tts-voicedesign` — Director Mode; voice is described in the
+ *   user message (Character / Scene / Guidance) and `audio.voice` is omitted.
  *
  * @see https://platform.mimoai.com/docs (Xiaomi MiMo TTS documentation)
  */
@@ -23,10 +27,25 @@ export type MimoBuiltInVoice = (typeof MIMO_BUILT_IN_VOICES)[number];
 /** Default voice for the first experiment. */
 export const DEFAULT_MIMO_VOICE: MimoBuiltInVoice = "Mia";
 
+/** Model id for the built-in-voice endpoint. */
+export const MIMO_MODEL_BUILT_IN = "mimo-v2.5-tts" as const;
+
+/** Model id for Director Mode / Voice Design (voice described in user msg). */
+export const MIMO_MODEL_VOICE_DESIGN = "mimo-v2.5-tts-voicedesign" as const;
+
+export type MimoModel =
+	| typeof MIMO_MODEL_BUILT_IN
+	| typeof MIMO_MODEL_VOICE_DESIGN;
+
 // ── Types ──────────────────────────────────────────────────────────
 
 export interface MimoAudioConfig {
-	voice: string;
+	/**
+	 * Built-in voice name. Required for `mimo-v2.5-tts`; omitted for
+	 * `mimo-v2.5-tts-voicedesign` (Director Mode), where the voice is
+	 * described in the user message instead.
+	 */
+	voice?: string;
 	/** Audio format for the response. "wav" is suitable for local playback. */
 	format: "wav" | "mp3" | "pcm";
 }
@@ -37,7 +56,7 @@ export interface MimoMessage {
 }
 
 export interface MimoTtsRequest {
-	model: string;
+	model: MimoModel;
 	messages: MimoMessage[];
 	audio: MimoAudioConfig;
 	/** Non-streaming for the first experiment (streaming is not yet available). */
@@ -50,7 +69,11 @@ export interface BuildMimoTtsRequestInput {
 	 * Placed in the `user` message so MiMo receives performance direction
 	 * without speaking the instructions aloud.
 	 *
-	 * Example: "Speak warmly and gently, like a parent reading a bedtime story."
+	 * Built-in voice example: "Speak warmly and gently, like a parent reading
+	 * a bedtime story."
+	 *
+	 * Director Mode example: free-form character/scene/guidance prose that
+	 * describes the voice timbre, the situation, and the acting direction.
 	 */
 	styleGuidance: string;
 	/**
@@ -61,12 +84,20 @@ export interface BuildMimoTtsRequestInput {
 	/**
 	 * Built-in English voice name. Defaults to {@link DEFAULT_MIMO_VOICE}.
 	 * Valid values: Mia, Chloe, Milo, Dean.
+	 *
+	 * Ignored when `model` is `mimo-v2.5-tts-voicedesign`; in Director Mode
+	 * the voice is described in the user message.
 	 */
 	voice?: string;
 	/**
 	 * Audio format for the response. Defaults to "wav" for local playback.
 	 */
 	format?: "wav" | "mp3" | "pcm";
+	/**
+	 * Which MiMo model to target. Defaults to `mimo-v2.5-tts` (built-in voices).
+	 * Use `mimo-v2.5-tts-voicedesign` for Director Mode.
+	 */
+	model?: MimoModel;
 }
 
 // ── Errors ─────────────────────────────────────────────────────────
@@ -81,12 +112,13 @@ export class MimoTtsRequestError extends Error {
 // ── Builder ────────────────────────────────────────────────────────
 
 /**
- * Build a MiMo chat-completions TTS request for mimo-v2.5-tts.
+ * Build a MiMo chat-completions TTS request.
  *
  * The request:
- * - Places style guidance in a `user` message
+ * - Places style guidance (or character/scene/guidance prose) in a `user` message
  * - Places spoken text in an `assistant` message
- * - Selects a built-in English voice through the `audio` object
+ * - For `mimo-v2.5-tts`: selects a built-in English voice through `audio.voice`
+ * - For `mimo-v2.5-tts-voicedesign`: omits `audio.voice` (voice is described in user msg)
  * - Requests WAV format suitable for local playback
  *
  * @throws {MimoTtsRequestError} when inputs are invalid.
@@ -106,11 +138,16 @@ export function buildMimoTtsRequest(
 		);
 	}
 
-	const voice = input.voice ?? DEFAULT_MIMO_VOICE;
+	const model = input.model ?? MIMO_MODEL_BUILT_IN;
 	const format = input.format ?? "wav";
 
+	const audio: MimoAudioConfig =
+		model === MIMO_MODEL_VOICE_DESIGN
+			? { format }
+			: { voice: input.voice ?? DEFAULT_MIMO_VOICE, format };
+
 	return {
-		model: "mimo-v2.5-tts",
+		model,
 		messages: [
 			{
 				role: "user",
@@ -121,10 +158,7 @@ export function buildMimoTtsRequest(
 				content: input.spokenText,
 			},
 		],
-		audio: {
-			voice,
-			format,
-		},
+		audio,
 		stream: false,
 	};
 }

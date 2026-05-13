@@ -7,20 +7,26 @@
  *   bun run scripts/generate-winni-ch1-mimo-audio.ts --transcript data/audio/winni-s1-e0-styled-transcript.txt
  *   bun run scripts/generate-winni-ch1-mimo-audio.ts --output data/audio/winni-s1-e0.wav
  *   bun run scripts/generate-winni-ch1-mimo-audio.ts --voice Chloe
+ *   bun run scripts/generate-winni-ch1-mimo-audio.ts --director
  *
  * Requires MIMO_API_KEY in the environment.
- * Calls Xiaomi's OpenAI-compatible chat-completions endpoint for mimo-v2.5-tts.
+ * Calls Xiaomi's OpenAI-compatible chat-completions endpoint.
  *
- * MiMo is single-voice for built-in voices. The styled transcript's first line
- * (TTS preamble) is sent as MiMo's style guidance (user message); the remainder
- * is sent as the spoken text (assistant message).
+ * Two modes:
  *
- * The styled transcript is authored in Gemini's multi-speaker bracketed-tag
- * format (e.g. `Storyteller: [warmly] …`). Before sending to MiMo we strip
- * the `Storyteller:` / `Pixel:` prefixes — otherwise MiMo's single voice
- * reads them aloud — and the `[bracket]` mood tags, which use Gemini's
- * inline convention rather than MiMo's `(paren)` audio-tag syntax. The
- * natural-language style description in the preamble carries the tone.
+ * - **Built-in voice (default)** — model `mimo-v2.5-tts`. The styled
+ *   transcript's first line (TTS preamble) is sent as MiMo's style guidance
+ *   (user message); the remainder is sent as the spoken text (assistant
+ *   message). Speaker labels (`Storyteller:` / `Pixel:`) and Gemini-style
+ *   `[bracket]` mood tags are stripped — MiMo's single built-in voice would
+ *   otherwise read them aloud, and bracket tags aren't reliably honoured by
+ *   this model.
+ *
+ * - **Director Mode (`--director`)** — model `mimo-v2.5-tts-voicedesign`.
+ *   The preamble becomes a free-form Character/Scene/Guidance description
+ *   in the user message. Speaker labels are still stripped (the model still
+ *   produces a single designed voice), but inline `[style]` tags are kept
+ *   because voicedesign supports them as audio-tag control.
  *
  * @see https://platform.mimoai.com/docs
  */
@@ -40,6 +46,9 @@ import {
 	buildMimoTtsRequest,
 	DEFAULT_MIMO_VOICE,
 	MIMO_BUILT_IN_VOICES,
+	MIMO_MODEL_BUILT_IN,
+	MIMO_MODEL_VOICE_DESIGN,
+	type MimoModel,
 } from "../src/lib/mimoTtsRequest";
 
 const ROOT = join(import.meta.dir, "..");
@@ -73,12 +82,20 @@ export interface WinniMimoCliInput {
 	fetchFn?: typeof fetch;
 	sleepFn?: (ms: number) => Promise<void>;
 	generatedAt?: string;
+	/**
+	 * When true, target `mimo-v2.5-tts-voicedesign` (Director Mode) instead of
+	 * the built-in `mimo-v2.5-tts` voices. The preamble is sent as a Director
+	 * Mode description and `[style]` audio tags are kept in the spoken body.
+	 */
+	director?: boolean;
 }
 
 export interface WinniMimoCliResult {
 	outputPath: string;
 	metaPath: string;
-	voice: string;
+	model: MimoModel;
+	/** Built-in voice name; `null` in Director Mode (voice is described in user msg). */
+	voice: string | null;
 	transcriptHash: string;
 }
 
@@ -120,25 +137,67 @@ export function splitStyledTranscript(transcript: string): {
 	return { styleGuidance, spokenText };
 }
 
+export interface CleanSpokenTextOptions {
+	/**
+	 * When true, keep inline `[style]` / `[audio]` bracket tags. The
+	 * `mimo-v2.5-tts-voicedesign` model documents these as audio-tag control,
+	 * so Director Mode runs should preserve them. Defaults to `false`, which
+	 * matches the built-in-voice path where bracket tags aren't reliably
+	 * honoured.
+	 */
+	keepBracketTags?: boolean;
+}
+
 /**
- * Strip Gemini-style speaker labels and bracketed mood tags from each line.
+ * Strip Gemini-style speaker labels (and optionally bracketed mood tags) from
+ * each line.
  *
- * MiMo built-in voices are single-voice — a leading `Storyteller:` or
- * `Pixel:` would otherwise be read aloud. `[warmly]` / `[gently]` style
- * tags use Gemini's bracket convention; MiMo's audio-tag syntax uses
- * parentheses, and mid-text brackets are unreliable, so we drop them
- * and rely on the style preamble (user message) to set tone.
+ * MiMo always produces a single voice per call — a leading `Storyteller:` or
+ * `Pixel:` would otherwise be read aloud — so speaker labels are stripped in
+ * both modes. Bracket tags are stripped by default for the built-in `mimo-v2.5-tts`
+ * model (where they're unreliable) but kept when `keepBracketTags` is true so
+ * voicedesign / Director Mode can interpret them as audio-tag control.
  */
-export function cleanSpokenTextForMimo(spokenText: string): string {
+export function cleanSpokenTextForMimo(
+	spokenText: string,
+	options: CleanSpokenTextOptions = {},
+): string {
+	const keepBracketTags = options.keepBracketTags ?? false;
 	return spokenText
 		.split("\n")
-		.map((line) =>
-			line
-				.replace(/^\s*(?:Storyteller|Pixel):\s*/i, "")
-				.replace(/\[[^\]\n]+\]\s*/g, "")
-				.trimEnd(),
-		)
+		.map((line) => {
+			const noLabel = line.replace(/^\s*(?:Storyteller|Pixel):\s*/i, "");
+			const cleaned = keepBracketTags
+				? noLabel
+				: noLabel.replace(/\[[^\]\n]+\]\s*/g, "");
+			return cleaned.trimEnd();
+		})
 		.join("\n");
+}
+
+interface ResolvedMode {
+	model: MimoModel;
+	/** Built-in voice name, or null in Director Mode. */
+	voice: string | null;
+	keepBracketTags: boolean;
+}
+
+function resolveMode(input: WinniMimoCliInput): ResolvedMode {
+	if (input.director) {
+		return {
+			model: MIMO_MODEL_VOICE_DESIGN,
+			voice: null,
+			keepBracketTags: true,
+		};
+	}
+	const voice = input.voice ?? DEFAULT_MIMO_VOICE;
+	if (!(MIMO_BUILT_IN_VOICES as readonly string[]).includes(voice)) {
+		throw new CliError(
+			`Unknown MiMo voice "${voice}". ` +
+				`Choose one of: ${MIMO_BUILT_IN_VOICES.join(", ")}.`,
+		);
+	}
+	return { model: MIMO_MODEL_BUILT_IN, voice, keepBracketTags: false };
 }
 
 /**
@@ -152,17 +211,11 @@ export async function generateWinniMimoAudio(
 	const season = input.season ?? DEFAULT_SEASON;
 	const episodeIdx = input.episodeIdx ?? DEFAULT_EPISODE_IDX;
 	const maxRetries = input.maxRetries ?? DEFAULT_MAX_RETRIES;
-	const voice = input.voice ?? DEFAULT_MIMO_VOICE;
 	const outputPath =
 		input.outputPath ??
 		join(DEFAULT_OUTPUT_DIR, `${season}-e${episodeIdx}.wav`);
 
-	if (!(MIMO_BUILT_IN_VOICES as readonly string[]).includes(voice)) {
-		throw new CliError(
-			`Unknown MiMo voice "${voice}". ` +
-				`Choose one of: ${MIMO_BUILT_IN_VOICES.join(", ")}.`,
-		);
-	}
+	const mode = resolveMode(input);
 
 	// ── Read styled transcript ──────────────────────────────────────
 
@@ -200,28 +253,28 @@ export async function generateWinniMimoAudio(
 		);
 	}
 
-	const spokenText = cleanSpokenTextForMimo(rawSpokenText);
+	const spokenText = cleanSpokenTextForMimo(rawSpokenText, {
+		keepBracketTags: mode.keepBracketTags,
+	});
 
 	if (spokenText.trim().length === 0) {
 		throw new CliError(
-			`Styled transcript body is empty after stripping speaker labels and bracket tags: ${transcriptPath}`,
+			`Styled transcript body is empty after stripping speaker labels${
+				mode.keepBracketTags ? "" : " and bracket tags"
+			}: ${transcriptPath}`,
 		);
 	}
-
-	// ── Build request ───────────────────────────────────────────────
 
 	const request = buildMimoTtsRequest({
 		styleGuidance,
 		spokenText,
-		voice,
+		model: mode.model,
+		voice: mode.voice ?? undefined,
 	});
 
-	// Compute transcript hash from the full styled transcript for traceability.
 	const transcriptHash = createHash("sha256")
 		.update(styledTranscript)
 		.digest("hex");
-
-	// ── Call MiMo TTS with retry ────────────────────────────────────
 
 	const response = await callMimoTtsWithRetry({
 		request,
@@ -232,14 +285,13 @@ export async function generateWinniMimoAudio(
 		maxRetries,
 	});
 
-	// ── Write WAV + metadata ────────────────────────────────────────
-
 	await mimoGenerateWav({
 		response,
 		outputPath,
 		season,
 		episodeIdx,
-		voice,
+		voice: mode.voice,
+		model: mode.model,
 		transcriptHash,
 		generatedAt: input.generatedAt,
 	});
@@ -247,7 +299,8 @@ export async function generateWinniMimoAudio(
 	return {
 		outputPath,
 		metaPath: mimoMetaPath(outputPath),
-		voice,
+		model: mode.model,
+		voice: mode.voice,
 		transcriptHash,
 	};
 }
@@ -264,6 +317,7 @@ async function main() {
 			"episode-idx": { type: "string" },
 			voice: { type: "string" },
 			"max-retries": { type: "string" },
+			director: { type: "boolean", default: false },
 		},
 		strict: true,
 	});
@@ -284,10 +338,17 @@ async function main() {
 		);
 	}
 
-	const voice = values.voice ?? DEFAULT_MIMO_VOICE;
+	const director = values.director === true;
+	if (director && values.voice !== undefined) {
+		console.warn(
+			"Note: --voice is ignored in --director mode (voice is described in the Director Mode user message).",
+		);
+	}
 
+	const model = director ? MIMO_MODEL_VOICE_DESIGN : MIMO_MODEL_BUILT_IN;
+	const voiceLabel = director ? "(designed)" : (values.voice ?? DEFAULT_MIMO_VOICE);
 	console.log(
-		`Calling MiMo TTS (model=mimo-v2.5-tts, voice=${voice}, maxRetries=${maxRetries})…`,
+		`Calling MiMo TTS (model=${model}, voice=${voiceLabel}, maxRetries=${maxRetries})…`,
 	);
 
 	let result: WinniMimoCliResult;
@@ -297,8 +358,9 @@ async function main() {
 			outputPath: values.output,
 			season: values.season,
 			episodeIdx,
-			voice,
+			voice: values.voice,
 			maxRetries,
+			director,
 		});
 	} catch (err) {
 		if (err instanceof MimoTtsAuthError) {

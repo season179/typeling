@@ -3,6 +3,8 @@ import {
 	buildMimoTtsRequest,
 	DEFAULT_MIMO_VOICE,
 	MIMO_BUILT_IN_VOICES,
+	MIMO_MODEL_BUILT_IN,
+	MIMO_MODEL_VOICE_DESIGN,
 	type MimoTtsRequest,
 	MimoTtsRequestError,
 } from "./mimoTtsRequest";
@@ -98,10 +100,61 @@ describe("buildMimoTtsRequest", () => {
 			expect(msg.content.length).toBeGreaterThan(0);
 		}
 
-		// Audio shape
-		expect(typeof req.audio.voice).toBe("string");
-		expect(req.audio.voice.length).toBeGreaterThan(0);
+		// Audio shape (built-in voice path → voice is required and non-empty)
+		const voice = req.audio.voice;
+		expect(typeof voice).toBe("string");
+		expect(voice?.length).toBeGreaterThan(0);
 		expect(["wav", "mp3", "pcm"]).toContain(req.audio.format);
+	});
+});
+
+describe("buildMimoTtsRequest — Director Mode (voicedesign)", () => {
+	test("uses model mimo-v2.5-tts-voicedesign when requested", () => {
+		const req = buildMimoTtsRequest({
+			styleGuidance: STYLE_GUIDANCE,
+			spokenText: SPOKEN_TEXT,
+			model: MIMO_MODEL_VOICE_DESIGN,
+		});
+		expect(req.model).toBe(MIMO_MODEL_VOICE_DESIGN);
+	});
+
+	test("omits audio.voice in Director Mode", () => {
+		const req = buildMimoTtsRequest({
+			styleGuidance: STYLE_GUIDANCE,
+			spokenText: SPOKEN_TEXT,
+			model: MIMO_MODEL_VOICE_DESIGN,
+		});
+		expect(req.audio.voice).toBeUndefined();
+		expect(req.audio.format).toBe("wav");
+	});
+
+	test("ignores voice input when Director Mode is requested", () => {
+		const req = buildMimoTtsRequest({
+			styleGuidance: STYLE_GUIDANCE,
+			spokenText: SPOKEN_TEXT,
+			model: MIMO_MODEL_VOICE_DESIGN,
+			voice: "Chloe",
+		});
+		expect(req.audio.voice).toBeUndefined();
+	});
+
+	test("defaults to mimo-v2.5-tts when model not specified", () => {
+		const req = defaultRequest();
+		expect(req.model).toBe(MIMO_MODEL_BUILT_IN);
+		expect(req.audio.voice).toBe(DEFAULT_MIMO_VOICE);
+	});
+
+	test("preserves user/assistant message structure in Director Mode", () => {
+		const req = buildMimoTtsRequest({
+			styleGuidance: STYLE_GUIDANCE,
+			spokenText: SPOKEN_TEXT,
+			model: MIMO_MODEL_VOICE_DESIGN,
+		});
+		expect(req.messages).toHaveLength(2);
+		expect(req.messages[0]?.role).toBe("user");
+		expect(req.messages[0]?.content).toBe(STYLE_GUIDANCE);
+		expect(req.messages[1]?.role).toBe("assistant");
+		expect(req.messages[1]?.content).toBe(SPOKEN_TEXT);
 	});
 });
 

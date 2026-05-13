@@ -141,6 +141,17 @@ describe("cleanSpokenTextForMimo", () => {
 		const input = "storyteller: hi\nPIXEL: hello";
 		expect(cleanSpokenTextForMimo(input)).toBe("hi\nhello");
 	});
+
+	it("keeps [bracket] tags when keepBracketTags is true (Director Mode)", () => {
+		const input = [
+			"Storyteller: [warmly] Luma was playing in the garden.",
+			"Pixel: [curiously] Hello?",
+		].join("\n");
+		const out = cleanSpokenTextForMimo(input, { keepBracketTags: true });
+		expect(out).not.toMatch(/Storyteller|Pixel/);
+		expect(out).toContain("[warmly]");
+		expect(out).toContain("[curiously]");
+	});
 });
 
 // ── generateWinniMimoAudio ─────────────────────────────────────────
@@ -370,6 +381,60 @@ describe("generateWinniMimoAudio", () => {
 		expect(fetchFn).toHaveBeenCalledTimes(2);
 		const wavStat = await stat(result.outputPath);
 		expect(wavStat.size).toBeGreaterThan(44);
+	});
+
+	it("Director Mode sends voicedesign model, no audio.voice, keeps [bracket] tags", async () => {
+		const fetchFn = okFetch(fixtureResponse());
+
+		const result = await generateWinniMimoAudio({
+			transcriptPath,
+			outputPath,
+			apiKey: "test-key",
+			fetchFn,
+			sleepFn: noSleep,
+			director: true,
+			generatedAt: "2026-05-13T00:00:00.000Z",
+		});
+
+		expect(result.model).toBe("mimo-v2.5-tts-voicedesign");
+		expect(result.voice).toBeNull();
+
+		const calls = (fetchFn as unknown as ReturnType<typeof mock>).mock.calls;
+		const [, init] = calls[0] as [string, RequestInit];
+		const body = JSON.parse(init.body as string);
+
+		expect(body.model).toBe("mimo-v2.5-tts-voicedesign");
+		expect(body.audio.voice).toBeUndefined();
+		expect(body.audio.format).toBe("wav");
+		expect(body.messages[1].content).toMatch(
+			/\[gently\]|\[excitedly\]|\[warmly\]/,
+		);
+		expect(body.messages[1].content).not.toMatch(/Storyteller:|Pixel:/);
+
+		const meta = JSON.parse(await readFile(result.metaPath, "utf-8"));
+		expect(meta.model).toBe("mimo-v2.5-tts-voicedesign");
+		expect(meta.selected_voice).toBeNull();
+	});
+
+	it("Director Mode ignores --voice (voice is described in user message)", async () => {
+		const fetchFn = okFetch(fixtureResponse());
+
+		const result = await generateWinniMimoAudio({
+			transcriptPath,
+			outputPath,
+			apiKey: "test-key",
+			fetchFn,
+			sleepFn: noSleep,
+			director: true,
+			voice: "Chloe",
+		});
+
+		expect(result.voice).toBeNull();
+
+		const calls = (fetchFn as unknown as ReturnType<typeof mock>).mock.calls;
+		const [, init] = calls[0] as [string, RequestInit];
+		const body = JSON.parse(init.body as string);
+		expect(body.audio.voice).toBeUndefined();
 	});
 
 	it("does not require network access in tests (injected fetch)", async () => {
