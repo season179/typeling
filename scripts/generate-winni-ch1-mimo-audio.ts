@@ -13,9 +13,14 @@
  *
  * MiMo is single-voice for built-in voices. The styled transcript's first line
  * (TTS preamble) is sent as MiMo's style guidance (user message); the remainder
- * is sent as the spoken text (assistant message). Speaker labels in the
- * transcript body will be read aloud — edit the styled transcript by hand if
- * you want them stripped.
+ * is sent as the spoken text (assistant message).
+ *
+ * The styled transcript is authored in Gemini's multi-speaker bracketed-tag
+ * format (e.g. `Storyteller: [warmly] …`). Before sending to MiMo we strip
+ * the `Storyteller:` / `Pixel:` prefixes — otherwise MiMo's single voice
+ * reads them aloud — and the `[bracket]` mood tags, which use Gemini's
+ * inline convention rather than MiMo's `(paren)` audio-tag syntax. The
+ * natural-language style description in the preamble carries the tone.
  *
  * @see https://platform.mimoai.com/docs
  */
@@ -116,6 +121,27 @@ export function splitStyledTranscript(transcript: string): {
 }
 
 /**
+ * Strip Gemini-style speaker labels and bracketed mood tags from each line.
+ *
+ * MiMo built-in voices are single-voice — a leading `Storyteller:` or
+ * `Pixel:` would otherwise be read aloud. `[warmly]` / `[gently]` style
+ * tags use Gemini's bracket convention; MiMo's audio-tag syntax uses
+ * parentheses, and mid-text brackets are unreliable, so we drop them
+ * and rely on the style preamble (user message) to set tone.
+ */
+export function cleanSpokenTextForMimo(spokenText: string): string {
+	return spokenText
+		.split("\n")
+		.map((line) =>
+			line
+				.replace(/^\s*(?:Storyteller|Pixel):\s*/i, "")
+				.replace(/\[[^\]\n]+\]\s*/g, "")
+				.trimEnd(),
+		)
+		.join("\n");
+}
+
+/**
  * Programmatic entry point — exposed for tests.
  * The CLI wrapper at the bottom of this file calls this with parsed argv.
  */
@@ -159,7 +185,8 @@ export async function generateWinniMimoAudio(
 
 	// ── Split into MiMo-friendly style + spoken parts ───────────────
 
-	const { styleGuidance, spokenText } = splitStyledTranscript(styledTranscript);
+	const { styleGuidance, spokenText: rawSpokenText } =
+		splitStyledTranscript(styledTranscript);
 
 	if (styleGuidance.length === 0) {
 		throw new CliError(
@@ -167,9 +194,17 @@ export async function generateWinniMimoAudio(
 				"The first line must be performance direction (e.g. 'Make Storyteller sound warm…').",
 		);
 	}
-	if (spokenText.length === 0) {
+	if (rawSpokenText.length === 0) {
 		throw new CliError(
 			`Styled transcript has no spoken body after the preamble: ${transcriptPath}`,
+		);
+	}
+
+	const spokenText = cleanSpokenTextForMimo(rawSpokenText);
+
+	if (spokenText.trim().length === 0) {
+		throw new CliError(
+			`Styled transcript body is empty after stripping speaker labels and bracket tags: ${transcriptPath}`,
 		);
 	}
 

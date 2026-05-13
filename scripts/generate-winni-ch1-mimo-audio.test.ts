@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { mimoMetaPath } from "../src/lib/mimoGenerateWav";
 import type { MimoTtsResponse } from "../src/lib/mimoTtsResponse";
 import {
+	cleanSpokenTextForMimo,
 	generateWinniMimoAudio,
 	splitStyledTranscript,
 } from "./generate-winni-ch1-mimo-audio";
@@ -97,6 +98,48 @@ describe("splitStyledTranscript", () => {
 		const { styleGuidance, spokenText } = splitStyledTranscript(noBlank);
 		expect(styleGuidance).toBe("Make Storyteller sound warm.");
 		expect(spokenText).toBe("Storyteller: Hello.\nPixel: Hi!");
+	});
+});
+
+// ── cleanSpokenTextForMimo ─────────────────────────────────────────
+
+describe("cleanSpokenTextForMimo", () => {
+	it("strips Storyteller: and Pixel: speaker prefixes", () => {
+		const input = [
+			"Storyteller: Luma walked through the garden.",
+			"Pixel: Hello?",
+			"Storyteller: said Luma softly.",
+		].join("\n");
+		expect(cleanSpokenTextForMimo(input)).toBe(
+			[
+				"Luma walked through the garden.",
+				"Hello?",
+				"said Luma softly.",
+			].join("\n"),
+		);
+	});
+
+	it("strips [bracketed] mood tags anywhere on a line", () => {
+		const input = [
+			"Storyteller: [warmly] Luma was playing in the garden.",
+			"Pixel: [curiously] Hello?",
+			"Storyteller: [gently] The door began to glow.",
+		].join("\n");
+		const out = cleanSpokenTextForMimo(input);
+		expect(out).not.toMatch(/Storyteller|Pixel/);
+		expect(out).not.toMatch(/\[/);
+		expect(out).toContain("Luma was playing in the garden.");
+		expect(out).toContain("Hello?");
+	});
+
+	it("preserves lines that have no speaker prefix or bracket tag", () => {
+		const input = "Just a plain narrative line.";
+		expect(cleanSpokenTextForMimo(input)).toBe("Just a plain narrative line.");
+	});
+
+	it("is case-insensitive for speaker labels", () => {
+		const input = "storyteller: hi\nPIXEL: hello";
+		expect(cleanSpokenTextForMimo(input)).toBe("hi\nhello");
 	});
 });
 
@@ -185,8 +228,14 @@ describe("generateWinniMimoAudio", () => {
 			"Make Storyteller sound warm and gentle",
 		);
 		expect(body.messages[1].role).toBe("assistant");
-		expect(body.messages[1].content).toContain("Storyteller: [gently]");
-		expect(body.messages[1].content).toContain("Pixel: [excitedly]");
+		// Speaker labels and Gemini-style [bracket] tags must be stripped
+		// so MiMo (single-voice) doesn't read them aloud.
+		expect(body.messages[1].content).not.toMatch(/Storyteller:|Pixel:/);
+		expect(body.messages[1].content).not.toMatch(/\[gently\]|\[excitedly\]/);
+		expect(body.messages[1].content).toContain(
+			"In a cosy workshop filled with soft light",
+		);
+		expect(body.messages[1].content).toContain("What a lovely day!");
 	});
 
 	it("uses the chat-completions endpoint at the documented base", async () => {

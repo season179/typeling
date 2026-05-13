@@ -16,9 +16,15 @@ data/audio/<child>-s1-e<n>-source.txt                (raw episode text)
 data/audio/<child>-s1-e<n>-transcript.txt            (Storyteller/Pixel speaker labels)
         │
         ▼  style-transcript.ts                        (requires OPENROUTER_API_KEY)
-data/audio/<child>-s1-e<n>-styled-transcript.txt     (TTS preamble + audio tags)
+data/audio/<child>-s1-e<n>-styled-transcript.txt     (Gemini-format: TTS preamble + [bracketed] tags)
         │
-        ▼  TTS provider                               (Gemini for Zack, MiMo for Winni)
+        ├─▶ Gemini path (Zack)                       — multi-speaker, [bracket] tags consumed as-is
+        │      generate-zack-ch1-audio.ts
+        │
+        └─▶ MiMo path (Winni)                        — single-voice; runner strips speaker labels
+               generate-winni-ch1-mimo-audio.ts        and [bracket] tags before posting
+        │
+        ▼
 data/audio/<child>-s1-e<n>.wav                       (final audio)
 data/audio/<child>-s1-e<n>.meta.json                 (generation metadata)
 ```
@@ -211,7 +217,9 @@ bun run scripts/style-transcript.ts \
   --output data/audio/winni-s1-e0-styled-transcript.txt
 ```
 
-Review the same checklist as the Zack flow (story meaning preserved, British English intact, etc.). MiMo's TTS preamble (the first line) becomes the `user` message; everything after the blank line becomes the `assistant` message (the spoken text).
+Review the same checklist as the Zack flow (story meaning preserved, British English intact, etc.).
+
+> **Important — MiMo differs from Gemini here.** The styling step emits the same Gemini-native format for both flows (`Storyteller:` / `Pixel:` speaker prefixes plus `[bracketed]` mood tags). Gemini consumes that directly, but MiMo's `mimo-v2.5-tts` is **single-voice per call** and uses **parenthesis-prefixed** style tags (e.g. `(warmly)`), not square brackets mid-line. The Winni runner in step 4 adapts the same artifact for MiMo automatically — see below.
 
 #### 4. Generate TTS audio
 
@@ -224,6 +232,17 @@ Equivalent to:
 ```bash
 bun run scripts/generate-winni-ch1-mimo-audio.ts
 ```
+
+Before calling MiMo, the runner adapts the Gemini-format styled transcript:
+
+1. **Split**: the first non-empty line is the TTS preamble → `user` message (style guidance); the body after the blank-line separator → `assistant` message (spoken text).
+2. **Strip speaker labels**: `Storyteller:` and `Pixel:` prefixes are removed from each line of the spoken text. MiMo's single voice would otherwise read those words aloud.
+3. **Strip bracket tags**: `[warmly]`, `[gently]`, `[curiously]`, etc. are removed. MiMo's inline audio-tag syntax uses parentheses, and mid-text square brackets are unreliable. Tone is carried by the natural-language preamble in the `user` message.
+4. **Build request** with `model: mimo-v2.5-tts`, `audio.voice`, and `audio.format: wav`; POST to `${MIMO_API_BASE}/chat/completions`.
+
+Implemented in `scripts/generate-winni-ch1-mimo-audio.ts`:
+- `splitStyledTranscript()` — does step 1.
+- `cleanSpokenTextForMimo()` — does steps 2 + 3.
 
 Options:
 - `--transcript <path>` — Styled transcript file (default: `data/audio/winni-s1-e0-styled-transcript.txt`)
@@ -240,7 +259,7 @@ afplay data/audio/winni-s1-e0.wav
 
 ## MiMo provider reference
 
-The MiMo path reaches the model `mimo-v2.5-tts`. The live runner (`scripts/generate-winni-ch1-mimo-audio.ts`, documented above) sits on top of three pure modules in `src/lib/` that define the request shape, response shape, and WAV writer. These modules are exercised by offline tests against `fixtures/mimo-audio-response.json` — no API key and no network are required for the unit tests.
+The MiMo path reaches the model `mimo-v2.5-tts`. The live runner (`scripts/generate-winni-ch1-mimo-audio.ts`, documented above) sits on top of three pure modules in `src/lib/` that define the request shape, response shape, and WAV writer, plus two adapter helpers exported from the runner itself (`splitStyledTranscript`, `cleanSpokenTextForMimo`). These modules are exercised by offline tests against `fixtures/mimo-audio-response.json` — no API key and no network are required for the unit tests.
 
 ### Building blocks
 
@@ -325,7 +344,8 @@ These are known limitations of the Gemini TTS API that affect this workflow:
 
 These are known limitations of the MiMo TTS API that affect this workflow:
 
-- **Single voice per request.** Built-in voices select one voice via the `audio` object. Speaker labels in the styled transcript (e.g. `Storyteller:`, `Pixel:`) will be read aloud by the same voice. If you want distinct narration vs. dialogue voices, generate separate segments and stitch them later (out of scope for the first experiment) or edit speaker labels out of the styled transcript before running.
+- **Single voice per request.** Built-in voices select one voice via the `audio` object. The styled transcript still carries `Storyteller:` / `Pixel:` labels (for Gemini compatibility), so the Winni runner strips those prefixes and the Gemini `[bracket]` mood tags automatically before posting — otherwise MiMo would read words like "Storyteller" aloud. If you want distinct narration vs. dialogue voices, generate separate segments and stitch them later (out of scope for the first experiment).
+- **Audio-tag syntax differs from Gemini.** MiMo uses parenthesis-prefixed style tags (e.g. `(warmly)Content…`) and supports a fixed-ish vocabulary like `Happy / Sad / Sighing / Lazy` for style and `Inhale / Sigh / Smile / Laugh out loud / Sob` for inline audio control. Square-bracket `[warmly]` mid-text tags — Gemini's convention — are not reliably honoured, so the runner removes them and relies on the natural-language preamble in the `user` message for tone.
 - **Built-in voices only in the first experiment.** `VoiceDesign` and `VoiceClone` model ids exist but are intentionally not used here.
 - **Non-streaming.** Per Xiaomi's docs, low-latency streaming is downgraded to a compatibility mode that returns after inference. This script always uses non-streaming (`stream: false`).
 - **Transient failures retried automatically.** HTTP 429 and 5xx responses, network errors, and missing-audio responses are retried with exponential backoff (`--max-retries`, default 3). HTTP 400, 401, and 403 fail immediately.
