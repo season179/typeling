@@ -1,6 +1,6 @@
 # Episode Audio Generation Workflow
 
-This document describes how to generate TTS audio for episodes of the Typeling typing stories. The pipeline supports multiple children — currently **Zack** and **Winni**. The TTS provider used in the final stage can vary by episode: **Gemini** is in use today; **MiMo** has an offline contract only.
+This document describes how to generate TTS audio for episodes of the Typeling typing stories. The pipeline supports multiple children — currently **Zack** and **Winni**. The TTS provider used in the final stage can vary by episode: **Gemini** is used for Zack, **MiMo** for Winni.
 
 **This workflow does not modify the typing story source.** Season JSON files (e.g. `seasons/zack-s1.json`, `seasons/winni-s1.json`) are read-only. All derived artifacts are written to `data/audio/`.
 
@@ -18,7 +18,7 @@ data/audio/<child>-s1-e<n>-transcript.txt            (Storyteller/Pixel speaker 
         ▼  style-transcript.ts                        (requires OPENROUTER_API_KEY)
 data/audio/<child>-s1-e<n>-styled-transcript.txt     (TTS preamble + audio tags)
         │
-        ▼  TTS provider                               (Gemini today, MiMo experimental)
+        ▼  TTS provider                               (Gemini for Zack, MiMo for Winni)
 data/audio/<child>-s1-e<n>.wav                       (final audio)
 data/audio/<child>-s1-e<n>.meta.json                 (generation metadata)
 ```
@@ -136,11 +136,24 @@ Check:
 
 If the output is bad, re-run step 4. Gemini occasionally returns degraded audio; the script handles transient non-audio responses automatically, but quality varies.
 
-## Winni chapter 1 audio prep
+## Winni chapter 1 (MiMo)
 
-The Winni pipeline reuses the same extraction and transcript scripts as Zack — only the season file and output paths differ. Two npm scripts wrap these steps.
+The Winni pipeline reuses the same extraction, transcript, and styling scripts as Zack — only the season file, output paths, and the final TTS provider differ. Npm scripts wrap the per-child steps.
 
-> **Note:** No style step (step 3) or TTS-generate step (step 4) exists for Winni yet. There is no `audio:winni-s1-e0:style` script and no Winni equivalent of `generate-zack-ch1-audio.ts`. The pipeline currently stops after the transcript is built.
+### MiMo TTS reference
+
+This workflow uses Xiaomi's MiMo `mimo-v2.5-tts` model via the OpenAI-compatible chat-completions endpoint. See:
+
+https://platform.mimoai.com/docs
+
+### Prerequisites
+
+| Requirement | Purpose |
+|---|---|
+| `MIMO_API_KEY` | Calls the MiMo TTS endpoint. |
+| `MIMO_API_BASE` | Optional override for the chat-completions base URL (defaults to `https://api.mimoai.com/v1`). |
+| `OPENROUTER_API_KEY` | Styles the transcript via an LLM (step 3). Only needed if not using `--fixture`. |
+| `bun install` | Dependencies must be installed. |
 
 ### Step-by-step
 
@@ -190,17 +203,52 @@ Pixel: Look at that butterfly!
 Storyteller: said Pixel, pointing with a tiny paw.
 ```
 
-## MiMo provider (offline contract, experimental)
+#### 3. Style the transcript for TTS
 
-> **No live MiMo runner script exists yet.** This section documents the offline building blocks already in the codebase. There is no `scripts/generate-*-mimo-audio.ts`, no `tts:*:mimo` npm script, and no documented env var for a MiMo endpoint key — the live caller does not exist, so neither does the wiring around it.
+```bash
+bun run scripts/style-transcript.ts \
+  --source data/audio/winni-s1-e0-transcript.txt \
+  --output data/audio/winni-s1-e0-styled-transcript.txt
+```
 
-The MiMo path is **experimental** and reaches the model `mimo-v2.5-tts`. Three pure modules in `src/lib/` define the request shape, response shape, and WAV writer. They are exercised by offline tests against `fixtures/mimo-audio-response.json` — no API key and no network are required.
+Review the same checklist as the Zack flow (story meaning preserved, British English intact, etc.). MiMo's TTS preamble (the first line) becomes the `user` message; everything after the blank line becomes the `assistant` message (the spoken text).
+
+#### 4. Generate TTS audio
+
+```bash
+bun run tts:winni-s1-e0:mimo
+```
+
+Equivalent to:
+
+```bash
+bun run scripts/generate-winni-ch1-mimo-audio.ts
+```
+
+Options:
+- `--transcript <path>` — Styled transcript file (default: `data/audio/winni-s1-e0-styled-transcript.txt`)
+- `--output <path>` — WAV output path (default: `data/audio/winni-s1-e0.wav`)
+- `--voice <name>` — Built-in voice: `Mia`, `Chloe`, `Milo`, or `Dean` (default: `Mia`)
+- `--max-retries <n>` — Max retry attempts for transient failures (default: `3`)
+
+#### 5. Listen and check the output
+
+```bash
+# macOS
+afplay data/audio/winni-s1-e0.wav
+```
+
+## MiMo provider reference
+
+The MiMo path reaches the model `mimo-v2.5-tts`. The live runner (`scripts/generate-winni-ch1-mimo-audio.ts`, documented above) sits on top of three pure modules in `src/lib/` that define the request shape, response shape, and WAV writer. These modules are exercised by offline tests against `fixtures/mimo-audio-response.json` — no API key and no network are required for the unit tests.
 
 ### Building blocks
 
 - `src/lib/mimoTtsRequest.ts` — pure request builder. Validates that style guidance and spoken text are non-empty, then returns a `mimo-v2.5-tts` chat-completion request body with the right message roles, voice, and audio format. Exposes the four built-in English voices (`Mia`, `Chloe`, `Milo`, `Dean`) with `Mia` as the default and `wav` as the default response format. No network calls.
 
-- `src/lib/mimoTtsResponse.ts` — pure response extractor. Reads base64 audio data and the declared format from `choices[0].message.audio`. A separate `validateMimoAudioResponse` helper returns a non-throwing error string so a future caller can drive retries. Reports failures like missing/empty `choices`, a message that returned text content instead of audio (transient non-audio response), and a missing or empty `audio.data` field.
+- `src/lib/mimoTtsResponse.ts` — pure response extractor. Reads base64 audio data and the declared format from `choices[0].message.audio`. A separate `validateMimoAudioResponse` helper returns a non-throwing error string so the live client can drive retries. Reports failures like missing/empty `choices`, a message that returned text content instead of audio (transient non-audio response), and a missing or empty `audio.data` field.
+
+- `src/lib/mimoTtsClient.ts` — live network client. Posts the built request to Xiaomi's OpenAI-compatible chat-completions endpoint with `Authorization: Bearer <MIMO_API_KEY>`. Retries `HTTP 429`, `HTTP 5xx`, network errors, and missing-audio responses with exponential backoff. Fails fast on `HTTP 400`, `HTTP 401`, and `HTTP 403`. The base URL defaults to `https://api.mimoai.com/v1` and can be overridden via the `MIMO_API_BASE` env var or an explicit `apiBase` argument.
 
 - `src/lib/mimoGenerateWav.ts` — decodes the base64 audio, sanity-checks the `RIFF` header (rejecting payloads under 44 bytes or with a non-RIFF prefix), and writes the bytes straight to the requested `.wav` path. Also writes a sidecar `.meta.json` containing `source_season`, `episode_idx`, `provider` (`"mimo"`), `model` (`"mimo-v2.5-tts"`), `selected_voice`, `audio_format`, `transcript_hash`, and `generated_at` (ISO-8601). The sidecar path is derived from the WAV path by swapping the extension.
 
@@ -236,18 +284,11 @@ Gemini returns raw PCM samples; the Gemini runner (`scripts/generate-zack-ch1-au
 
 ### Offline fixture and tests
 
-The MiMo tests drive the three modules using `fixtures/mimo-audio-response.json`, which mirrors the shape of a real `mimo-v2.5-tts` response. Run them with:
+The MiMo offline tests drive the pure modules using `fixtures/mimo-audio-response.json`, which mirrors the shape of a real `mimo-v2.5-tts` response. The client and runner tests inject a mock `fetch` and never touch the network. Run them with:
 
 ```bash
-bun test src/lib/mimoTtsRequest.test.ts src/lib/mimoTtsResponse.test.ts src/lib/mimoGenerateWav.test.ts
+bun test src/lib/mimoTtsRequest.test.ts src/lib/mimoTtsResponse.test.ts src/lib/mimoGenerateWav.test.ts src/lib/mimoTtsClient.test.ts scripts/generate-winni-ch1-mimo-audio.test.ts
 ```
-
-### MiMo quirks
-
-- **Base64-encoded full WAV, not raw PCM.** Decode the base64 and write to disk as-is — do not feed the bytes through any PCM-to-WAV wrapper.
-- **No live caller wired up yet.** MiMo is reachable only through the three offline modules and their fixture-driven tests until a runner is wired up.
-- **Non-streaming only.** `buildMimoTtsRequest` sets `stream: false`; streaming is not yet supported.
-- **Small built-in voice list.** Only the four named voices in the request-shape table above. `mimo_default` exists upstream but varies by deployed cluster, so the documented constant lists explicit names instead.
 
 ## Where artifacts are written
 
@@ -260,8 +301,11 @@ All intermediate and final artifacts go in `data/audio/`:
 | `zack-s1-e0-styled-transcript.txt` | Styled transcript with TTS preamble and audio tags |
 | `zack-s1-e0.wav` | Generated TTS audio (PCM, 24 kHz) |
 | `zack-s1-e0.meta.json` | Generation metadata (model, voices, transcript hash, timestamp) |
-| `winni-s1-e0-source.txt` | Raw episode text extracted from the Winni season file |
+| `winni-s1-e0-source.txt` | Raw episode text extracted from `seasons/winni-s1.json` |
 | `winni-s1-e0-transcript.txt` | Two-speaker transcript for Winni chapter 1 |
+| `winni-s1-e0-styled-transcript.txt` | Styled transcript (TTS preamble + spoken body) |
+| `winni-s1-e0.wav` | Generated MiMo TTS audio (WAV) |
+| `winni-s1-e0.meta.json` | MiMo generation metadata (provider, model, voice, format, transcript hash, timestamp) |
 
 ## Are generated audio artifacts committed?
 
@@ -277,6 +321,12 @@ These are known limitations of the Gemini TTS API that affect this workflow:
 - **Voice quality varies.** The same transcript can produce noticeably different audio on repeated runs. If the output sounds off, re-run the generation. The script does not cache or deduplicate outputs.
 - **Audio tags are hints, not commands.** Gemini interprets `[softly]`, `[gently]`, etc. as best-effort. The model does not always obey them precisely.
 
-## MiMo TTS limitations (TBD)
+## MiMo TTS limitations
 
-To be documented in a follow-up issue.
+These are known limitations of the MiMo TTS API that affect this workflow:
+
+- **Single voice per request.** Built-in voices select one voice via the `audio` object. Speaker labels in the styled transcript (e.g. `Storyteller:`, `Pixel:`) will be read aloud by the same voice. If you want distinct narration vs. dialogue voices, generate separate segments and stitch them later (out of scope for the first experiment) or edit speaker labels out of the styled transcript before running.
+- **Built-in voices only in the first experiment.** `VoiceDesign` and `VoiceClone` model ids exist but are intentionally not used here.
+- **Non-streaming.** Per Xiaomi's docs, low-latency streaming is downgraded to a compatibility mode that returns after inference. This script always uses non-streaming (`stream: false`).
+- **Transient failures retried automatically.** HTTP 429 and 5xx responses, network errors, and missing-audio responses are retried with exponential backoff (`--max-retries`, default 3). HTTP 400, 401, and 403 fail immediately.
+- **WAV is returned directly.** Unlike Gemini (raw PCM that needs wrapping), MiMo returns a full WAV container; the script writes the bytes straight to disk without double-wrapping.
