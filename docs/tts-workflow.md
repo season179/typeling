@@ -136,9 +136,59 @@ Check:
 
 If the output is bad, re-run step 4. Gemini occasionally returns degraded audio; the script handles transient non-audio responses automatically, but quality varies.
 
-## Winni chapter 1 (TBD)
+## Winni chapter 1 audio prep
 
-To be documented in a follow-up issue.
+The Winni pipeline reuses the same extraction and transcript scripts as Zack — only the season file and output paths differ. Two npm scripts wrap these steps.
+
+> **Note:** No style step (step 3) or TTS-generate step (step 4) exists for Winni yet. There is no `audio:winni-s1-e0:style` script and no Winni equivalent of `generate-zack-ch1-audio.ts`. The pipeline currently stops after the transcript is built.
+
+### Step-by-step
+
+#### 1. Extract the source text
+
+Pulls episode 0 from `seasons/winni-s1.json` into a plain-text file.
+
+```bash
+bun run audio:winni-s1-e0:extract
+```
+
+This runs:
+
+```bash
+bun run scripts/extract-audio-source.ts --season seasons/winni-s1.json --output data/audio/winni-s1-e0-source.txt --episode-idx 0
+```
+
+| Parameter | Value |
+|---|---|
+| Source | `seasons/winni-s1.json` |
+| Episode index | `0` |
+| Output | `data/audio/winni-s1-e0-source.txt` |
+
+#### 2. Build the two-speaker transcript
+
+Converts the raw source text into a speaker-labelled transcript. Dialogue (text inside `"quotes"`) is assigned to **Pixel**; narration is assigned to **Storyteller**.
+
+```bash
+bun run audio:winni-s1-e0:transcript
+```
+
+This runs:
+
+```bash
+bun run scripts/convert-to-transcript.ts --source data/audio/winni-s1-e0-source.txt --output data/audio/winni-s1-e0-transcript.txt
+```
+
+| Parameter | Value |
+|---|---|
+| Source | `data/audio/winni-s1-e0-source.txt` |
+| Output | `data/audio/winni-s1-e0-transcript.txt` |
+
+Output format is the same as Zack:
+```
+Storyteller: Once upon a time, in a little garden...
+Pixel: Look at that butterfly!
+Storyteller: said Pixel, pointing with a tiny paw.
+```
 
 ## Where artifacts are written
 
@@ -151,6 +201,8 @@ All intermediate and final artifacts go in `data/audio/`:
 | `zack-s1-e0-styled-transcript.txt` | Styled transcript with TTS preamble and audio tags |
 | `zack-s1-e0.wav` | Generated TTS audio (PCM, 24 kHz) |
 | `zack-s1-e0.meta.json` | Generation metadata (model, voices, transcript hash, timestamp) |
+| `winni-s1-e0-source.txt` | Raw episode text extracted from the Winni season file |
+| `winni-s1-e0-transcript.txt` | Two-speaker transcript for Winni chapter 1 |
 
 ## Are generated audio artifacts committed?
 
