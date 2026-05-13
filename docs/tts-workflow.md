@@ -182,7 +182,7 @@ The base64 payload decodes to a **complete WAV container** — RIFF header and a
 
 ### MiMo vs Gemini: audio format
 
-Gemini returns raw PCM samples; the Gemini runner (`scripts/generate-zack-ch1-audio.ts`, via helpers in `scripts/generate-wav.ts`) wraps those samples in a RIFF/WAV header before writing to disk. MiMo is different — the base64 payload **already is** a full WAV file, so `mimoGenerateWav.ts` decodes the base64 and writes the bytes directly with no extra wrapping. Adding a second header would produce a malformed file.
+Gemini returns raw PCM samples; the Gemini runner (`scripts/generate-zack-ch1-audio.ts`, via helpers in `src/lib/generateWav.ts` and `src/lib/wav.ts`) wraps those samples in a RIFF/WAV header before writing to disk. MiMo is different — the base64 payload **already is** a full WAV file, so `mimoGenerateWav.ts` decodes the base64 and writes the bytes directly with no extra wrapping. Adding a second header would produce a malformed file.
 
 ### Offline fixture and tests
 
@@ -197,7 +197,7 @@ bun test src/lib/mimoTtsRequest.test.ts src/lib/mimoTtsResponse.test.ts src/lib/
 - **Base64-encoded full WAV, not raw PCM.** Decode the base64 and write to disk as-is — do not feed the bytes through any PCM-to-WAV wrapper.
 - **No live caller wired up yet.** MiMo is reachable only through the three offline modules and their fixture-driven tests until a runner is wired up.
 - **Non-streaming only.** `buildMimoTtsRequest` sets `stream: false`; streaming is not yet supported.
-- **Small built-in voice list.** Only the four voices listed in the request-shape table above. `mimo_default` varies by deployed cluster, so the builder forces an explicit choice.
+- **Small built-in voice list.** Only the four named voices in the request-shape table above. `mimo_default` exists upstream but varies by deployed cluster, so the documented constant lists explicit names instead.
 
 ## Where artifacts are written
 
