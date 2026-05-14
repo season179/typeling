@@ -6,27 +6,28 @@
  *   bun run scripts/generate-winni-ch1-mimo-audio.ts
  *   bun run scripts/generate-winni-ch1-mimo-audio.ts --transcript data/audio/winni-s1-e0-styled-transcript.txt
  *   bun run scripts/generate-winni-ch1-mimo-audio.ts --output data/audio/winni-s1-e0.wav
- *   bun run scripts/generate-winni-ch1-mimo-audio.ts --voice Chloe
- *   bun run scripts/generate-winni-ch1-mimo-audio.ts --director
+ *   bun run scripts/generate-winni-ch1-mimo-audio.ts --builtin
+ *   bun run scripts/generate-winni-ch1-mimo-audio.ts --builtin --voice Chloe
  *
  * Requires MIMO_API_KEY in the environment.
  * Calls Xiaomi's OpenAI-compatible chat-completions endpoint.
  *
  * Two modes:
  *
- * - **Built-in voice (default)** — model `mimo-v2.5-tts`. The styled
- *   transcript's first line (TTS preamble) is sent as MiMo's style guidance
- *   (user message); the remainder is sent as the spoken text (assistant
- *   message). Speaker labels (`Storyteller:` / `Pixel:`) and Gemini-style
- *   `[bracket]` mood tags are stripped — MiMo's single built-in voice would
- *   otherwise read them aloud, and bracket tags aren't reliably honoured by
- *   this model.
+ * - **Director Mode (default)** — model `mimo-v2.5-tts-voicedesign`.
+ *   The styled transcript's first line is a free-form Character/Scene/Guidance
+ *   description sent as the user message; the remainder is the spoken text
+ *   (assistant message). Speaker labels (`Storyteller:` / `Pixel:`) are
+ *   stripped (the model produces a single designed voice that performs both
+ *   roles), but inline `[style]` tags are kept — voicedesign treats them as
+ *   audio-tag control. This is the default because the built-in voices
+ *   aren't expressive enough for bedtime narration.
  *
- * - **Director Mode (`--director`)** — model `mimo-v2.5-tts-voicedesign`.
- *   The preamble becomes a free-form Character/Scene/Guidance description
- *   in the user message. Speaker labels are still stripped (the model still
- *   produces a single designed voice), but inline `[style]` tags are kept
- *   because voicedesign supports them as audio-tag control.
+ * - **Built-in voice (`--builtin`, or pass `--voice <name>`)** — model
+ *   `mimo-v2.5-tts`. The preamble is sent as MiMo's style guidance.
+ *   Speaker labels and `[bracket]` mood tags are stripped — the single
+ *   built-in voice would otherwise read them aloud, and bracket tags aren't
+ *   reliably honoured by this model. Use this for quick A/B comparisons.
  *
  * @see https://platform.mimoai.com/docs
  */
@@ -83,11 +84,11 @@ export interface WinniMimoCliInput {
 	sleepFn?: (ms: number) => Promise<void>;
 	generatedAt?: string;
 	/**
-	 * When true, target `mimo-v2.5-tts-voicedesign` (Director Mode) instead of
-	 * the built-in `mimo-v2.5-tts` voices. The preamble is sent as a Director
-	 * Mode description and `[style]` audio tags are kept in the spoken body.
+	 * When true, target the built-in `mimo-v2.5-tts` voices instead of the
+	 * default `mimo-v2.5-tts-voicedesign` (Director Mode). Passing `voice`
+	 * also implicitly opts into built-in mode.
 	 */
-	director?: boolean;
+	builtin?: boolean;
 }
 
 export interface WinniMimoCliResult {
@@ -183,7 +184,8 @@ interface ResolvedMode {
 }
 
 function resolveMode(input: WinniMimoCliInput): ResolvedMode {
-	if (input.director) {
+	const wantsBuiltin = input.builtin === true || input.voice !== undefined;
+	if (!wantsBuiltin) {
 		return {
 			model: MIMO_MODEL_VOICE_DESIGN,
 			voice: null,
@@ -317,7 +319,7 @@ async function main() {
 			"episode-idx": { type: "string" },
 			voice: { type: "string" },
 			"max-retries": { type: "string" },
-			director: { type: "boolean", default: false },
+			builtin: { type: "boolean", default: false },
 		},
 		strict: true,
 	});
@@ -338,15 +340,12 @@ async function main() {
 		);
 	}
 
-	const director = values.director === true;
-	if (director && values.voice !== undefined) {
-		console.warn(
-			"Note: --voice is ignored in --director mode (voice is described in the Director Mode user message).",
-		);
-	}
+	const builtin = values.builtin === true || values.voice !== undefined;
 
-	const model = director ? MIMO_MODEL_VOICE_DESIGN : MIMO_MODEL_BUILT_IN;
-	const voiceLabel = director ? "(designed)" : (values.voice ?? DEFAULT_MIMO_VOICE);
+	const model = builtin ? MIMO_MODEL_BUILT_IN : MIMO_MODEL_VOICE_DESIGN;
+	const voiceLabel = builtin
+		? (values.voice ?? DEFAULT_MIMO_VOICE)
+		: "(designed)";
 	console.log(
 		`Calling MiMo TTS (model=${model}, voice=${voiceLabel}, maxRetries=${maxRetries})…`,
 	);
@@ -360,7 +359,7 @@ async function main() {
 			episodeIdx,
 			voice: values.voice,
 			maxRetries,
-			director,
+			builtin,
 		});
 	} catch (err) {
 		if (err instanceof MimoTtsAuthError) {

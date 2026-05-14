@@ -4,14 +4,24 @@
  *
  * Usage:
  *   bun run scripts/style-transcript.ts --source data/audio/zack-s1-e0-transcript.txt --output data/audio/zack-s1-e0-styled-transcript.txt
+ *   bun run scripts/style-transcript.ts --source … --output … --target mimo-director
  *   bun run scripts/style-transcript.ts --source … --output … --fixture path/to/styled-fixture.txt
+ *
+ * --target selects the preamble shape:
+ *   gemini         (default) — "Make Storyteller sound…" two-speaker direction for Gemini TTS.
+ *   mimo-director  — Character/Scene/Guidance description of a single performer, for MiMo voicedesign.
  */
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
 import OpenAI from "openai";
-import { buildStylePrompt } from "./style-transcript-prompt";
+import { buildStylePrompt, type StyleTarget } from "./style-transcript-prompt";
+
+const VALID_TARGETS = [
+	"gemini",
+	"mimo-director",
+] as const satisfies readonly StyleTarget[];
 
 const ROOT = join(import.meta.dir, "..");
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
@@ -32,6 +42,7 @@ const { values } = parseArgs({
 		source: { type: "string" },
 		output: { type: "string" },
 		fixture: { type: "string" },
+		target: { type: "string" },
 	},
 	strict: true,
 });
@@ -39,6 +50,13 @@ const { values } = parseArgs({
 const sourcePath = values.source ?? DEFAULT_SOURCE;
 const outputPath = values.output ?? DEFAULT_OUTPUT;
 const fixturePath = values.fixture;
+const rawTarget = values.target ?? "gemini";
+if (!(VALID_TARGETS as readonly string[]).includes(rawTarget)) {
+	throw new Error(
+		`Invalid --target: "${rawTarget}". Choose one of: ${VALID_TARGETS.join(", ")}.`,
+	);
+}
+const target = rawTarget as StyleTarget;
 
 class StyleTranscriptError extends Error {
 	constructor(message: string) {
@@ -71,8 +89,18 @@ class StyleValidationError extends StyleTranscriptError {
 /**
  * Validate that the styled transcript output meets all the requirements
  * for a valid bedtime TTS script.
+ *
+ * The preamble shape differs by target:
+ *  - `gemini` expects "Make Storyteller sound…" style two-speaker direction.
+ *  - `mimo-director` expects a single-voice Character / Scene / Guidance
+ *    description (no fixed opening phrase). We only require that the first
+ *    non-empty line is non-trivially long prose, since the LLM's exact
+ *    phrasing varies.
  */
-export function validateStyledTranscript(output: string): void {
+export function validateStyledTranscript(
+	output: string,
+	target: StyleTarget = "gemini",
+): void {
 	if (output.trim().length === 0) {
 		throw new StyleValidationError("Styled transcript is empty.");
 	}
@@ -86,16 +114,33 @@ export function validateStyledTranscript(output: string): void {
 		);
 	}
 
-	// First non-empty line should be the TTS preamble
 	const firstNonEmpty = lines.find((l) => l.trim().length > 0) ?? "";
-	if (
-		!firstNonEmpty.toLowerCase().includes("make storyteller") &&
-		!firstNonEmpty.toLowerCase().includes("storyteller sound")
-	) {
-		throw new StyleValidationError(
-			"Styled transcript missing TTS preamble on the first line. " +
-				'The preamble should start with something like "Make Storyteller sound…"',
-		);
+
+	if (target === "gemini") {
+		if (
+			!firstNonEmpty.toLowerCase().includes("make storyteller") &&
+			!firstNonEmpty.toLowerCase().includes("storyteller sound")
+		) {
+			throw new StyleValidationError(
+				"Styled transcript missing TTS preamble on the first line. " +
+					'The preamble should start with something like "Make Storyteller sound…"',
+			);
+		}
+	} else {
+		// mimo-director: free-form Character/Scene/Guidance description.
+		// Must be substantive prose, and must not itself be a speaker-labelled line.
+		if (firstNonEmpty.length < 60) {
+			throw new StyleValidationError(
+				"Styled transcript Director Mode preamble is too short. " +
+					"Expected a single-paragraph description covering Character, Scene, and Guidance.",
+			);
+		}
+		if (/^(Storyteller|Pixel):/i.test(firstNonEmpty)) {
+			throw new StyleValidationError(
+				"Styled transcript Director Mode preamble is missing. " +
+					"The first non-empty line must be a voice description, not a speaker-labelled transcript line.",
+			);
+		}
 	}
 
 	// Collect transcript lines (after preamble, lines with speaker prefix)
@@ -135,7 +180,7 @@ async function styleViaLLM(transcript: string): Promise<string> {
 		baseURL: OPENROUTER_BASE_URL,
 	});
 
-	const prompt = buildStylePrompt({ transcript });
+	const prompt = buildStylePrompt({ transcript, target });
 
 	for (let attempt = 1; attempt <= MAX_LLM_ATTEMPTS; attempt += 1) {
 		let content: string | null;
@@ -160,7 +205,7 @@ async function styleViaLLM(transcript: string): Promise<string> {
 		}
 
 		try {
-			validateStyledTranscript(content);
+			validateStyledTranscript(content, target);
 			return content;
 		} catch (err) {
 			if (attempt === MAX_LLM_ATTEMPTS) throw err;
@@ -214,7 +259,7 @@ async function main() {
 		: await styleViaLLM(transcript);
 
 	// Validate the result
-	validateStyledTranscript(styled);
+	validateStyledTranscript(styled, target);
 
 	// Write artifact
 	await mkdir(dirname(outputPath), { recursive: true });

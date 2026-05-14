@@ -111,11 +111,9 @@ describe("cleanSpokenTextForMimo", () => {
 			"Storyteller: said Luma softly.",
 		].join("\n");
 		expect(cleanSpokenTextForMimo(input)).toBe(
-			[
-				"Luma walked through the garden.",
-				"Hello?",
-				"said Luma softly.",
-			].join("\n"),
+			["Luma walked through the garden.", "Hello?", "said Luma softly."].join(
+				"\n",
+			),
 		);
 	});
 
@@ -178,7 +176,7 @@ describe("generateWinniMimoAudio", () => {
 		await rm(TEST_DIR, { recursive: true, force: true });
 	});
 
-	it("writes a .wav and a .meta.json given a styled transcript", async () => {
+	it("defaults to Director Mode: writes a .wav and a .meta.json with voicedesign metadata", async () => {
 		const fetchFn = okFetch(fixtureResponse());
 
 		const result = await generateWinniMimoAudio({
@@ -192,7 +190,8 @@ describe("generateWinniMimoAudio", () => {
 
 		expect(result.outputPath).toBe(outputPath);
 		expect(result.metaPath).toBe(mimoMetaPath(outputPath));
-		expect(result.voice).toBe("Mia");
+		expect(result.model).toBe("mimo-v2.5-tts-voicedesign");
+		expect(result.voice).toBeNull();
 		expect(result.transcriptHash).toMatch(/^[0-9a-f]{64}$/);
 
 		const wavStat = await stat(outputPath);
@@ -206,14 +205,14 @@ describe("generateWinniMimoAudio", () => {
 		expect(meta.source_season).toBe("winni-s1");
 		expect(meta.episode_idx).toBe(0);
 		expect(meta.provider).toBe("mimo");
-		expect(meta.model).toBe("mimo-v2.5-tts");
-		expect(meta.selected_voice).toBe("Mia");
+		expect(meta.model).toBe("mimo-v2.5-tts-voicedesign");
+		expect(meta.selected_voice).toBeNull();
 		expect(meta.audio_format).toBe("wav");
 		expect(meta.generated_at).toBe("2026-05-13T00:00:00.000Z");
 		expect(meta.transcript_hash).toBe(result.transcriptHash);
 	});
 
-	it("sends a chat-completions request with style in user, spoken in assistant", async () => {
+	it("default Director Mode: sends voicedesign model, omits audio.voice, keeps [bracket] tags", async () => {
 		const fetchFn = okFetch(fixtureResponse());
 
 		await generateWinniMimoAudio({
@@ -229,20 +228,23 @@ describe("generateWinniMimoAudio", () => {
 		const [, init] = calls[0] as [string, RequestInit];
 		const body = JSON.parse(init.body as string);
 
-		expect(body.model).toBe("mimo-v2.5-tts");
+		expect(body.model).toBe("mimo-v2.5-tts-voicedesign");
 		expect(body.stream).toBe(false);
-		expect(body.audio).toEqual({ voice: "Mia", format: "wav" });
+		expect(body.audio.voice).toBeUndefined();
+		expect(body.audio.format).toBe("wav");
 
 		expect(body.messages).toHaveLength(2);
 		expect(body.messages[0].role).toBe("user");
-		expect(body.messages[0].content).toContain(
-			"Make Storyteller sound warm and gentle",
-		);
+		// Whatever preamble the styler emits is sent verbatim as the
+		// Director Mode description.
+		expect(body.messages[0].content.length).toBeGreaterThan(0);
 		expect(body.messages[1].role).toBe("assistant");
-		// Speaker labels and Gemini-style [bracket] tags must be stripped
-		// so MiMo (single-voice) doesn't read them aloud.
+		// Speaker labels stripped (single designed voice would read them aloud)…
 		expect(body.messages[1].content).not.toMatch(/Storyteller:|Pixel:/);
-		expect(body.messages[1].content).not.toMatch(/\[gently\]|\[excitedly\]/);
+		// …but [bracket] tags kept — voicedesign interprets them as audio-tag control.
+		expect(body.messages[1].content).toMatch(
+			/\[gently\]|\[excitedly\]|\[warmly\]/,
+		);
 		expect(body.messages[1].content).toContain(
 			"In a cosy workshop filled with soft light",
 		);
@@ -267,7 +269,32 @@ describe("generateWinniMimoAudio", () => {
 		expect(headers.Authorization).toBe("Bearer test-key");
 	});
 
-	it("honours a custom built-in voice", async () => {
+	it("--builtin alone opts into the built-in path with Mia as the default voice", async () => {
+		const fetchFn = okFetch(fixtureResponse());
+
+		const result = await generateWinniMimoAudio({
+			transcriptPath,
+			outputPath,
+			builtin: true,
+			apiKey: "test-key",
+			fetchFn,
+			sleepFn: noSleep,
+		});
+
+		expect(result.model).toBe("mimo-v2.5-tts");
+		expect(result.voice).toBe("Mia");
+
+		const calls = (fetchFn as unknown as ReturnType<typeof mock>).mock.calls;
+		const [, init] = calls[0] as [string, RequestInit];
+		const body = JSON.parse(init.body as string);
+		expect(body.model).toBe("mimo-v2.5-tts");
+		expect(body.audio).toEqual({ voice: "Mia", format: "wav" });
+		// Built-in path strips speaker labels and bracket tags.
+		expect(body.messages[1].content).not.toMatch(/Storyteller:|Pixel:/);
+		expect(body.messages[1].content).not.toMatch(/\[gently\]|\[excitedly\]/);
+	});
+
+	it("passing a voice implicitly opts into built-in mode with that voice", async () => {
 		const fetchFn = okFetch(fixtureResponse());
 
 		const result = await generateWinniMimoAudio({
@@ -279,6 +306,7 @@ describe("generateWinniMimoAudio", () => {
 			sleepFn: noSleep,
 		});
 
+		expect(result.model).toBe("mimo-v2.5-tts");
 		expect(result.voice).toBe("Chloe");
 		const meta = JSON.parse(await readFile(result.metaPath, "utf-8"));
 		expect(meta.selected_voice).toBe("Chloe");
@@ -381,60 +409,6 @@ describe("generateWinniMimoAudio", () => {
 		expect(fetchFn).toHaveBeenCalledTimes(2);
 		const wavStat = await stat(result.outputPath);
 		expect(wavStat.size).toBeGreaterThan(44);
-	});
-
-	it("Director Mode sends voicedesign model, no audio.voice, keeps [bracket] tags", async () => {
-		const fetchFn = okFetch(fixtureResponse());
-
-		const result = await generateWinniMimoAudio({
-			transcriptPath,
-			outputPath,
-			apiKey: "test-key",
-			fetchFn,
-			sleepFn: noSleep,
-			director: true,
-			generatedAt: "2026-05-13T00:00:00.000Z",
-		});
-
-		expect(result.model).toBe("mimo-v2.5-tts-voicedesign");
-		expect(result.voice).toBeNull();
-
-		const calls = (fetchFn as unknown as ReturnType<typeof mock>).mock.calls;
-		const [, init] = calls[0] as [string, RequestInit];
-		const body = JSON.parse(init.body as string);
-
-		expect(body.model).toBe("mimo-v2.5-tts-voicedesign");
-		expect(body.audio.voice).toBeUndefined();
-		expect(body.audio.format).toBe("wav");
-		expect(body.messages[1].content).toMatch(
-			/\[gently\]|\[excitedly\]|\[warmly\]/,
-		);
-		expect(body.messages[1].content).not.toMatch(/Storyteller:|Pixel:/);
-
-		const meta = JSON.parse(await readFile(result.metaPath, "utf-8"));
-		expect(meta.model).toBe("mimo-v2.5-tts-voicedesign");
-		expect(meta.selected_voice).toBeNull();
-	});
-
-	it("Director Mode ignores --voice (voice is described in user message)", async () => {
-		const fetchFn = okFetch(fixtureResponse());
-
-		const result = await generateWinniMimoAudio({
-			transcriptPath,
-			outputPath,
-			apiKey: "test-key",
-			fetchFn,
-			sleepFn: noSleep,
-			director: true,
-			voice: "Chloe",
-		});
-
-		expect(result.voice).toBeNull();
-
-		const calls = (fetchFn as unknown as ReturnType<typeof mock>).mock.calls;
-		const [, init] = calls[0] as [string, RequestInit];
-		const body = JSON.parse(init.body as string);
-		expect(body.audio.voice).toBeUndefined();
 	});
 
 	it("does not require network access in tests (injected fetch)", async () => {

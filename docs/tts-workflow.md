@@ -214,12 +214,15 @@ Storyteller: said Pixel, pointing with a tiny paw.
 ```bash
 bun run scripts/style-transcript.ts \
   --source data/audio/winni-s1-e0-transcript.txt \
-  --output data/audio/winni-s1-e0-styled-transcript.txt
+  --output data/audio/winni-s1-e0-styled-transcript.txt \
+  --target mimo-director
 ```
 
-Review the same checklist as the Zack flow (story meaning preserved, British English intact, etc.).
+`--target mimo-director` tells the styler to emit a Director Mode preamble — a single-voice Character / Scene / Guidance description in the first line, suitable for `mimo-v2.5-tts-voicedesign`. The body still uses `Storyteller:` / `Pixel:` labels and `[bracket]` tags; the runner strips the labels and keeps the tags before the API call.
 
-> **Important — MiMo differs from Gemini here.** The styling step emits the same Gemini-native format for both flows (`Storyteller:` / `Pixel:` speaker prefixes plus `[bracketed]` mood tags). Gemini consumes that directly, but MiMo's `mimo-v2.5-tts` is **single-voice per call** and uses **parenthesis-prefixed** style tags (e.g. `(warmly)`), not square brackets mid-line. The Winni runner in step 4 adapts the same artifact for MiMo automatically — see below.
+For the legacy built-in MiMo voices, omit `--target` (the default `gemini` preamble works there too — the runner strips both labels and bracket tags in that path).
+
+Review the same checklist as the Zack flow (story meaning preserved, British English intact, etc.). For the Director Mode preamble specifically, sanity-check that it describes ONE performer voicing both roles (not "Make Storyteller sound… Make Pixel sound…"), since voicedesign synthesises a single designed voice per call.
 
 #### 4. Generate TTS audio
 
@@ -233,12 +236,12 @@ Equivalent to:
 bun run scripts/generate-winni-ch1-mimo-audio.ts
 ```
 
-Before calling MiMo, the runner adapts the Gemini-format styled transcript:
+**Default is Director Mode** (`mimo-v2.5-tts-voicedesign`) — the built-in voices aren't expressive enough for bedtime narration. Before calling MiMo, the runner adapts the styled transcript:
 
-1. **Split**: the first non-empty line is the TTS preamble → `user` message (style guidance); the body after the blank-line separator → `assistant` message (spoken text).
-2. **Strip speaker labels**: `Storyteller:` and `Pixel:` prefixes are removed from each line of the spoken text. MiMo's single voice would otherwise read those words aloud.
-3. **Strip bracket tags**: `[warmly]`, `[gently]`, `[curiously]`, etc. are removed. MiMo's inline audio-tag syntax uses parentheses, and mid-text square brackets are unreliable. Tone is carried by the natural-language preamble in the `user` message.
-4. **Build request** with `model: mimo-v2.5-tts`, `audio.voice`, and `audio.format: wav`; POST to `${MIMO_API_BASE}/chat/completions`.
+1. **Split**: the first non-empty line is the preamble → `user` message; the body after the blank-line separator → `assistant` message.
+2. **Strip speaker labels**: `Storyteller:` and `Pixel:` prefixes are removed from each line of the spoken text. The model produces a single designed voice that performs both roles; the labels would otherwise be read aloud.
+3. **Keep `[bracket]` tags** — voicedesign interprets `[warmly]`, `[gently]`, `[excitedly]`, etc. as audio-tag control.
+4. **Build request** with `model: mimo-v2.5-tts-voicedesign`, `audio.format: wav`, and no `audio.voice`; POST to `${MIMO_API_BASE}/chat/completions`.
 
 Implemented in `scripts/generate-winni-ch1-mimo-audio.ts`:
 - `splitStyledTranscript()` — does step 1.
@@ -247,36 +250,24 @@ Implemented in `scripts/generate-winni-ch1-mimo-audio.ts`:
 Options:
 - `--transcript <path>` — Styled transcript file (default: `data/audio/winni-s1-e0-styled-transcript.txt`)
 - `--output <path>` — WAV output path (default: `data/audio/winni-s1-e0.wav`)
-- `--voice <name>` — Built-in voice: `Mia`, `Chloe`, `Milo`, or `Dean` (default: `Mia`)
-- `--director` — Use Director Mode (`mimo-v2.5-tts-voicedesign`) instead of a built-in voice. See [Director Mode](#director-mode-voicedesign) below.
+- `--builtin` — Opt into the legacy `mimo-v2.5-tts` built-in voice path (defaults to `Mia`). See [Built-in voice path](#built-in-voice-path) below.
+- `--voice <name>` — Built-in voice: `Mia`, `Chloe`, `Milo`, or `Dean`. Implicitly switches to built-in mode.
 - `--max-retries <n>` — Max retry attempts for transient failures (default: `3`)
 
-##### Director Mode (voicedesign)
+##### Built-in voice path
 
-`--director` switches the runner to the `mimo-v2.5-tts-voicedesign` model. Use it when you want richer performance direction than a built-in voice gives — the voice is *described* in the user message (character traits, scene, acting direction) instead of selected from `Mia / Chloe / Milo / Dean`.
+Pass `--builtin` (or `--voice <name>`) to use the `mimo-v2.5-tts` model instead of voicedesign. This swaps the runner behaviour:
 
-```bash
-bun run scripts/generate-winni-ch1-mimo-audio.ts --director
-```
-
-What changes vs. the built-in-voice path:
-
-| | Built-in (`mimo-v2.5-tts`) | Director (`mimo-v2.5-tts-voicedesign`) |
+| | Director Mode (default) | Built-in (`--builtin`) |
 |---|---|---|
-| `audio.voice` | Required (e.g. `Mia`) | **Omitted** — voice is described in user msg |
-| `[bracket]` tags in body | Stripped (unreliable) | **Kept** — interpreted as audio-tag control |
-| `Storyteller:` / `Pixel:` labels | Stripped (read aloud otherwise) | Stripped (still a single voice per call) |
-| `selected_voice` in meta.json | Built-in voice name | `voicedesign` |
-| `model` in meta.json | `mimo-v2.5-tts` | `mimo-v2.5-tts-voicedesign` |
-| `--voice` flag | Honoured | Ignored (with a warning) |
+| Model | `mimo-v2.5-tts-voicedesign` | `mimo-v2.5-tts` |
+| `audio.voice` | **Omitted** — voice is described in user msg | Required (e.g. `Mia`) |
+| `[bracket]` tags in body | **Kept** — audio-tag control | Stripped (unreliable in this model) |
+| `Storyteller:` / `Pixel:` labels | Stripped (single designed voice) | Stripped (single built-in voice) |
+| `selected_voice` in meta.json | `null` | Built-in voice name |
+| `model` in meta.json | `mimo-v2.5-tts-voicedesign` | `mimo-v2.5-tts` |
 
-The styled transcript preamble is sent verbatim as the Director Mode description. For best results, edit the preamble to follow MiMo's three Director Mode dimensions:
-
-- **Character**: identity, personality, physical appearance, speaking habits.
-- **Scene**: what's happening, who's being addressed, emotional state.
-- **Guidance**: speed, breath, pauses, accent, resonance, timbre, emotional swings.
-
-Director Mode still produces a **single designed voice** per call — it doesn't synthesize two independent voices in one audio output. The benefit is layered, performative delivery of a single voice that adapts within a scene.
+Director Mode produces a **single designed voice** per call — it doesn't synthesize two independent voices in one audio output. The benefit is layered, performative delivery of a single voice that adapts within a scene, guided by the Character / Scene / Guidance preamble plus inline `[bracket]` audio tags.
 
 #### 5. Listen and check the output
 
