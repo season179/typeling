@@ -1,21 +1,10 @@
 /**
  * style-transcript-prompt.ts — Prompt template for styling a two-speaker
- * transcript into a bedtime TTS performance script.
+ * transcript into a bedtime TTS performance script for Gemini.
  *
- * Two targets:
- *
- * - **`gemini`** (default) — Zack flow. Preamble is a short
- *   "Make Storyteller sound…" instruction; body uses `Storyteller:` /
- *   `Pixel:` speaker labels and `[bracket]` mood tags. Gemini consumes
- *   this format directly.
- *
- * - **`mimo-director`** — Winni flow with `mimo-v2.5-tts-voicedesign`.
- *   Preamble is a single-voice Character / Scene / Guidance description
- *   (one performer voices both roles). Body still uses the same speaker
- *   labels and `[bracket]` tags — labels help the LLM keep the dialogue
- *   structure straight, and the runner strips them before sending to MiMo
- *   (a single voice would otherwise read them aloud). Bracket tags are
- *   preserved by the Director Mode runner as audio-tag control.
+ * The preamble is a short "Make Storyteller sound…" instruction; the body
+ * uses `Storyteller:` / `Pixel:` speaker labels and `[bracket]` mood tags.
+ * Gemini consumes this format directly.
  *
  * ## Review workflow for Season
  *
@@ -46,9 +35,7 @@
  *    looks confusing or wrong, delete it.
  *
  * 7. **Preamble present and on-target** — There must be a short instruction
- *    block before the transcript. For `gemini`, "Make Storyteller sound…".
- *    For `mimo-director`, a Character / Scene / Guidance description of a
- *    single performer who voices both roles.
+ *    block before the transcript along the lines of "Make Storyteller sound…".
  *
  * 8. **No stray instruction text in the transcript** — The transcript lines
  *    after the preamble must contain only the spoken words and audio tags.
@@ -58,13 +45,9 @@
  * This module does not call any network API. It only exports prompt text.
  */
 
-export type StyleTarget = "gemini" | "mimo-director";
-
 export interface StylePromptInputs {
 	/** The raw transcript with Storyteller: / Pixel: lines. */
 	transcript: string;
-	/** Which TTS provider's preamble shape to emit. Defaults to `gemini`. */
-	target?: StyleTarget;
 }
 
 export interface BuiltStylePrompt {
@@ -72,27 +55,11 @@ export interface BuiltStylePrompt {
 	user: string;
 }
 
-const GEMINI_PREAMBLE_RULE =
+const PREAMBLE_RULE =
 	'The first line MUST be a short TTS preamble telling the TTS model how each speaker should sound (e.g. "Make Storyteller sound warm and gentle… Make Pixel sound curious and bright…"). Then a blank line, then the transcript with audio tags.';
 
-const GEMINI_EXAMPLE = [
+const EXAMPLE = [
 	"Make Storyteller sound warm and gentle, like a parent reading a bedtime story. Make Pixel sound curious and bright, like a friendly young robot.",
-	"",
-	"Storyteller: [gently] In a cosy workshop filled with soft light...",
-	"Pixel: [excitedly] What a lovely day!",
-	"Storyteller: [warmly] said Pixel in a soft, buzzy voice.",
-].join("\n");
-
-const MIMO_DIRECTOR_PREAMBLE_RULE = [
-	"The first line MUST be a Director Mode preamble describing a SINGLE performer who voices both Storyteller and Pixel. Cover three dimensions in plain prose (no headings, no labels, one paragraph):",
-	"  • Character — identity, age, timbre, accent; how the performer differentiates Storyteller (warm, parental) from Pixel (a young, curious robot) without using two separate voices.",
-	"  • Scene — bedtime mood; calm, intimate, quietly wondrous; never frightening.",
-	"  • Guidance — pace, breath, pauses, dynamic range; how inline [bracket] tags should be interpreted (softly = hushed; excitedly = brighter lift; etc.).",
-	"Then a blank line, then the transcript with audio tags.",
-].join("\n");
-
-const MIMO_DIRECTOR_EXAMPLE = [
-	"A warm, gentle storyteller — an adult performer with a soft parental voice, reading a bedtime tale to a child. When voicing Pixel (a curious young robot character), lift the pitch slightly and add a small smile, but keep the same underlying timbre — this is one performer doing both parts. The mood is calm, intimate, quietly wondrous; never frightening. Speak slowly, with soft breath and unhurried pauses between sentences. Honour the inline [bracket] tags as performance direction.",
 	"",
 	"Storyteller: [gently] In a cosy workshop filled with soft light...",
 	"Pixel: [excitedly] What a lovely day!",
@@ -101,16 +68,7 @@ const MIMO_DIRECTOR_EXAMPLE = [
 
 export function buildStylePrompt({
 	transcript,
-	target = "gemini",
 }: StylePromptInputs): BuiltStylePrompt {
-	const preambleRule =
-		target === "mimo-director"
-			? MIMO_DIRECTOR_PREAMBLE_RULE
-			: GEMINI_PREAMBLE_RULE;
-
-	const example =
-		target === "mimo-director" ? MIMO_DIRECTOR_EXAMPLE : GEMINI_EXAMPLE;
-
 	const system = [
 		"You are a gentle, expert director for a children's bedtime audio performance.",
 		"Your job is to take a two-speaker transcript and add light TTS performance direction.",
@@ -125,11 +83,11 @@ export function buildStylePrompt({
 		"7. Always put the output in the exact format described below.",
 		"",
 		"OUTPUT FORMAT:",
-		preambleRule,
+		PREAMBLE_RULE,
 		"",
 		"Example structure (do not copy the example text — use the real transcript):",
 		"```",
-		example,
+		EXAMPLE,
 		"```",
 		"",
 		"IMPORTANT: The preamble (first line) is the ONLY direction the TTS model will receive. The transcript lines below it will be spoken aloud. Never put instructions, scene directions, or notes in the transcript section — only speaker-labelled lines with optional [audio tags].",
