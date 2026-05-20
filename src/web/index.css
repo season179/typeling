@@ -342,25 +342,12 @@
 		background 160ms ease;
 }
 
-.reader-mode:hover {
+.reader-mode:not(.reader-mode-active):hover:not(:disabled) {
 	transform: translateY(-1px);
 	background: rgba(255, 255, 255, 0.82);
 }
 
 .reader-mode-active {
-	background: color-mix(in srgb, var(--game-accent) 35%, white);
-}
-
-.reader-audio-bar {
-	display: flex;
-	align-items: center;
-	justify-content: flex-start;
-	min-width: 0;
-}
-
-.narration-toggle {
-	border: 1px solid rgba(255, 255, 255, 0.86);
-	border-radius: 0.8rem;
 	background: linear-gradient(
 		135deg,
 		color-mix(in srgb, var(--game-primary) 28%, white),
@@ -376,12 +363,12 @@
 		filter 160ms ease;
 }
 
-.narration-toggle:hover:not(:disabled) {
+.reader-mode-active:hover:not(:disabled) {
 	transform: translateY(-1px);
 	filter: brightness(1.03);
 }
 
-.narration-toggle[aria-pressed="true"] {
+.reader-mode-active[data-playing="true"] {
 	background: linear-gradient(
 		135deg,
 		var(--game-primary),
@@ -390,7 +377,7 @@
 	color: #ffffff;
 }
 
-.narration-toggle:disabled {
+.reader-mode:disabled {
 	cursor: not-allowed;
 	opacity: 0.58;
 }

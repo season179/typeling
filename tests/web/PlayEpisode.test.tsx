@@ -105,11 +105,7 @@ describe("PlayEpisode", () => {
 			expect(getAllByTestId("chapter-jump")[3]?.dataset.status).toBe("locked");
 			expect(getAllByTestId("chapter-jump")[2]?.dataset.status).toBe("latest");
 			expect(queryByTestId("cursor-char")).toBeNull();
-			expect(
-				getByRole("button", { name: "Read story" }).getAttribute(
-					"aria-pressed",
-				),
-			).toBe("true");
+			expect(getByRole("button", { name: "Read story" })).toBeDefined();
 		} finally {
 			globalThis.fetch = originalFetch;
 		}
@@ -157,9 +153,11 @@ describe("PlayEpisode", () => {
 			);
 
 			await waitFor(() => {
-				expect(getByRole("button", { name: "Play narration" })).toBeDefined();
+				expect(getByRole("button", { name: "Read story" })).toBeDefined();
 			});
-
+			await waitFor(() => {
+				expect(container.querySelector("audio")).not.toBeNull();
+			});
 			const audio = container.querySelector("audio");
 			if (!audio) {
 				throw new Error("Expected audio element");
@@ -173,11 +171,16 @@ describe("PlayEpisode", () => {
 				fireEvent.pause(audio);
 			}) as typeof audio.pause;
 
-			fireEvent.click(getByRole("button", { name: "Play narration" }));
+			fireEvent.click(getByRole("button", { name: "Read story" }));
 
 			await waitFor(() => {
 				expect(getByTestId("story-word-1").dataset.active).toBe("true");
 			});
+			expect(
+				getByRole("button", { name: "Pause story" }).getAttribute(
+					"data-playing",
+				),
+			).toBe("true");
 			audio.currentTime = 1.1;
 			fireEvent.seeked(audio);
 			await waitFor(() => {
@@ -192,14 +195,14 @@ describe("PlayEpisode", () => {
 			reader.dispatchEvent(playingWheel);
 			expect(playingWheel.defaultPrevented).toBe(true);
 
-			fireEvent.click(getByRole("button", { name: "Pause narration" }));
+			fireEvent.click(getByRole("button", { name: "Pause story" }));
 
 			await waitFor(() => {
 				expect(
-					getByRole("button", { name: "Play narration" }).getAttribute(
-						"aria-pressed",
+					getByRole("button", { name: "Read story" }).getAttribute(
+						"data-playing",
 					),
-				).toBe("false");
+				).toBeNull();
 			});
 			const pausedWheel = new window.WheelEvent("wheel", {
 				bubbles: true,
@@ -208,13 +211,13 @@ describe("PlayEpisode", () => {
 			reader.dispatchEvent(pausedWheel);
 			expect(pausedWheel.defaultPrevented).toBe(false);
 
-			fireEvent.click(getByRole("button", { name: "Play narration" }));
+			fireEvent.click(getByRole("button", { name: "Read story" }));
 			await waitFor(() => {
 				expect(getByTestId("story-word-2").dataset.active).toBe("true");
 			});
 			fireEvent.ended(audio);
 			await waitFor(() => {
-				expect(getByRole("button", { name: "Replay narration" })).toBeDefined();
+				expect(getByRole("button", { name: "Read again" })).toBeDefined();
 			});
 			expect(getByTestId("story-word-2").dataset.active).toBeUndefined();
 			const endedWheel = new window.WheelEvent("wheel", {
@@ -224,7 +227,7 @@ describe("PlayEpisode", () => {
 			reader.dispatchEvent(endedWheel);
 			expect(endedWheel.defaultPrevented).toBe(false);
 
-			fireEvent.click(getByRole("button", { name: "Replay narration" }));
+			fireEvent.click(getByRole("button", { name: "Read again" }));
 			await waitFor(() => {
 				expect(getByTestId("story-word-0").dataset.active).toBe("true");
 			});
@@ -270,14 +273,12 @@ describe("PlayEpisode", () => {
 				expect(getByTestId("story-reader").textContent).toContain("Episode 2");
 			});
 			await waitFor(() => {
-				expect(
-					getByRole("button", { name: "Narration unavailable" }),
-				).toBeDefined();
+				expect(getByRole("button", { name: "Read story" })).toBeDefined();
 			});
 			expect(
 				(
 					getByRole("button", {
-						name: "Narration unavailable",
+						name: "Read story",
 					}) as HTMLButtonElement
 				).disabled,
 			).toBe(true);

@@ -28,6 +28,7 @@ interface StoryAudioPlayerProps {
 	childId: string;
 	episodeIdx: number;
 	text: string;
+	onTypeAgain: () => void;
 }
 
 type AudioLoadState = "loading" | "ready" | "unavailable";
@@ -81,23 +82,23 @@ function cancelFrame(id: number): void {
 	}
 }
 
-function narrationButtonLabel(
+function readStoryButtonLabel(
 	audioState: AudioLoadState,
 	playbackState: PlaybackState,
 ): string {
-	if (audioState === "loading") return "Loading narration";
 	if (audioState === "unavailable" || playbackState === "error") {
-		return "Narration unavailable";
+		return "Read story";
 	}
-	if (playbackState === "playing") return "Pause narration";
-	if (playbackState === "ended") return "Replay narration";
-	return "Play narration";
+	if (playbackState === "playing") return "Pause story";
+	if (playbackState === "ended") return "Read again";
+	return "Read story";
 }
 
 export default function StoryAudioPlayer({
 	childId,
 	episodeIdx,
 	text,
+	onTypeAgain,
 }: StoryAudioPlayerProps) {
 	const tokens = useMemo(() => tokenizeStoryText(text), [text]);
 	const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -178,7 +179,7 @@ export default function StoryAudioPlayer({
 			?.scrollIntoView({ block: "center", inline: "nearest" });
 	}, [activeWordIndex, isNarrating]);
 
-	const handleNarrationClick = async () => {
+	const handleReadStoryClick = async () => {
 		const audio = audioRef.current;
 		if (!audio || !audioData || audioState !== "ready") return;
 
@@ -224,23 +225,26 @@ export default function StoryAudioPlayer({
 		}
 	};
 
-	const buttonDisabled = audioState !== "ready" || playbackState === "error";
-	const buttonLabel = narrationButtonLabel(audioState, playbackState);
+	const readStoryDisabled = audioState !== "ready" || playbackState === "error";
+	const readStoryLabel = readStoryButtonLabel(audioState, playbackState);
 
 	return (
 		<>
-			<div className="reader-audio-bar">
+			<fieldset className="reader-actions" aria-label="Chapter actions">
 				<button
 					type="button"
-					data-testid="narration-toggle"
-					className="narration-toggle"
-					disabled={buttonDisabled}
-					aria-pressed={isNarrating}
-					onClick={handleNarrationClick}
+					data-testid="read-story-toggle"
+					className="reader-mode reader-mode-active"
+					disabled={readStoryDisabled}
+					data-playing={isNarrating ? "true" : undefined}
+					onClick={handleReadStoryClick}
 				>
-					{buttonLabel}
+					{readStoryLabel}
 				</button>
-			</div>
+				<button type="button" className="reader-mode" onClick={onTypeAgain}>
+					Type again
+				</button>
+			</fieldset>
 			{audioData && (
 				// biome-ignore lint/a11y/useMediaCaption: The visible story text is the synchronized transcript for this narration.
 				<audio

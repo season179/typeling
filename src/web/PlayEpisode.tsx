@@ -133,22 +133,11 @@ function StoryReader({
 						{episodeIdx + 1}/{totalEpisodes}
 					</span>
 				</div>
-				<fieldset className="reader-actions" aria-label="Chapter mode">
-					<button
-						type="button"
-						className="reader-mode reader-mode-active"
-						aria-pressed="true"
-					>
-						Read story
-					</button>
-					<button type="button" className="reader-mode" onClick={onTypeAgain}>
-						Type again
-					</button>
-				</fieldset>
 				<StoryAudioPlayer
 					childId={childId}
 					episodeIdx={episodeIdx}
 					text={text}
+					onTypeAgain={onTypeAgain}
 				/>
 			</div>
 		</section>
