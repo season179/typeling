@@ -1,0 +1,1380 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Typeling Story Audio Sync Plan</title>
+		<style>
+			:root {
+				--paper: #fbf1de;
+				--paper-deep: #edd7b3;
+				--ink: #24170f;
+				--muted: #6e5f52;
+				--rule: #d6b88b;
+				--cobalt: #2456a6;
+				--cobalt-soft: #d7e6f7;
+				--leaf: #2f6f5e;
+				--leaf-soft: #dcebd7;
+				--ember: #c54f2b;
+				--night: #17212b;
+				--white: #fffaf1;
+				--shadow: 0 26px 80px rgba(36, 23, 15, 0.18);
+			}
+
+			* {
+				box-sizing: border-box;
+			}
+
+			html {
+				scroll-behavior: smooth;
+			}
+
+			body {
+				margin: 0;
+				background:
+					linear-gradient(90deg, rgba(36, 23, 15, 0.035) 1px, transparent 1px)
+						0 0 / 46px 46px,
+					linear-gradient(rgba(36, 23, 15, 0.035) 1px, transparent 1px) 0 0 /
+						46px 46px,
+					radial-gradient(circle at 18% 12%, #fff7cf 0, transparent 25rem),
+					linear-gradient(135deg, var(--paper), #f4dfbd 56%, #e5c296);
+				color: var(--ink);
+				font-family:
+					"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+				line-height: 1.55;
+			}
+
+			button,
+			input,
+			select {
+				font: inherit;
+			}
+
+			.page {
+				width: min(1180px, calc(100% - 32px));
+				margin: 0 auto;
+				padding: 38px 0 56px;
+			}
+
+			.hero {
+				position: relative;
+				display: grid;
+				grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.6fr);
+				gap: 28px;
+				align-items: stretch;
+				min-height: 430px;
+				margin-bottom: 24px;
+			}
+
+			.hero-copy {
+				position: relative;
+				overflow: hidden;
+				border: 1px solid rgba(36, 23, 15, 0.16);
+				background:
+					linear-gradient(135deg, rgba(255, 250, 241, 0.94), rgba(255, 250, 241, 0.7)),
+					repeating-linear-gradient(
+						-8deg,
+						rgba(197, 79, 43, 0.07) 0 1px,
+						transparent 1px 11px
+					);
+				box-shadow: var(--shadow);
+				padding: clamp(28px, 6vw, 74px);
+			}
+
+			.eyebrow {
+				display: inline-flex;
+				align-items: center;
+				gap: 9px;
+				margin: 0 0 18px;
+				color: var(--ember);
+				font-family:
+					"Avenir Next Condensed", "Gill Sans", "Trebuchet MS", sans-serif;
+				font-size: 0.82rem;
+				font-weight: 800;
+				letter-spacing: 0.11em;
+				text-transform: uppercase;
+			}
+
+			.eyebrow::before {
+				content: "";
+				width: 30px;
+				height: 2px;
+				background: currentColor;
+			}
+
+			h1 {
+				max-width: 12ch;
+				margin: 0;
+				font-size: clamp(3rem, 8vw, 6.7rem);
+				font-weight: 900;
+				line-height: 0.9;
+				letter-spacing: 0;
+			}
+
+			.hero-copy > p {
+				max-width: 62ch;
+				margin: 24px 0 0;
+				color: var(--muted);
+				font-size: clamp(1.05rem, 2vw, 1.28rem);
+			}
+
+			.hero-card {
+				display: grid;
+				align-content: space-between;
+				border: 1px solid rgba(36, 23, 15, 0.18);
+				background: var(--night);
+				box-shadow: var(--shadow);
+				color: var(--white);
+				padding: 26px;
+			}
+
+			.hero-card h2 {
+				margin: 0;
+				font-family:
+					"Avenir Next Condensed", "Gill Sans", "Trebuchet MS", sans-serif;
+				font-size: 1rem;
+				letter-spacing: 0.09em;
+				text-transform: uppercase;
+			}
+
+			.hero-card ol {
+				display: grid;
+				gap: 10px;
+				margin: 24px 0;
+				padding: 0;
+				list-style: none;
+			}
+
+			.hero-card li {
+				display: grid;
+				grid-template-columns: 34px 1fr;
+				gap: 10px;
+				align-items: start;
+				color: rgba(255, 250, 241, 0.82);
+				font-size: 0.98rem;
+			}
+
+			.hero-card li span:first-child {
+				display: grid;
+				place-items: center;
+				width: 30px;
+				height: 30px;
+				border: 1px solid rgba(255, 250, 241, 0.25);
+				color: #f7c56b;
+				font-family:
+					"Avenir Next Condensed", "Gill Sans", "Trebuchet MS", sans-serif;
+				font-weight: 900;
+			}
+
+			.mode-strip {
+				position: sticky;
+				top: 0;
+				z-index: 10;
+				display: flex;
+				flex-wrap: wrap;
+				gap: 12px;
+				align-items: center;
+				justify-content: space-between;
+				margin-bottom: 28px;
+				border: 1px solid rgba(36, 23, 15, 0.14);
+				background: rgba(255, 250, 241, 0.9);
+				backdrop-filter: blur(16px);
+				box-shadow: 0 14px 42px rgba(36, 23, 15, 0.12);
+				padding: 12px;
+			}
+
+			.tabs {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 8px;
+			}
+
+			.tab {
+				border: 1px solid rgba(36, 23, 15, 0.18);
+				background: transparent;
+				color: var(--ink);
+				cursor: pointer;
+				padding: 10px 14px;
+				font-family:
+					"Avenir Next Condensed", "Gill Sans", "Trebuchet MS", sans-serif;
+				font-size: 0.9rem;
+				font-weight: 800;
+				letter-spacing: 0.06em;
+				text-transform: uppercase;
+			}
+
+			.tab[aria-pressed="true"] {
+				background: var(--ink);
+				color: var(--white);
+			}
+
+			.map-link {
+				color: var(--cobalt);
+				font-family:
+					"Avenir Next Condensed", "Gill Sans", "Trebuchet MS", sans-serif;
+				font-size: 0.85rem;
+				font-weight: 800;
+				letter-spacing: 0.08em;
+				text-decoration: none;
+				text-transform: uppercase;
+			}
+
+			.summary-band {
+				display: grid;
+				grid-template-columns: repeat(3, minmax(0, 1fr));
+				gap: 14px;
+				margin-bottom: 28px;
+			}
+
+			.summary {
+				border: 1px solid rgba(36, 23, 15, 0.14);
+				background: rgba(255, 250, 241, 0.64);
+				padding: 18px;
+			}
+
+			.summary strong {
+				display: block;
+				margin-bottom: 6px;
+				color: var(--ember);
+				font-family:
+					"Avenir Next Condensed", "Gill Sans", "Trebuchet MS", sans-serif;
+				font-size: 0.83rem;
+				letter-spacing: 0.09em;
+				text-transform: uppercase;
+			}
+
+			.summary p {
+				margin: 0;
+				color: var(--muted);
+			}
+
+			.research-board {
+				display: grid;
+				gap: 18px;
+				margin: 0 0 28px;
+				border: 1px solid rgba(36, 23, 15, 0.16);
+				background:
+					linear-gradient(135deg, rgba(255, 250, 241, 0.84), rgba(255, 250, 241, 0.58)),
+					radial-gradient(circle at 92% 8%, rgba(197, 79, 43, 0.12), transparent 18rem);
+				box-shadow: 0 18px 54px rgba(36, 23, 15, 0.12);
+				padding: clamp(22px, 5vw, 42px);
+			}
+
+			.research-head {
+				display: grid;
+				grid-template-columns: minmax(0, 1fr) auto;
+				gap: 18px;
+				align-items: end;
+			}
+
+			.research-head p {
+				max-width: 70ch;
+				margin: 10px 0 0;
+				color: var(--muted);
+			}
+
+			.stamp {
+				border: 1px solid rgba(197, 79, 43, 0.35);
+				color: var(--ember);
+				padding: 8px 11px;
+				font-family:
+					"Avenir Next Condensed", "Gill Sans", "Trebuchet MS", sans-serif;
+				font-size: 0.78rem;
+				font-weight: 900;
+				letter-spacing: 0.1em;
+				text-transform: uppercase;
+				white-space: nowrap;
+			}
+
+			.option-grid {
+				display: grid;
+				grid-template-columns: repeat(3, minmax(0, 1fr));
+				gap: 14px;
+			}
+
+			.option-card {
+				display: grid;
+				gap: 12px;
+				align-content: start;
+				border: 1px solid rgba(36, 23, 15, 0.14);
+				background: rgba(255, 250, 241, 0.72);
+				padding: 18px;
+			}
+
+			.option-card.best {
+				background:
+					linear-gradient(135deg, rgba(220, 235, 215, 0.82), rgba(255, 250, 241, 0.68));
+				border-color: rgba(47, 111, 94, 0.35);
+			}
+
+			.option-card.caution {
+				background:
+					linear-gradient(135deg, rgba(215, 230, 247, 0.82), rgba(255, 250, 241, 0.68));
+				border-color: rgba(36, 86, 166, 0.28);
+			}
+
+			.option-card h3 {
+				margin: 0;
+				font-size: 1.38rem;
+				line-height: 1.05;
+				letter-spacing: 0;
+			}
+
+			.option-card p {
+				margin: 0;
+				color: var(--muted);
+			}
+
+			.badge-row {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 7px;
+			}
+
+			.badge {
+				border: 1px solid rgba(36, 23, 15, 0.16);
+				background: rgba(255, 250, 241, 0.64);
+				padding: 4px 7px;
+				color: var(--ink);
+				font-family:
+					"Avenir Next Condensed", "Gill Sans", "Trebuchet MS", sans-serif;
+				font-size: 0.72rem;
+				font-weight: 900;
+				letter-spacing: 0.08em;
+				text-transform: uppercase;
+			}
+
+			.machine-grid {
+				display: grid;
+				grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+				gap: 14px;
+			}
+
+			.setup-grid {
+				display: grid;
+				grid-template-columns: repeat(2, minmax(0, 1fr));
+				gap: 14px;
+			}
+
+			.setup-card {
+				border: 1px solid rgba(36, 23, 15, 0.14);
+				background: rgba(255, 250, 241, 0.72);
+				padding: 18px;
+			}
+
+			.setup-card.terminal {
+				background:
+					linear-gradient(rgba(36, 86, 166, 0.055) 1px, transparent 1px) 0 0 /
+						18px 18px,
+					linear-gradient(90deg, rgba(36, 86, 166, 0.055) 1px, transparent 1px)
+						0 0 / 18px 18px,
+					rgba(215, 230, 247, 0.72);
+				border-color: rgba(36, 86, 166, 0.22);
+			}
+
+			.setup-card h3 {
+				margin: 0 0 10px;
+				font-family:
+					"Avenir Next Condensed", "Gill Sans", "Trebuchet MS", sans-serif;
+				font-size: 0.92rem;
+				letter-spacing: 0.08em;
+				text-transform: uppercase;
+			}
+
+			.setup-card p {
+				margin: 0 0 12px;
+				color: var(--muted);
+			}
+
+			.setup-card p:last-child {
+				margin-bottom: 0;
+			}
+
+			.setup-list {
+				display: grid;
+				gap: 10px;
+				margin: 0;
+				padding-left: 1.2rem;
+				color: var(--muted);
+			}
+
+			.machine-card {
+				border: 1px solid rgba(36, 23, 15, 0.16);
+				background: var(--night);
+				color: var(--white);
+				padding: 20px;
+			}
+
+			.machine-card h3 {
+				margin: 0 0 14px;
+				color: #f7c56b;
+				font-family:
+					"Avenir Next Condensed", "Gill Sans", "Trebuchet MS", sans-serif;
+				font-size: 0.92rem;
+				letter-spacing: 0.1em;
+				text-transform: uppercase;
+			}
+
+			.machine-list {
+				display: grid;
+				gap: 8px;
+				margin: 0;
+				padding: 0;
+				list-style: none;
+			}
+
+			.machine-list li {
+				display: grid;
+				grid-template-columns: 9.5rem minmax(0, 1fr);
+				gap: 10px;
+				border-top: 1px solid rgba(255, 250, 241, 0.12);
+				padding-top: 8px;
+				color: rgba(255, 250, 241, 0.82);
+			}
+
+			.machine-list strong {
+				color: rgba(255, 250, 241, 0.98);
+				font-family:
+					"Avenir Next Condensed", "Gill Sans", "Trebuchet MS", sans-serif;
+				font-size: 0.78rem;
+				letter-spacing: 0.08em;
+				text-transform: uppercase;
+			}
+
+			.verdict {
+				border-left: 5px solid var(--ember);
+				background: rgba(255, 250, 241, 0.74);
+				padding: 18px;
+			}
+
+			.verdict h3 {
+				margin: 0 0 8px;
+				font-size: 1.55rem;
+				line-height: 1.05;
+			}
+
+			.verdict p {
+				margin: 0 0 10px;
+				color: var(--muted);
+			}
+
+			.verdict p:last-child {
+				margin-bottom: 0;
+			}
+
+			.flow {
+				display: grid;
+				gap: 18px;
+			}
+
+			.step {
+				position: relative;
+				display: grid;
+				grid-template-columns: 86px minmax(0, 1fr);
+				gap: 18px;
+				border: 1px solid rgba(36, 23, 15, 0.16);
+				background: rgba(255, 250, 241, 0.78);
+				box-shadow: 0 18px 54px rgba(36, 23, 15, 0.12);
+			}
+
+			.step::before {
+				content: "";
+				position: absolute;
+				inset: 0;
+				pointer-events: none;
+				background:
+					linear-gradient(90deg, transparent, rgba(36, 23, 15, 0.05), transparent)
+						0 0 / 220px 100%;
+				opacity: 0;
+				transition: opacity 180ms ease;
+			}
+
+			.step:hover::before {
+				opacity: 1;
+			}
+
+			.step-number {
+				display: grid;
+				place-items: center;
+				background:
+					linear-gradient(180deg, var(--night), #263542);
+				color: #f7c56b;
+				font-family:
+					"Avenir Next Condensed", "Gill Sans", "Trebuchet MS", sans-serif;
+				font-size: 2.4rem;
+				font-weight: 900;
+			}
+
+			.step-body {
+				padding: clamp(18px, 3vw, 28px) clamp(18px, 4vw, 34px) clamp(22px, 4vw, 34px)
+					0;
+			}
+
+			.step-kicker {
+				margin: 0 0 8px;
+				color: var(--leaf);
+				font-family:
+					"Avenir Next Condensed", "Gill Sans", "Trebuchet MS", sans-serif;
+				font-size: 0.78rem;
+				font-weight: 900;
+				letter-spacing: 0.11em;
+				text-transform: uppercase;
+			}
+
+			h2 {
+				margin: 0 0 16px;
+				font-size: clamp(1.75rem, 4vw, 3rem);
+				line-height: 1;
+				letter-spacing: 0;
+			}
+
+			.explanation-grid {
+				display: grid;
+				grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
+				gap: 16px;
+			}
+
+			.panel {
+				position: relative;
+				border: 1px solid rgba(36, 23, 15, 0.14);
+				background: rgba(255, 250, 241, 0.7);
+				padding: 18px;
+			}
+
+			.panel.tech {
+				background:
+					linear-gradient(rgba(36, 86, 166, 0.055) 1px, transparent 1px) 0 0 /
+						18px 18px,
+					linear-gradient(90deg, rgba(36, 86, 166, 0.055) 1px, transparent 1px)
+						0 0 / 18px 18px,
+					rgba(215, 230, 247, 0.72);
+				border-color: rgba(36, 86, 166, 0.22);
+			}
+
+			.panel.layman {
+				background:
+					radial-gradient(circle at top left, rgba(47, 111, 94, 0.12), transparent 16rem),
+					rgba(220, 235, 215, 0.64);
+				border-color: rgba(47, 111, 94, 0.2);
+			}
+
+			.panel h3 {
+				margin: 0 0 10px;
+				font-family:
+					"Avenir Next Condensed", "Gill Sans", "Trebuchet MS", sans-serif;
+				font-size: 0.92rem;
+				letter-spacing: 0.08em;
+				text-transform: uppercase;
+			}
+
+			.panel p {
+				margin: 0 0 12px;
+			}
+
+			.panel p:last-child {
+				margin-bottom: 0;
+			}
+
+			.panel ul {
+				display: grid;
+				gap: 8px;
+				margin: 0;
+				padding-left: 1.1rem;
+			}
+
+			code,
+			pre {
+				font-family:
+					"SF Mono", "Cascadia Code", "IBM Plex Mono", Consolas, monospace;
+			}
+
+			code {
+				border: 1px solid rgba(36, 23, 15, 0.12);
+				background: rgba(255, 250, 241, 0.58);
+				padding: 0.1rem 0.32rem;
+				font-size: 0.86em;
+			}
+
+			pre {
+				overflow: auto;
+				margin: 14px 0 0;
+				border-left: 5px solid var(--cobalt);
+				background: rgba(23, 33, 43, 0.94);
+				color: #f8efe1;
+				padding: 16px;
+				font-size: 0.84rem;
+				line-height: 1.5;
+			}
+
+			.contract {
+				display: grid;
+				gap: 8px;
+				margin-top: 14px;
+			}
+
+			.contract-row {
+				display: grid;
+				grid-template-columns: 9.5rem minmax(0, 1fr);
+				gap: 10px;
+				border-top: 1px solid rgba(36, 23, 15, 0.1);
+				padding-top: 8px;
+				color: var(--muted);
+				font-size: 0.95rem;
+			}
+
+			.contract-row strong {
+				color: var(--ink);
+				font-family:
+					"Avenir Next Condensed", "Gill Sans", "Trebuchet MS", sans-serif;
+				font-size: 0.82rem;
+				letter-spacing: 0.08em;
+				text-transform: uppercase;
+			}
+
+			.checklist {
+				margin: 34px 0 0;
+				border: 1px solid rgba(36, 23, 15, 0.16);
+				background: var(--night);
+				color: var(--white);
+				box-shadow: var(--shadow);
+				padding: clamp(22px, 5vw, 42px);
+			}
+
+			.checklist h2 {
+				color: #f7c56b;
+			}
+
+			.checklist-grid {
+				display: grid;
+				grid-template-columns: repeat(2, minmax(0, 1fr));
+				gap: 14px;
+			}
+
+			.check {
+				border: 1px solid rgba(255, 250, 241, 0.16);
+				background: rgba(255, 250, 241, 0.06);
+				padding: 16px;
+			}
+
+			.check strong {
+				display: block;
+				margin-bottom: 8px;
+				font-family:
+					"Avenir Next Condensed", "Gill Sans", "Trebuchet MS", sans-serif;
+				font-size: 0.84rem;
+				letter-spacing: 0.1em;
+				text-transform: uppercase;
+			}
+
+			.check p {
+				margin: 0;
+				color: rgba(255, 250, 241, 0.78);
+			}
+
+			[data-view="layman"] .tech {
+				display: none;
+			}
+
+			[data-view="technical"] .layman {
+				display: none;
+			}
+
+			[data-view="layman"] .explanation-grid,
+			[data-view="technical"] .explanation-grid {
+				grid-template-columns: minmax(0, 1fr);
+			}
+
+			@media (max-width: 880px) {
+				.hero,
+				.summary-band,
+				.explanation-grid,
+				.checklist-grid,
+				.option-grid,
+				.setup-grid,
+				.machine-grid,
+				.research-head {
+					grid-template-columns: 1fr;
+				}
+
+				.hero {
+					min-height: 0;
+				}
+
+				.step {
+					grid-template-columns: 1fr;
+				}
+
+				.step-number {
+					place-items: start;
+					padding: 14px 18px;
+					font-size: 1.4rem;
+				}
+
+				.step-body {
+					padding: 0 18px 22px;
+				}
+
+				.contract-row {
+					grid-template-columns: 1fr;
+				}
+
+				.machine-list li {
+					grid-template-columns: 1fr;
+				}
+			}
+
+			@media (prefers-reduced-motion: reduce) {
+				* {
+					scroll-behavior: auto !important;
+					transition: none !important;
+				}
+			}
+		</style>
+	</head>
+	<body data-view="both">
+		<div class="page">
+			<header class="hero">
+				<section class="hero-copy">
+					<p class="eyebrow">Typeling playback architecture</p>
+					<h1>Story audio, word by word.</h1>
+					<p>
+						This page explains the six pieces needed for a proper end-of-session story
+						player: audio narration, exact word highlighting, and a story pane that
+						stays aligned while the child listens.
+					</p>
+				</section>
+				<aside class="hero-card" aria-label="Six point map">
+					<h2>The six points</h2>
+					<ol>
+						<li><span>1</span><span>Generate word timings from audio plus exact text.</span></li>
+						<li><span>2</span><span>Tokenize the displayed story into stable word indexes.</span></li>
+						<li><span>3</span><span>Serve audio and timings through the episode API.</span></li>
+						<li><span>4</span><span>Build the story playback component.</span></li>
+						<li><span>5</span><span>Lock manual scrolling while narration is active.</span></li>
+						<li><span>6</span><span>Unlock and reset cleanly on pause, stop, or end.</span></li>
+					</ol>
+					<p>
+						The guiding rule: the audio clock drives the highlight, and the highlight
+						drives the scroll.
+					</p>
+				</aside>
+			</header>
+
+			<nav class="mode-strip" aria-label="Explanation view">
+				<div class="tabs" role="group" aria-label="Choose explanation level">
+					<button class="tab" type="button" data-mode="both" aria-pressed="true">
+						Both
+					</button>
+					<button class="tab" type="button" data-mode="layman" aria-pressed="false">
+						Layman's
+					</button>
+					<button class="tab" type="button" data-mode="technical" aria-pressed="false">
+						Technical
+					</button>
+				</div>
+				<a class="map-link" href="#qwen-setup">Jump to Qwen setup</a>
+			</nav>
+
+			<section class="summary-band" aria-label="Core idea summary">
+				<div class="summary">
+					<strong>Source of truth</strong>
+					<p>The story text remains the source. Audio and timing files are derived artifacts.</p>
+				</div>
+				<div class="summary">
+					<strong>Alignment source</strong>
+					<p>A forced aligner matches the finished audio back to the exact story words.</p>
+				</div>
+				<div class="summary">
+					<strong>Runtime rule</strong>
+					<p>During playback, the child can listen and watch. Manual scroll waits its turn.</p>
+				</div>
+			</section>
+
+			<section class="research-board" id="alignment-options" aria-label="Forced alignment options">
+				<div class="research-head">
+					<div>
+						<p class="eyebrow">Point 1 deep dive</p>
+						<h2>Which engine should create the word timing sidecar?</h2>
+						<p>
+							The alignment engine must accept finished narration audio plus the exact
+							story text, then return word start and end times. Anything that only
+							transcribes audio is useful evidence, but it is not the same contract.
+						</p>
+					</div>
+					<div class="stamp">researched May 20, 2026</div>
+				</div>
+
+				<div class="option-grid">
+					<article class="option-card best">
+						<div class="badge-row">
+							<span class="badge">managed API</span>
+							<span class="badge">best first try</span>
+						</div>
+						<h3>ElevenLabs Forced Alignment</h3>
+						<p>
+							Best practical starting point for Typeling. It is a hosted forced-alignment
+							API, so the implementation can stay a simple derived-artifact script:
+							audio plus transcript in, word and character timings out.
+						</p>
+					</article>
+					<article class="option-card">
+						<div class="badge-row">
+							<span class="badge">managed API</span>
+							<span class="badge">backup</span>
+						</div>
+						<h3>Rev AI Forced Alignment</h3>
+						<p>
+							Also a true forced-alignment service. More async/job-shaped than the
+							ElevenLabs path, and its docs call out transcript formatting constraints,
+							but it is a credible managed fallback.
+						</p>
+					</article>
+						<article class="option-card caution">
+							<div class="badge-row">
+								<span class="badge">open model</span>
+								<span class="badge">viable local candidate</span>
+							</div>
+							<h3>Qwen3-ForcedAligner-0.6B</h3>
+							<p>
+								The strongest open-model candidate for Typeling. It aligns text-speech
+								pairs and returns word or character timestamps. For our use case, the
+								answer is yes: use it offline to create <code>.words.json</code> files,
+								not live during story playback.
+							</p>
+						</article>
+					<article class="option-card">
+						<div class="badge-row">
+							<span class="badge">apple silicon</span>
+							<span class="badge">prototype path</span>
+						</div>
+						<h3>MLX Qwen paths</h3>
+						<p>
+							The Python MLX ASR project and 4-bit MLX forced-aligner weights are the
+							most promising local route on this Mac. Treat them as a spike before
+							committing product code.
+						</p>
+					</article>
+					<article class="option-card">
+						<div class="badge-row">
+							<span class="badge">hosting question</span>
+							<span class="badge">not confirmed</span>
+						</div>
+						<h3>Doubleword</h3>
+						<p>
+							Public docs show LLM/OCR/embedding inference, not a speech forced-aligner
+							endpoint. It may help only if they confirm custom hosting for Qwen3
+							ForcedAligner or another audio alignment model.
+						</p>
+					</article>
+					<article class="option-card">
+						<div class="badge-row">
+							<span class="badge">tts alternative</span>
+							<span class="badge">provider switch</span>
+						</div>
+						<h3>TTS timestamp providers</h3>
+						<p>
+							Amazon Polly speech marks, Azure word-boundary events, and ElevenLabs TTS
+							timestamps can produce timings while generating speech. Useful, but they
+							mean changing the audio source rather than aligning existing Gemini audio.
+						</p>
+					</article>
+				</div>
+			</section>
+
+			<section class="research-board" id="qwen-machine-fit" aria-label="Qwen local machine fit">
+					<div class="research-head">
+						<div>
+							<p class="eyebrow">Qwen local feasibility</p>
+							<h2>Can this Mac run the Qwen forced-aligner path?</h2>
+							<p>
+								Yes, for Typeling's offline alignment job, with one important distinction:
+								the official CUDA route is the wrong fit for this Mac, but the Apple
+								Silicon MLX route is a credible local spike.
+							</p>
+						</div>
+						<div class="stamp">local check complete</div>
+					</div>
+
+					<div class="option-grid">
+						<article class="option-card best">
+							<div class="badge-row">
+								<span class="badge">yes</span>
+								<span class="badge">use case fit</span>
+							</div>
+							<h3>Viable for Typeling</h3>
+							<p>
+								Qwen3-ForcedAligner accepts a speech file plus reference text and returns
+								word or character timestamps. That is exactly the missing artifact for
+								word-by-word story highlighting.
+							</p>
+						</article>
+						<article class="option-card best">
+							<div class="badge-row">
+								<span class="badge">yes</span>
+								<span class="badge">chapter fit</span>
+							</div>
+							<h3>Our audio is small enough</h3>
+							<p>
+								Qwen documents support up to 5 minutes of speech. Zack chapter 1 is
+								101.24 seconds, 202 words, and 1096 characters, so it is comfortably
+								inside the model's intended window.
+							</p>
+						</article>
+						<article class="option-card">
+							<div class="badge-row">
+								<span class="badge">no</span>
+								<span class="badge">wrong local path</span>
+							</div>
+							<h3>Do not use the CUDA path</h3>
+							<p>
+								The official examples assume NVIDIA CUDA, bfloat16, FlashAttention, vLLM,
+								or Docker GPU access. This Mac has Apple Silicon, not CUDA.
+							</p>
+						</article>
+						<article class="option-card caution">
+							<div class="badge-row">
+								<span class="badge">likely yes</span>
+								<span class="badge">needs spike</span>
+							</div>
+							<h3>Use MLX locally</h3>
+							<p>
+								The practical Mac path is MLX or an MLX-converted 4-bit forced-aligner
+								model. It should fit the hardware, but we should prove quality on one
+								real chapter before building product code around it.
+							</p>
+						</article>
+					</div>
+
+					<div class="machine-grid">
+						<article class="machine-card">
+							<h3>This machine</h3>
+							<ul class="machine-list">
+							<li><strong>Computer</strong><span>MacBook Pro, Apple M4 Pro</span></li>
+							<li><strong>CPU</strong><span>12 cores: 8 performance, 4 efficiency</span></li>
+							<li><strong>GPU</strong><span>16-core Apple GPU, Metal supported</span></li>
+							<li><strong>Memory</strong><span>24 GB unified memory</span></li>
+							<li><strong>Disk</strong><span>34 GiB free in this checkout volume</span></li>
+								<li><strong>Python</strong><span>3.11.12 via pyenv; no Python 3.12 installed</span></li>
+								<li><strong>ML stack</strong><span>No local torch or mlx module installed yet</span></li>
+								<li><strong>Audio</strong><span>ffmpeg is installed; Zack chapter WAV is 4.6 MB and 101.24 seconds</span></li>
+								<li><strong>Text</strong><span>Zack chapter source is 202 words and 1096 characters</span></li>
+							</ul>
+						</article>
+						<article class="verdict">
+							<h3>Verdict</h3>
+							<p>
+								Use Qwen3-ForcedAligner for Typeling if the one-chapter spike passes
+								quality checks. It fits the product contract because alignment is an
+								offline artifact-generation step, not a kid-facing runtime dependency.
+							</p>
+							<p>
+								The official <code>qwen-asr</code> and vLLM docs are CUDA/NVIDIA-shaped:
+								examples use <code>device_map="cuda:0"</code>, bfloat16, FlashAttention,
+								CUDA 12.9 wheels, and Docker with <code>--gpus all</code>. This Mac has no
+								NVIDIA CUDA GPU, so do not spend time forcing that route locally.
+							</p>
+							<p>
+								The model is small enough to store and test here: the official Hugging Face
+								repo is about 1.84 GB, and a third-party 4-bit MLX forced-aligner variant is
+								about 979 MB. With 24 GB memory and 34 GiB free disk, this machine should
+								support a careful Apple Silicon prototype.
+							</p>
+							<p>
+								The concrete next step is to run MLX-based Qwen alignment against
+								<code>data/audio/zack-s1-e0.wav</code>, compare the returned words with
+								Typeling's deterministic tokenizer, and accept Qwen only if the normalized
+								output can become the same <code>.words.json</code> sidecar a managed API
+								would produce.
+							</p>
+						</article>
+					</div>
+				</section>
+
+			<section class="research-board" id="qwen-setup" aria-label="Qwen forced aligner setup">
+				<div class="research-head">
+					<div>
+						<p class="eyebrow">Chosen setup path</p>
+						<h2>Set up Qwen through the speech CLI, not LM Studio.</h2>
+						<p>
+							LM Studio is the wrong tool for this job because Typeling needs forced
+							alignment: audio plus exact transcript in, word timestamps out. The local
+							setup should install an Apple Silicon speech runner, smoke-test one chapter,
+							and only then wrap the result as a Typeling sidecar generator.
+						</p>
+					</div>
+					<div class="stamp">exact setup</div>
+				</div>
+
+				<div class="setup-grid">
+					<article class="setup-card">
+						<h3>Local tool boundary</h3>
+						<ol class="setup-list">
+							<li>Keep Qwen outside the app runtime. It is a local media tool, not a Hono or React dependency.</li>
+							<li>Use Soniqo's <code>speech</code> CLI on Apple Silicon. It runs models locally with MLX/CoreML and downloads model weights on first use.</li>
+							<li>Start with <code>aufklarer/Qwen3-ForcedAligner-0.6B-4bit</code>. Move to the 8-bit variant only if the one-chapter quality check fails.</li>
+							<li>Do not add Python, CUDA, vLLM, or LM Studio to Typeling for this spike.</li>
+						</ol>
+					</article>
+					<article class="setup-card terminal">
+						<h3>Install and verify</h3>
+						<pre>cd /Users/season/Personal/typeling
+command -v speech || brew install soniqo/tap/speech
+speech --help</pre>
+						<p>
+							On this machine, Homebrew is already the native ARM install at
+							<code>/opt/homebrew/bin/brew</code>. The local <code>speech</code>
+							CLI is installed through <code>brew install soniqo/tap/speech</code>.
+						</p>
+					</article>
+					<article class="setup-card terminal">
+						<h3>Align Zack chapter 1</h3>
+						<pre>speech align data/audio/zack-s1-e0.wav \
+  --text "$(cat data/audio/zack-s1-e0-source.txt)" \
+  --language en \
+  --aligner-model aufklarer/Qwen3-ForcedAligner-0.6B-4bit \
+  | tee data/audio/zack-s1-e0.qwen-align.raw.txt</pre>
+						<p>
+							The first run may spend time downloading the aligner into the local model
+							cache. No API key should be needed for this smoke test.
+						</p>
+					</article>
+					<article class="setup-card">
+						<h3>Acceptance gate</h3>
+						<ol class="setup-list">
+							<li>The command writes non-empty raw output with one timestamped line per spoken word.</li>
+							<li>The first and last words match the source text, and the total word count matches the 202-word source.</li>
+							<li>Each timestamp is monotonic, non-negative, and inside the 101.24 second WAV duration.</li>
+							<li>If the raw output is wrong, fix alignment setup first. Do not build the API or playback UI on guessed timings.</li>
+						</ol>
+					</article>
+					<article class="setup-card">
+						<h3>Fallbacks</h3>
+						<ol class="setup-list">
+							<li>If the 4-bit model jitters, retry with <code>aufklarer/Qwen3-ForcedAligner-0.6B-8bit</code>.</li>
+							<li>If leading silence causes the first word to start at zero incorrectly, trim the leading non-speech or run a VAD pre-pass before alignment.</li>
+							<li>Use the official <code>qwen-asr</code> Python package only on a CUDA/NVIDIA machine or remote box. It is the canonical implementation, but not the practical local Mac path.</li>
+						</ol>
+					</article>
+					<article class="setup-card terminal">
+						<h3>Write the sidecar</h3>
+						<pre>bun run audio:zack-s1-e0:timings</pre>
+						<p>
+							This Bun wrapper parses <code>zack-s1-e0.qwen-align.raw.txt</code>,
+							compares it against Typeling's deterministic story tokenizer, and writes
+							<code>data/audio/zack-s1-e0.words.json</code> with audio and text hashes.
+						</p>
+						<p>
+							The stable Typeling contract is:
+							<code>episode text + generated WAV -&gt; validated word timing sidecar</code>.
+						</p>
+					</article>
+				</div>
+			</section>
+
+			<main class="flow">
+				<section class="step" id="point-1">
+					<div class="step-number">1</div>
+					<div class="step-body">
+						<p class="step-kicker">Derived artifact</p>
+						<h2>Generate a word timing sidecar.</h2>
+						<div class="explanation-grid">
+							<article class="panel layman">
+								<h3>Layman's explanation</h3>
+								<p>
+									Think of this as making a tiny treasure map for the narration. The
+									audio says the story out loud, and the timing file says: this word is
+									heard here, the next word is heard there.
+								</p>
+								<p>
+									Typeling should not guess those times. It should take the real audio
+									and the real story text, then ask a forced alignment tool to match them
+									together.
+								</p>
+							</article>
+							<article class="panel tech">
+								<h3>Technical explanation</h3>
+								<p>
+									Add a script that reads the exact episode text and the generated WAV,
+									submits both to a forced aligner, normalizes the response, and writes
+									<code>data/audio/&lt;season&gt;-e&lt;idx&gt;.words.json</code>.
+								</p>
+								<div class="contract">
+									<div class="contract-row">
+										<strong>Input</strong>
+										<span><code>seasons/*.json</code> episode text plus <code>data/audio/*.wav</code>.</span>
+									</div>
+									<div class="contract-row">
+										<strong>Output</strong>
+										<span>Word records with <code>index</code>, <code>text</code>, <code>start</code>, and <code>end</code>.</span>
+									</div>
+									<div class="contract-row">
+										<strong>Failure mode</strong>
+										<span>Hard fail when words are missing, reordered, duplicated wrongly, or timing moves backwards.</span>
+									</div>
+								</div>
+								<pre>{
+  "seasonSlug": "zack-s1",
+  "episodeIdx": 0,
+  "audioPath": "data/audio/zack-s1-e0.wav",
+  "words": [
+    { "index": 0, "text": "In", "start": 0.18, "end": 0.32 },
+    { "index": 1, "text": "a", "start": 0.32, "end": 0.39 }
+  ]
+}</pre>
+							</article>
+						</div>
+					</div>
+				</section>
+
+				<section class="step" id="point-2">
+					<div class="step-number">2</div>
+					<div class="step-body">
+						<p class="step-kicker">Display contract</p>
+						<h2>Tokenize the story into stable word indexes.</h2>
+						<div class="explanation-grid">
+							<article class="panel layman">
+								<h3>Layman's explanation</h3>
+								<p>
+									The page needs to know which visible word is word number 1, word number
+									2, word number 3, and so on. Spaces, commas, quotes, and line breaks
+									should still look normal, but the actual words need number tags.
+								</p>
+								<p>
+									That way, when the timing file says word 58 is being read, the page can
+									highlight exactly word 58.
+								</p>
+							</article>
+							<article class="panel tech">
+								<h3>Technical explanation</h3>
+								<p>
+									Add a deterministic tokenizer such as <code>src/lib/storyWordTokens.ts</code>.
+									It should split text into render tokens while preserving the original
+									text byte-for-byte when joined back together.
+								</p>
+								<ul>
+									<li>Word tokens get <code>wordIndex</code>.</li>
+									<li>Whitespace, punctuation, and newlines remain separate display tokens.</li>
+									<li>Contractions and hyphenated story words need an explicit rule.</li>
+									<li>Tests should cover quotes, punctuation, newlines, and repeated words.</li>
+								</ul>
+								<pre>type StoryToken =
+  | { kind: "word"; text: string; wordIndex: number }
+  | { kind: "space" | "punctuation" | "newline"; text: string };</pre>
+							</article>
+						</div>
+					</div>
+				</section>
+
+				<section class="step" id="point-3">
+					<div class="step-number">3</div>
+					<div class="step-body">
+						<p class="step-kicker">Access boundary</p>
+						<h2>Serve audio and timings through the episode API.</h2>
+						<div class="explanation-grid">
+							<article class="panel layman">
+								<h3>Layman's explanation</h3>
+								<p>
+									The browser should not rummage around in files. It should ask Typeling:
+									"Can this child listen to this chapter?" If yes, Typeling sends back the
+									audio and the word map.
+								</p>
+								<p>
+									This keeps locked chapters locked and keeps the playback feature tied to
+									the same chapter rules as reading and typing.
+								</p>
+							</article>
+							<article class="panel tech">
+								<h3>Technical explanation</h3>
+								<p>
+									Add a route like <code>GET /api/children/:id/episodes/:episodeIdx/audio</code>.
+									It should reuse the existing episode access check, then return a small
+									JSON payload pointing at the audio asset and embedding or linking the
+									alignment data.
+								</p>
+								<div class="contract">
+									<div class="contract-row">
+										<strong>200</strong>
+										<span>Audio exists, alignment exists, and the episode is open for that child.</span>
+									</div>
+									<div class="contract-row">
+										<strong>404</strong>
+										<span>No audio/alignment artifact exists for that episode yet.</span>
+									</div>
+									<div class="contract-row">
+										<strong>409/403</strong>
+										<span>The chapter is stale, locked, or not available to that child.</span>
+									</div>
+								</div>
+							</article>
+						</div>
+					</div>
+				</section>
+
+				<section class="step" id="point-4">
+					<div class="step-number">4</div>
+					<div class="step-body">
+						<p class="step-kicker">Player surface</p>
+						<h2>Build the story playback component.</h2>
+						<div class="explanation-grid">
+							<article class="panel layman">
+								<h3>Layman's explanation</h3>
+								<p>
+									This is the actual "listen to the story" screen. It shows the story,
+									plays the voice, and lights up the word currently being spoken.
+								</p>
+								<p>
+									The child should experience it like a parent tracing a finger across the
+									page while reading aloud.
+								</p>
+							</article>
+							<article class="panel tech">
+								<h3>Technical explanation</h3>
+								<p>
+									Refactor the current story reader into a component with an
+									<code>&lt;audio&gt;</code> element, active playback state, rendered word
+									spans, and a loop that reads <code>audio.currentTime</code>.
+								</p>
+								<ul>
+									<li>Use binary search over alignment words to find the active word.</li>
+									<li>Use <code>requestAnimationFrame</code> while playing for smooth highlighting.</li>
+									<li>Use media events for loading, pause, ended, error, and seek handling.</li>
+									<li>Keep native autoplay restrictions in mind: playback starts from a user action.</li>
+								</ul>
+							</article>
+						</div>
+					</div>
+				</section>
+
+				<section class="step" id="point-5">
+					<div class="step-number">5</div>
+					<div class="step-body">
+						<p class="step-kicker">Alignment protection</p>
+						<h2>Lock manual scrolling while narration is active.</h2>
+						<div class="explanation-grid">
+							<article class="panel layman">
+								<h3>Layman's explanation</h3>
+								<p>
+									While the voice is reading, the page should gently take the steering
+									wheel. If the child scrolls away, the highlighted word may no longer be
+									visible, and the story feels broken.
+								</p>
+								<p>
+									So during narration, Typeling should keep the current word in view and
+									ignore manual scroll attempts.
+								</p>
+							</article>
+							<article class="panel tech">
+								<h3>Technical explanation</h3>
+								<p>
+									When <code>isNarrating</code> is true, apply a locked class to the story
+									container and prevent user scroll inputs such as wheel, touchmove, and
+									scroll-key behavior inside the reader.
+								</p>
+								<ul>
+									<li>Programmatic scroll remains allowed.</li>
+									<li>The active word calls <code>scrollIntoView({ block: "center", inline: "nearest" })</code>.</li>
+									<li>Use <code>overscroll-behavior</code> to avoid scroll chaining into the page.</li>
+									<li>Do not hide focus or trap keyboard navigation outside the player controls.</li>
+								</ul>
+							</article>
+						</div>
+					</div>
+				</section>
+
+				<section class="step" id="point-6">
+					<div class="step-number">6</div>
+					<div class="step-body">
+						<p class="step-kicker">State release</p>
+						<h2>Unlock cleanly on pause, stop, seek, or end.</h2>
+						<div class="explanation-grid">
+							<article class="panel layman">
+								<h3>Layman's explanation</h3>
+								<p>
+									When the story stops reading aloud, the page should become a normal
+									story page again. The child can scroll, reread, or tap play again.
+								</p>
+								<p>
+									This makes the lock feel helpful instead of bossy.
+								</p>
+							</article>
+							<article class="panel tech">
+								<h3>Technical explanation</h3>
+								<p>
+									Model playback state explicitly. The scroll lock is derived from
+									<code>state === "playing"</code>, not from whether the component happens
+									to have audio metadata loaded.
+								</p>
+								<div class="contract">
+									<div class="contract-row">
+										<strong>Playing</strong>
+										<span>Highlight active word, auto-scroll it into view, lock manual scroll.</span>
+									</div>
+									<div class="contract-row">
+										<strong>Paused</strong>
+										<span>Keep current highlight if useful, stop animation loop, unlock manual scroll.</span>
+									</div>
+									<div class="contract-row">
+										<strong>Ended</strong>
+										<span>Clear or settle highlight, stop animation loop, unlock scroll, show replay affordance.</span>
+									</div>
+								</div>
+							</article>
+						</div>
+					</div>
+				</section>
+			</main>
+
+			<section class="checklist" id="definition-of-done">
+				<h2>Definition of done</h2>
+				<div class="checklist-grid">
+					<div class="check">
+						<strong>Alignment quality</strong>
+						<p>
+							The generated word JSON validates against the exact displayed tokenizer output,
+							with monotonic timestamps and no silent word mismatch.
+						</p>
+					</div>
+					<div class="check">
+						<strong>Runtime behavior</strong>
+						<p>
+							Play starts from a user action, highlights track audio time, and seeking or
+							replay recomputes the active word.
+						</p>
+					</div>
+					<div class="check">
+						<strong>Scroll behavior</strong>
+						<p>
+							Manual scrolling is disabled only while the narration is actively playing.
+							It returns immediately on pause, stop, or end.
+						</p>
+					</div>
+					<div class="check">
+						<strong>Kid-facing fallback</strong>
+						<p>
+							If audio or alignment is missing, the chapter still displays as a readable
+							story instead of becoming an error screen.
+						</p>
+					</div>
+				</div>
+			</section>
+		</div>
+
+		<script>
+			const tabs = document.querySelectorAll(".tab");
+			const body = document.body;
+
+			for (const tab of tabs) {
+				tab.addEventListener("click", () => {
+					const mode = tab.dataset.mode || "both";
+					body.dataset.view = mode;
+					for (const nextTab of tabs) {
+						nextTab.setAttribute(
+							"aria-pressed",
+							String(nextTab === tab)
+						);
+					}
+				});
+			}
+		</script>
+	</body>
+</html>

@@ -21,6 +21,9 @@ data/audio/<child>-s1-e<n>-styled-transcript.txt     (Gemini-format: TTS preambl
         ▼  generate-zack-ch1-audio.ts                 (Gemini multi-speaker TTS)
 data/audio/<child>-s1-e<n>.wav                       (final audio)
 data/audio/<child>-s1-e<n>.meta.json                 (generation metadata)
+        │
+        ▼  Qwen3-ForcedAligner + generate-word-timings.ts
+data/audio/<child>-s1-e<n>.words.json                (validated word timing sidecar)
 ```
 
 ## Zack chapter 1 (Gemini)
@@ -138,6 +141,22 @@ Check:
 
 If the output is bad, re-run step 4. Gemini occasionally returns degraded audio; the script handles transient non-audio responses automatically, but quality varies.
 
+#### 6. Generate word timings
+
+Run Qwen3-ForcedAligner through the local `speech` CLI, then normalize the raw output into the Typeling sidecar format:
+
+```bash
+speech align data/audio/zack-s1-e0.wav \
+  --text "$(cat data/audio/zack-s1-e0-source.txt)" \
+  --language en \
+  --aligner-model aufklarer/Qwen3-ForcedAligner-0.6B-4bit \
+  > data/audio/zack-s1-e0.qwen-align.raw.txt
+
+bun run audio:zack-s1-e0:timings
+```
+
+The Bun script hard-fails if the aligned words drift from the source text, timestamps move backwards, or timings exceed the WAV duration.
+
 ## Winni chapter 1 (Gemini)
 
 The Winni pipeline reuses the same scripts as Zack with different arguments (season file, transcript path, output path). There is no dedicated `tts:winni-s1-e0` npm shortcut yet — step 4 invokes the runner directly.
@@ -200,6 +219,8 @@ All intermediate and final artifacts go in `data/audio/`:
 | `<child>-s1-e<n>-styled-transcript.txt` | Styled transcript with TTS preamble and audio tags |
 | `<child>-s1-e<n>.wav` | Generated TTS audio (PCM, 24 kHz, WAV-wrapped) |
 | `<child>-s1-e<n>.meta.json` | Generation metadata (model, voices, transcript hash, timestamp) |
+| `<child>-s1-e<n>.qwen-align.raw.txt` | Raw Qwen forced-alignment output |
+| `<child>-s1-e<n>.words.json` | Validated word timing sidecar for playback/highlighting |
 
 ## Are generated audio artifacts committed?
 
