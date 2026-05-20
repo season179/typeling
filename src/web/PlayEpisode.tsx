@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useParams } from "wouter";
 import EpisodeRunner from "./EpisodeRunner";
 import { clearDraft } from "./episodeRunner/autosave";
+import StoryAudioPlayer from "./StoryAudioPlayer";
 
 interface EpisodeData {
 	text: string;
@@ -144,16 +145,11 @@ function StoryReader({
 						Type again
 					</button>
 				</fieldset>
-				<article className="reader-story" data-testid="story-reader">
-					{text.split(/\n+/).map((paragraph, i) => (
-						<p
-							// biome-ignore lint/suspicious/noArrayIndexKey: story paragraphs are static for the loaded chapter
-							key={i}
-						>
-							{paragraph}
-						</p>
-					))}
-				</article>
+				<StoryAudioPlayer
+					childId={childId}
+					episodeIdx={episodeIdx}
+					text={text}
+				/>
 			</div>
 		</section>
 	);

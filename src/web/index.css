@@ -275,7 +275,7 @@
 	position: relative;
 	z-index: 1;
 	display: grid;
-	grid-template-rows: auto auto minmax(0, 1fr);
+	grid-template-rows: auto auto auto minmax(0, 1fr);
 	gap: 1rem;
 	width: min(52rem, 100%);
 	min-height: 0;
@@ -351,13 +351,67 @@
 	background: color-mix(in srgb, var(--game-accent) 35%, white);
 }
 
+.reader-audio-bar {
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+	min-width: 0;
+}
+
+.narration-toggle {
+	border: 1px solid rgba(255, 255, 255, 0.86);
+	border-radius: 0.8rem;
+	background: linear-gradient(
+		135deg,
+		color-mix(in srgb, var(--game-primary) 28%, white),
+		color-mix(in srgb, var(--game-secondary) 26%, white)
+	);
+	padding: 0.72rem 1rem;
+	box-shadow: 0 12px 28px var(--game-shadow);
+	color: var(--game-ink);
+	font-weight: 900;
+	letter-spacing: 0;
+	transition:
+		transform 160ms ease,
+		filter 160ms ease;
+}
+
+.narration-toggle:hover:not(:disabled) {
+	transform: translateY(-1px);
+	filter: brightness(1.03);
+}
+
+.narration-toggle[aria-pressed="true"] {
+	background: linear-gradient(
+		135deg,
+		var(--game-primary),
+		var(--game-secondary)
+	);
+	color: #ffffff;
+}
+
+.narration-toggle:disabled {
+	cursor: not-allowed;
+	opacity: 0.58;
+}
+
 .reader-story {
 	min-height: 0;
 	overflow-y: auto;
 	border-radius: 1rem;
 	background: rgba(255, 255, 255, 0.5);
 	padding: clamp(1rem, 3vw, 1.6rem);
+	overscroll-behavior: contain;
+	scroll-behavior: smooth;
 	scrollbar-gutter: stable;
+}
+
+.reader-story-locked {
+	touch-action: none;
+}
+
+.reader-story-text {
+	white-space: pre-wrap;
 }
 
 .reader-story p {
@@ -372,6 +426,20 @@
 
 .reader-story p:last-child {
 	margin-bottom: 0;
+}
+
+.reader-word {
+	border-radius: 0.28rem;
+	transition:
+		background 120ms ease,
+		box-shadow 120ms ease,
+		color 120ms ease;
+}
+
+.reader-word-active {
+	background: color-mix(in srgb, var(--game-accent) 62%, white);
+	box-shadow: 0 0 0 0.18rem
+		color-mix(in srgb, var(--game-accent) 34%, transparent);
 }
 
 .game-hud {

@@ -70,7 +70,8 @@ bun run tts:zack-s1-e0
 
 | Script             | What it does                                                        |
 | ------------------ | ------------------------------------------------------------------- |
-| `bun run dev`      | Run Hono at `https://typeling-api.localhost` and Vite at `https://typeling.localhost` through Portless. |
+| `bun run dev`      | Start the Portless HTTPS proxy if needed, then run Hono at `https://typeling-api.localhost` and Vite at `https://typeling.localhost`. |
+| `bun run dev:proxy` | Ensure the standard HTTPS Portless proxy is running. |
 | `bun run dev:direct` | Run Hono on `127.0.0.1:3001` and Vite on `127.0.0.1:5173`; override Hono with `SERVER_PORT`. |
 | `bun run server`   | Run the Hono API server only.                                       |
 | `bun run web`      | Run the Vite dev server only.                                       |

@@ -59,6 +59,23 @@ Alignment took 2.44s
 		expect(sidecar.textHash).toHaveLength(64);
 	});
 
+	it("validates alignment words through the display tokenizer", () => {
+		const sidecar = buildTestSidecar({
+			sourceText: `"Oh," said Pixel.`,
+			rawAlignment: `
+[0.00s - 0.20s] "Oh,"
+[0.24s - 0.42s] said
+[0.46s - 0.80s] Pixel.
+`,
+		});
+
+		expect(sidecar.words.map((word) => word.text)).toEqual([
+			`"Oh,"`,
+			"said",
+			"Pixel.",
+		]);
+	});
+
 	it("fails when aligned text drifts from the source text", () => {
 		expect(() =>
 			buildTestSidecar({

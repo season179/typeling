@@ -1147,15 +1147,16 @@ speech --help</pre>
 							<article class="panel tech">
 								<h3>Technical explanation</h3>
 								<p>
-									Add a deterministic tokenizer such as <code>src/lib/storyWordTokens.ts</code>.
-									It should split text into render tokens while preserving the original
-									text byte-for-byte when joined back together.
+									The deterministic tokenizer lives in
+									<code>src/lib/storyWordTokens.ts</code>. It splits text into render
+									tokens while preserving the original text byte-for-byte when joined
+									back together.
 								</p>
 								<ul>
 									<li>Word tokens get <code>wordIndex</code>.</li>
 									<li>Whitespace, punctuation, and newlines remain separate display tokens.</li>
 									<li>Contractions and hyphenated story words need an explicit rule.</li>
-									<li>Tests should cover quotes, punctuation, newlines, and repeated words.</li>
+									<li><code>extractAlignmentStoryWords</code> builds the exact words that a timing sidecar must match.</li>
 								</ul>
 								<pre>type StoryToken =
   | { kind: "word"; text: string; wordIndex: number }
@@ -1186,10 +1187,13 @@ speech --help</pre>
 							<article class="panel tech">
 								<h3>Technical explanation</h3>
 								<p>
-									Add a route like <code>GET /api/children/:id/episodes/:episodeIdx/audio</code>.
-									It should reuse the existing episode access check, then return a small
-									JSON payload pointing at the audio asset and embedding or linking the
-									alignment data.
+									The implemented route is
+									<code>GET /api/children/:id/episodes/:episodeIdx/audio</code>. It
+									reuses the existing episode access check, validates the sidecar against
+									the season text and audio hash, then returns a small JSON payload with
+									<code>audio_url</code>, <code>duration_seconds</code>, and
+									<code>words</code>. The audio bytes are served by the paired
+									<code>/audio/file</code> route.
 								</p>
 								<div class="contract">
 									<div class="contract-row">
@@ -1230,14 +1234,15 @@ speech --help</pre>
 							<article class="panel tech">
 								<h3>Technical explanation</h3>
 								<p>
-									Refactor the current story reader into a component with an
+									The completed-chapter reader now uses
+									<code>src/web/StoryAudioPlayer.tsx</code>, with an
 									<code>&lt;audio&gt;</code> element, active playback state, rendered word
 									spans, and a loop that reads <code>audio.currentTime</code>.
 								</p>
 								<ul>
-									<li>Use binary search over alignment words to find the active word.</li>
-									<li>Use <code>requestAnimationFrame</code> while playing for smooth highlighting.</li>
-									<li>Use media events for loading, pause, ended, error, and seek handling.</li>
+									<li><code>src/lib/audioPlayback.ts</code> uses binary search over alignment words to find the active word.</li>
+									<li><code>requestAnimationFrame</code> runs only while playing for smooth highlighting.</li>
+									<li>Media events handle loading, pause, ended, error, and seek updates.</li>
 									<li>Keep native autoplay restrictions in mind: playback starts from a user action.</li>
 								</ul>
 							</article>
@@ -1266,8 +1271,8 @@ speech --help</pre>
 							<article class="panel tech">
 								<h3>Technical explanation</h3>
 								<p>
-									When <code>isNarrating</code> is true, apply a locked class to the story
-									container and prevent user scroll inputs such as wheel, touchmove, and
+									When <code>playbackState === "playing"</code>, the story container gets
+									<code>reader-story-locked</code> and prevents wheel, touchmove, and
 									scroll-key behavior inside the reader.
 								</p>
 								<ul>
@@ -1300,9 +1305,9 @@ speech --help</pre>
 							<article class="panel tech">
 								<h3>Technical explanation</h3>
 								<p>
-									Model playback state explicitly. The scroll lock is derived from
-									<code>state === "playing"</code>, not from whether the component happens
-									to have audio metadata loaded.
+									Playback state is explicit. The scroll lock is derived from
+									<code>playbackState === "playing"</code>, not from whether the component
+									happens to have audio metadata loaded.
 								</p>
 								<div class="contract">
 									<div class="contract-row">

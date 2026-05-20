@@ -1,17 +1,25 @@
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { Hono } from "hono";
 import { MAX_EPISODES, seasonSchema } from "../lib/schemas/season";
 import { sessionSchema } from "../lib/schemas/state";
+import { extractAlignmentStoryWords } from "../lib/storyWordTokens";
+import {
+	type WordTimingSidecar,
+	wordTimingSidecarSchema,
+} from "../lib/wordTimings";
 import { createStateQueue, ensureStateFile, readState } from "./state";
 
 export const DEFAULT_PORT = 3001;
 export const HOSTNAME = "127.0.0.1";
 export const DEFAULT_STATE_PATH = "data/state.json";
 export const DEFAULT_SEASONS_DIR = "seasons";
+export const DEFAULT_AUDIO_DIR = "data/audio";
 const WILDCARD_HOSTNAME = "0.0.0.0";
 
 const statePath = () => Bun.env.TYPELING_STATE_PATH ?? DEFAULT_STATE_PATH;
 const seasonsDir = () => Bun.env.TYPELING_SEASONS_DIR ?? DEFAULT_SEASONS_DIR;
+const audioDir = () => Bun.env.TYPELING_AUDIO_DIR ?? DEFAULT_AUDIO_DIR;
 
 export class SeasonFileNotFoundError extends Error {
 	constructor(seasonSlug: string) {
@@ -37,6 +45,7 @@ export type EpisodeAccessCode =
 	| "InvalidEpisode"
 	| "EpisodeNotFound"
 	| "EpisodeLocked";
+type EpisodeAudioCode = "EpisodeAudioMissing" | "EpisodeAudioStale";
 
 export class EpisodeAccessError extends Error {
 	status: 400 | 403 | 404;
@@ -44,6 +53,16 @@ export class EpisodeAccessError extends Error {
 	constructor(code: EpisodeAccessCode, status: 400 | 403 | 404) {
 		super(code);
 		this.name = "EpisodeAccessError";
+		this.status = status;
+	}
+}
+
+export class EpisodeAudioError extends Error {
+	status: 404 | 409;
+
+	constructor(code: EpisodeAudioCode, status: 404 | 409) {
+		super(code);
+		this.name = "EpisodeAudioError";
 		this.status = status;
 	}
 }
@@ -90,6 +109,109 @@ const assertEpisodeIsOpen = (
 	}
 	if (episodeIdx > currentEpisode) {
 		throw new EpisodeAccessError("EpisodeLocked", 403);
+	}
+};
+
+const loadOpenEpisode = async (childId: string, rawEpisodeIdx: string) => {
+	const result = await loadChildSeason(childId);
+	if ("error" in result) {
+		throw new EpisodeAccessError("ChildNotFound", 404);
+	}
+
+	const episodeIdx = parseEpisodeIdx(rawEpisodeIdx);
+	const { child, season } = result;
+	assertEpisodeIsOpen(
+		episodeIdx,
+		child.current_episode,
+		season.episodes.length,
+	);
+
+	const episode = season.episodes[episodeIdx];
+	if (!episode) {
+		throw new EpisodeAccessError("EpisodeNotFound", 404);
+	}
+
+	return { child, season, episodeIdx, episode };
+};
+
+const audioArtifactPaths = (seasonSlug: string, episodeIdx: number) => {
+	const baseName = `${seasonSlug}-e${episodeIdx}`;
+	return {
+		audioPath: join(audioDir(), `${baseName}.wav`),
+		timingsPath: join(audioDir(), `${baseName}.words.json`),
+	};
+};
+
+const sha256 = (input: string | Uint8Array) =>
+	createHash("sha256").update(input).digest("hex");
+
+const assertSidecarMatchesEpisode = (
+	sidecar: WordTimingSidecar,
+	seasonSlug: string,
+	episodeIdx: number,
+	episodeText: string,
+	audioBytes: Uint8Array,
+) => {
+	if (
+		sidecar.seasonSlug !== seasonSlug ||
+		sidecar.episodeIdx !== episodeIdx ||
+		sidecar.audioHash !== sha256(audioBytes) ||
+		sidecar.textHash !== sha256(episodeText)
+	) {
+		throw new EpisodeAudioError("EpisodeAudioStale", 409);
+	}
+
+	const expectedWords = extractAlignmentStoryWords(episodeText);
+	if (sidecar.words.length !== expectedWords.length) {
+		throw new EpisodeAudioError("EpisodeAudioStale", 409);
+	}
+
+	let previousEnd = 0;
+	for (const [index, word] of sidecar.words.entries()) {
+		const expected = expectedWords[index];
+		if (
+			!expected ||
+			word.index !== expected.wordIndex ||
+			word.text !== expected.text ||
+			word.end < word.start ||
+			word.start < previousEnd ||
+			word.end > sidecar.durationSeconds
+		) {
+			throw new EpisodeAudioError("EpisodeAudioStale", 409);
+		}
+		previousEnd = word.end;
+	}
+};
+
+const loadEpisodeAudio = async (
+	seasonSlug: string,
+	episodeIdx: number,
+	episodeText: string,
+) => {
+	const paths = audioArtifactPaths(seasonSlug, episodeIdx);
+	const audioFile = Bun.file(paths.audioPath);
+	const timingsFile = Bun.file(paths.timingsPath);
+
+	if (!(await audioFile.exists()) || !(await timingsFile.exists())) {
+		return null;
+	}
+
+	try {
+		const sidecar = wordTimingSidecarSchema.parse(await timingsFile.json());
+		const audioBytes = new Uint8Array(await audioFile.arrayBuffer());
+		assertSidecarMatchesEpisode(
+			sidecar,
+			seasonSlug,
+			episodeIdx,
+			episodeText,
+			audioBytes,
+		);
+		return { ...paths, sidecar };
+	} catch (error) {
+		if (error instanceof EpisodeAudioError) {
+			throw error;
+		}
+		throw new EpisodeAudioError("EpisodeAudioStale", 409);
 	}
 };
 
@@ -228,23 +350,10 @@ app.get("/api/children/:id/current-episode", async (c) => {
 
 app.get("/api/children/:id/episodes/:episodeIdx", async (c) => {
 	try {
-		const result = await loadChildSeason(c.req.param("id"));
-		if ("error" in result) {
-			return c.json({ error: result.error }, result.status);
-		}
-
-		const episodeIdx = parseEpisodeIdx(c.req.param("episodeIdx"));
-		const { child, season } = result;
-		assertEpisodeIsOpen(
-			episodeIdx,
-			child.current_episode,
-			season.episodes.length,
+		const { child, season, episodeIdx, episode } = await loadOpenEpisode(
+			c.req.param("id"),
+			c.req.param("episodeIdx"),
 		);
-
-		const episode = season.episodes[episodeIdx];
-		if (!episode) {
-			return c.json({ error: "EpisodeNotFound" }, 404);
-		}
 
 		return c.json({
 			text: episode.text,
@@ -255,6 +364,63 @@ app.get("/api/children/:id/episodes/:episodeIdx", async (c) => {
 		});
 	} catch (error) {
 		if (error instanceof EpisodeAccessError) {
+			return c.json({ error: error.message }, error.status);
+		}
+		throw error;
+	}
+});
+
+app.get("/api/children/:id/episodes/:episodeIdx/audio", async (c) => {
+	try {
+		const childId = c.req.param("id");
+		const { season, episodeIdx, episode } = await loadOpenEpisode(
+			childId,
+			c.req.param("episodeIdx"),
+		);
+		const audio = await loadEpisodeAudio(season.slug, episodeIdx, episode.text);
+		if (!audio) {
+			return c.json({ error: "EpisodeAudioMissing" }, 404);
+		}
+
+		return c.json({
+			season_slug: season.slug,
+			episode_idx: episodeIdx,
+			audio_url: `/api/children/${encodeURIComponent(
+				childId,
+			)}/episodes/${episodeIdx}/audio/file`,
+			duration_seconds: audio.sidecar.durationSeconds,
+			words: audio.sidecar.words,
+		});
+	} catch (error) {
+		if (error instanceof EpisodeAccessError) {
+			return c.json({ error: error.message }, error.status);
+		}
+		if (error instanceof EpisodeAudioError) {
+			return c.json({ error: error.message }, error.status);
+		}
+		throw error;
+	}
+});
+
+app.get("/api/children/:id/episodes/:episodeIdx/audio/file", async (c) => {
+	try {
+		const { season, episodeIdx, episode } = await loadOpenEpisode(
+			c.req.param("id"),
+			c.req.param("episodeIdx"),
+		);
+		const audio = await loadEpisodeAudio(season.slug, episodeIdx, episode.text);
+		if (!audio) {
+			return c.json({ error: "EpisodeAudioMissing" }, 404);
+		}
+
+		return new Response(Bun.file(audio.audioPath), {
+			headers: { "content-type": "audio/wav" },
+		});
+	} catch (error) {
+		if (error instanceof EpisodeAccessError) {
+			return c.json({ error: error.message }, error.status);
+		}
+		if (error instanceof EpisodeAudioError) {
 			return c.json({ error: error.message }, error.status);
 		}
 		throw error;

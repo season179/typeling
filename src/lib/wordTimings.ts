@@ -1,25 +1,30 @@
 import { createHash } from "node:crypto";
+import { z } from "zod";
+import { extractAlignmentStoryWords } from "./storyWordTokens";
 
-export interface WordTiming {
-	index: number;
-	text: string;
-	start: number;
-	end: number;
-}
+export const wordTimingSchema = z.object({
+	index: z.number().int().min(0),
+	text: z.string().min(1),
+	start: z.number().nonnegative(),
+	end: z.number().nonnegative(),
+});
 
-export interface WordTimingSidecar {
-	seasonSlug: string;
-	episodeIdx: number;
-	audioPath: string;
-	sourceTextPath: string;
-	rawAlignmentPath: string;
-	audioHash: string;
-	textHash: string;
-	alignerModel: string;
-	durationSeconds: number;
-	generatedAt: string;
-	words: WordTiming[];
-}
+export const wordTimingSidecarSchema = z.object({
+	seasonSlug: z.string().min(1),
+	episodeIdx: z.number().int().min(0),
+	audioPath: z.string().min(1),
+	sourceTextPath: z.string().min(1),
+	rawAlignmentPath: z.string().min(1),
+	audioHash: z.string().length(64),
+	textHash: z.string().length(64),
+	alignerModel: z.string().min(1),
+	durationSeconds: z.number().positive(),
+	generatedAt: z.string().min(1),
+	words: z.array(wordTimingSchema),
+});
+
+export type WordTiming = z.infer<typeof wordTimingSchema>;
+export type WordTimingSidecar = z.infer<typeof wordTimingSidecarSchema>;
 
 export interface BuildWordTimingSidecarInput {
 	seasonSlug: string;
@@ -47,8 +52,7 @@ const WAV_CHUNK_HEADER_SIZE = 8;
 const MIN_WAV_FORMAT_CHUNK_SIZE = 16;
 
 export function splitSourceWords(sourceText: string): string[] {
-	const trimmed = sourceText.trim();
-	return trimmed.length === 0 ? [] : trimmed.split(/\s+/);
+	return extractAlignmentStoryWords(sourceText).map((word) => word.text);
 }
 
 export function parseQwenAlignment(rawAlignment: string): WordTiming[] {
