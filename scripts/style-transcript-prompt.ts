@@ -3,7 +3,7 @@
  * transcript into a bedtime TTS performance script for Gemini.
  *
  * The preamble is a short "Make Storyteller sound…" instruction; the body
- * uses `Storyteller:` / `Pixel:` speaker labels and `[bracket]` mood tags.
+ * uses `Storyteller:` / `Character:` speaker labels and `[bracket]` mood tags.
  * Gemini consumes this format directly.
  *
  * ## Review workflow for Season
@@ -26,8 +26,8 @@
  *    feel cosy, gentle, and appropriate for a 7–10 year old at bedtime.
  *    No creepy, sarcastic, or tense delivery.
  *
- * 5. **Only Storyteller and Pixel** — Grep for unexpected speaker labels.
- *    The transcript must only have `Storyteller:` and `Pixel:` lines.
+ * 5. **Only Storyteller and Character** — Grep for unexpected speaker labels.
+ *    The transcript must only have `Storyteller:` and `Character:` lines.
  *
  * 6. **Audio tags are sparse and readable** — Tags like [softly], [gently],
  *    [warmly], [excitedly], [curiously] should appear only where they add
@@ -46,7 +46,7 @@
  */
 
 export interface StylePromptInputs {
-	/** The raw transcript with Storyteller: / Pixel: lines. */
+	/** The raw transcript with Storyteller: / Character: lines. */
 	transcript: string;
 }
 
@@ -56,14 +56,14 @@ export interface BuiltStylePrompt {
 }
 
 const PREAMBLE_RULE =
-	'The first line MUST be a short TTS preamble telling the TTS model how each speaker should sound (e.g. "Make Storyteller sound warm and gentle… Make Pixel sound curious and bright…"). Then a blank line, then the transcript with audio tags.';
+	'The first line MUST be a short TTS preamble telling the TTS model how each speaker should sound (e.g. "Make Storyteller sound warm and gentle… Make Character sound curious and bright…"). Then a blank line, then the transcript with audio tags.';
 
 const EXAMPLE = [
-	"Make Storyteller sound warm and gentle, like a parent reading a bedtime story. Make Pixel sound curious and bright, like a friendly young robot.",
+	"Make Storyteller sound warm and gentle, like a parent reading a bedtime story. Make Character sound curious and bright, like a friendly young companion.",
 	"",
 	"Storyteller: [gently] In a cosy workshop filled with soft light...",
-	"Pixel: [excitedly] What a lovely day!",
-	"Storyteller: [warmly] said Pixel in a soft, buzzy voice.",
+	"Character: [excitedly] What a lovely day!",
+	"Storyteller: [warmly] they said in a soft, happy voice.",
 ].join("\n");
 
 export function buildStylePrompt({
@@ -78,7 +78,7 @@ export function buildStylePrompt({
 		"2. Keep British English spelling and idiom exactly as written. Do not Americanise any words.",
 		"3. Keep a warm, kind, cosy bedtime tone throughout. Nothing scary, tense, or sad.",
 		"4. Do not add new plot events, dialogue, or narration. Only add inline audio tags.",
-		"5. Keep exactly two speaker labels in the transcript body: Storyteller and Pixel. Do not rename, merge, or add speakers.",
+		"5. Keep exactly two speaker labels in the transcript body: Storyteller and Character. Do not rename, merge, or add speakers. The 'Character' label voices every quoted line, regardless of which named character in the story is speaking.",
 		"6. Use audio tags sparingly — only where they genuinely help the performance. A tag every 2–3 lines is plenty. Favour: [softly], [gently], [warmly], [excitedly], [curiously], [wonderingly], [brightly], [happily].",
 		"7. Always put the output in the exact format described below.",
 		"",

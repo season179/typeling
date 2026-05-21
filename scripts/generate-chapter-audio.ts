@@ -1,10 +1,10 @@
 /**
- * Generate Zack chapter 1 audio using the real Gemini TTS API.
+ * Generate chapter audio for any season + episode using the real Gemini TTS API.
  *
  * Usage:
- *   bun run scripts/generate-zack-ch1-audio.ts
- *   bun run scripts/generate-zack-ch1-audio.ts --transcript data/audio/zack-s1-e0-styled-transcript.txt
- *   bun run scripts/generate-zack-ch1-audio.ts --output data/audio/zack-s1-e0.wav
+ *   bun run scripts/generate-chapter-audio.ts --season <slug> --episode-idx <n>
+ *   bun run scripts/generate-chapter-audio.ts --season winni-s1 --episode-idx 0 --transcript data/audio/winni-s1-e0-styled-transcript.txt
+ *   bun run scripts/generate-chapter-audio.ts --season zack-s1 --episode-idx 0 --output data/audio/zack-s1-e0.wav
  *
  * Requires GEMINI_API_KEY in the environment.
  * Retries transient missing-audio responses as warned in the Gemini docs.
@@ -26,15 +26,7 @@ import {
 } from "../src/lib/geminiTtsClient";
 
 const ROOT = join(import.meta.dir, "..");
-const DEFAULT_TRANSCRIPT = join(
-	ROOT,
-	"data",
-	"audio",
-	"zack-s1-e0-styled-transcript.txt",
-);
 const DEFAULT_OUTPUT_DIR = join(ROOT, "data", "audio");
-const DEFAULT_SEASON = "zack-s1";
-const DEFAULT_EPISODE_IDX = 0;
 const DEFAULT_MAX_RETRIES = 3;
 
 const { values } = parseArgs({
@@ -59,10 +51,16 @@ class CliError extends Error {
 async function main() {
 	// ── Parse args ──────────────────────────────────────────────────
 
-	const transcriptPath = values.transcript ?? DEFAULT_TRANSCRIPT;
-	const season = values.season ?? DEFAULT_SEASON;
+	if (!values.season) {
+		throw new CliError("--season is required (e.g. --season zack-s1)");
+	}
+	if (!values["episode-idx"]) {
+		throw new CliError("--episode-idx is required (e.g. --episode-idx 0)");
+	}
 
-	const rawIdx = values["episode-idx"] ?? String(DEFAULT_EPISODE_IDX);
+	const season = values.season;
+
+	const rawIdx = values["episode-idx"];
 	const episodeIdx = Number(rawIdx);
 	if (!Number.isInteger(episodeIdx) || episodeIdx < 0) {
 		throw new CliError(
@@ -78,11 +76,11 @@ async function main() {
 		);
 	}
 
-	const defaultOutput = join(
-		DEFAULT_OUTPUT_DIR,
-		`${season}-e${episodeIdx}.wav`,
-	);
-	const outputPath = values.output ?? defaultOutput;
+	const base = `${season}-e${episodeIdx}`;
+	const transcriptPath =
+		values.transcript ??
+		join(DEFAULT_OUTPUT_DIR, `${base}-styled-transcript.txt`);
+	const outputPath = values.output ?? join(DEFAULT_OUTPUT_DIR, `${base}.wav`);
 
 	// ── Read styled transcript ──────────────────────────────────────
 

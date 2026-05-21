@@ -15,7 +15,7 @@
     "e2e:happy-path": "bun run scripts/e2e/happy-path.ts",
     "e2e:wrong-key": "bun run scripts/e2e/wrong-key.ts",
     "e2e:idle": "bun run scripts/e2e/idle.ts",
-    "tts:zack-s1-e0": "bun run scripts/generate-zack-ch1-audio.ts",
+    "tts:zack-s1-e0": "bun run scripts/generate-chapter-audio.ts --season zack-s1 --episode-idx 0",
     "audio:winni-s1-e0:extract": "bun run scripts/extract-audio-source.ts --season seasons/winni-s1.json --output data/audio/winni-s1-e0-source.txt --episode-idx 0",
     "audio:winni-s1-e0:transcript": "bun run scripts/convert-to-transcript.ts --source data/audio/winni-s1-e0-source.txt --output data/audio/winni-s1-e0-transcript.txt",
     "audio:zack-s1-e0:timings": "bun run scripts/generate-word-timings.ts"

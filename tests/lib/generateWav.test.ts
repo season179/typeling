@@ -203,7 +203,7 @@ describe("generateWav", () => {
 	it("metadata includes custom voice choices when provided", async () => {
 		const fixture = await loadFixture();
 		const wavPath = outputPath("test-custom-voices");
-		const customVoices = { Storyteller: "Sulafat", Pixel: "Leda" };
+		const customVoices = { Storyteller: "Sulafat", Character: "Leda" };
 
 		await generateWav({
 			response: fixture,

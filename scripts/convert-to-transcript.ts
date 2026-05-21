@@ -1,23 +1,6 @@
 import { parseArgs } from "node:util";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-
-const ROOT = join(import.meta.dir, "..");
-const DEFAULT_SOURCE_PATH = join(ROOT, "data", "audio", "zack-s1-e0-source.txt");
-const DEFAULT_OUTPUT_DIR = join(ROOT, "data", "audio");
-const DEFAULT_OUTPUT_FILE = "zack-s1-e0-transcript.txt";
-
-const { values } = parseArgs({
-  args: Bun.argv.slice(2),
-  options: {
-    source: { type: "string" },
-    output: { type: "string" },
-  },
-  strict: true,
-});
-
-const sourcePath = values.source ?? DEFAULT_SOURCE_PATH;
-const outputPath = values.output ?? join(DEFAULT_OUTPUT_DIR, DEFAULT_OUTPUT_FILE);
+import { dirname } from "node:path";
 
 class TranscriptError extends Error {
   constructor(message: string) {
@@ -26,10 +9,10 @@ class TranscriptError extends Error {
   }
 }
 
-const ALLOWED_SPEAKERS = new Set(["Storyteller", "Pixel"]);
+const ALLOWED_SPEAKERS = new Set(["Storyteller", "Character"]);
 
 interface TranscriptLine {
-  speaker: "Storyteller" | "Pixel";
+  speaker: "Storyteller" | "Character";
   text: string;
 }
 
@@ -42,8 +25,8 @@ export function parseTranscript(text: string): TranscriptLine[] {
     if (trimmed.length === 0) continue;
 
     // Even-indexed segments (0, 2, 4, ...) are outside quotes → Storyteller
-    // Odd-indexed segments (1, 3, 5, ...) are inside quotes → Pixel
-    const speaker = i % 2 === 0 ? "Storyteller" : "Pixel";
+    // Odd-indexed segments (1, 3, 5, ...) are inside quotes → Character
+    const speaker = i % 2 === 0 ? "Storyteller" : "Character";
     lines.push({ speaker, text: trimmed });
   }
 
@@ -55,7 +38,7 @@ export function validateTranscript(lines: TranscriptLine[]): void {
     if (!ALLOWED_SPEAKERS.has(line.speaker)) {
       throw new TranscriptError(
         `Unexpected speaker label "${line.speaker}" on line ${i + 1}. ` +
-        `Only Storyteller and Pixel are allowed.`,
+        `Only Storyteller and Character are allowed.`,
       );
     }
   }
@@ -66,6 +49,25 @@ export function formatTranscript(lines: TranscriptLine[]): string {
 }
 
 async function main() {
+  const { values } = parseArgs({
+    args: Bun.argv.slice(2),
+    options: {
+      source: { type: "string" },
+      output: { type: "string" },
+    },
+    strict: true,
+  });
+
+  if (!values.source) {
+    throw new TranscriptError("--source is required");
+  }
+  if (!values.output) {
+    throw new TranscriptError("--output is required");
+  }
+
+  const sourcePath = values.source;
+  const outputPath = values.output;
+
   // Read source text
   let raw: string;
   try {
@@ -94,7 +96,7 @@ async function main() {
   console.log(
     `Wrote ${outputPath} (${lines.length} turns: ` +
     `${lines.filter((l) => l.speaker === "Storyteller").length} Storyteller, ` +
-    `${lines.filter((l) => l.speaker === "Pixel").length} Pixel)`,
+    `${lines.filter((l) => l.speaker === "Character").length} Character)`,
   );
 }
 

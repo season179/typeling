@@ -73,21 +73,21 @@ describe("convert-to-transcript", () => {
     // Every non-empty line should have a speaker prefix
     for (const line of transcript.split("\n")) {
       if (line.trim().length === 0) continue;
-      expect(line).toMatch(/^(Storyteller|Pixel): /);
+      expect(line).toMatch(/^(Storyteller|Character): /);
     }
   });
 
-  it("output contains both speakers Storyteller and Pixel", async () => {
+  it("output contains both speakers Storyteller and Character", async () => {
     const { exitCode } = await runScript(SCRIPT_ARGS);
     expect(exitCode).toBe(0);
 
     const transcript = await readFile(TRANSCRIPT_FILE, "utf-8");
 
     expect(transcript).toMatch(/^Storyteller: /m);
-    expect(transcript).toMatch(/^Pixel: /m);
+    expect(transcript).toMatch(/^Character: /m);
   });
 
-  it("includes narration before dialogue (Storyteller before Pixel)", async () => {
+  it("includes narration before dialogue (Storyteller before Character)", async () => {
     const { exitCode } = await runScript(SCRIPT_ARGS);
     expect(exitCode).toBe(0);
 
@@ -97,29 +97,27 @@ describe("convert-to-transcript", () => {
     // First line must be Storyteller (the narrative opening)
     expect(lines[0]).toMatch(/^Storyteller: /);
 
-    // At least one Pixel line must exist (dialogue)
-    const pixelLines = lines.filter((l) => l.startsWith("Pixel:"));
-    expect(pixelLines.length).toBeGreaterThan(0);
-    expect(pixelLines[0]).toContain("What a lovely day");
+    // At least one Character line must exist (dialogue)
+    const characterLines = lines.filter((l) => l.startsWith("Character:"));
+    expect(characterLines.length).toBeGreaterThan(0);
+    expect(characterLines[0]).toContain("What a lovely day");
   });
 
-  it("includes dialogue (Pixel lines from quoted text)", async () => {
+  it("includes dialogue (Character lines from quoted text)", async () => {
     const { exitCode } = await runScript(SCRIPT_ARGS);
     expect(exitCode).toBe(0);
 
     const transcript = await readFile(TRANSCRIPT_FILE, "utf-8");
     const lines = transcript.split("\n").filter((l) => l.trim().length > 0);
 
-    // Collect all Pixel lines
-    const pixelTexts = lines
-      .filter((l) => l.startsWith("Pixel:"))
-      .map((l) => l.slice("Pixel: ".length));
+    const characterTexts = lines
+      .filter((l) => l.startsWith("Character:"))
+      .map((l) => l.slice("Character: ".length));
 
-    // Pixel's spoken dialogue should be present
-    expect(pixelTexts).toContain("What a lovely day,");
-    expect(pixelTexts).toContain("Oh,");
-    expect(pixelTexts).toContain("A surprise!");
-    expect(pixelTexts).toContain("I wonder who left this here,");
+    expect(characterTexts).toContain("What a lovely day,");
+    expect(characterTexts).toContain("Oh,");
+    expect(characterTexts).toContain("A surprise!");
+    expect(characterTexts).toContain("I wonder who left this here,");
   });
 
   it("includes narration after dialogue", async () => {
@@ -143,7 +141,7 @@ describe("convert-to-transcript", () => {
     const lines = mod.parseTranscript('Some text with "a quote" inside');
     expect(lines.length).toBe(3);
     expect(lines[0].speaker).toBe("Storyteller");
-    expect(lines[1].speaker).toBe("Pixel");
+    expect(lines[1].speaker).toBe("Character");
 
     expect(() => mod.validateTranscript(lines)).not.toThrow();
 
@@ -168,8 +166,8 @@ describe("convert-to-transcript", () => {
       const lines = transcript.split("\n").filter((l) => l.trim().length > 0);
       expect(lines.length).toBe(1);
       expect(lines[0]).toMatch(/^Storyteller: /);
-      // No Pixel lines
-      expect(lines.filter((l) => l.startsWith("Pixel:")).length).toBe(0);
+      // No Character lines
+      expect(lines.filter((l) => l.startsWith("Character:")).length).toBe(0);
     } finally {
       for (const p of [noQuoteSrc, noQuoteOut]) {
         try { await rm(p); } catch { /* ignore */ }
@@ -231,7 +229,7 @@ describe("convert-to-transcript", () => {
       const transcript = await readFile(out, "utf-8");
       const lines = transcript.trim().split("\n");
       expect(lines.length).toBe(2);
-      expect(lines[0]).toBe("Pixel: Hello");
+      expect(lines[0]).toBe("Character: Hello");
       expect(lines[1]).toBe("Storyteller: she said.");
     } finally {
       for (const p of [src, out]) {
@@ -256,7 +254,7 @@ describe("convert-to-transcript", () => {
       const lines = transcript.trim().split("\n");
       expect(lines.length).toBe(2);
       expect(lines[0]).toBe("Storyteller: He said");
-      expect(lines[1]).toBe("Pixel: hello and kept talking.");
+      expect(lines[1]).toBe("Character: hello and kept talking.");
     } finally {
       for (const p of [src, out]) {
         try { await rm(p); } catch { /* ignore */ }

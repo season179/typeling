@@ -6,12 +6,12 @@
  */
 
 /**
- * Default voice choices for Zack chapter 1.
+ * Default voice choices for chapter audio.
  * For the full voice list see the speech-generation docs linked above.
  */
 export const DEFAULT_VOICE_CHOICES: Record<string, string> = {
 	Storyteller: "Kore",
-	Pixel: "Puck",
+	Character: "Puck",
 };
 
 export interface PrebuiltVoiceConfig {

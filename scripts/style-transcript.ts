@@ -3,7 +3,7 @@
  * two-speaker transcript and write a styled transcript artifact.
  *
  * Usage:
- *   bun run scripts/style-transcript.ts --source data/audio/zack-s1-e0-transcript.txt --output data/audio/zack-s1-e0-styled-transcript.txt
+ *   bun run scripts/style-transcript.ts --source data/audio/<season>-e<n>-transcript.txt --output data/audio/<season>-e<n>-styled-transcript.txt
  *   bun run scripts/style-transcript.ts --source … --output … --fixture path/to/styled-fixture.txt
  *
  * Emits a Gemini-style preamble ("Make Storyteller sound…") followed by the
@@ -21,14 +21,6 @@ const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 const MODEL = "xiaomi/mimo-v2.5-pro";
 const MAX_LLM_ATTEMPTS = 3;
 
-const DEFAULT_SOURCE = join(ROOT, "data", "audio", "zack-s1-e0-transcript.txt");
-const DEFAULT_OUTPUT = join(
-	ROOT,
-	"data",
-	"audio",
-	"zack-s1-e0-styled-transcript.txt",
-);
-
 const { values } = parseArgs({
 	args: Bun.argv.slice(2),
 	options: {
@@ -39,8 +31,15 @@ const { values } = parseArgs({
 	strict: true,
 });
 
-const sourcePath = values.source ?? DEFAULT_SOURCE;
-const outputPath = values.output ?? DEFAULT_OUTPUT;
+if (!values.source) {
+	throw new Error("--source is required");
+}
+if (!values.output) {
+	throw new Error("--output is required");
+}
+
+const sourcePath = values.source;
+const outputPath = values.output;
 const fixturePath = values.fixture;
 
 class StyleTranscriptError extends Error {
@@ -105,12 +104,12 @@ function validateStyledTranscript(output: string): void {
 
 	// Collect transcript lines (after preamble, lines with speaker prefix)
 	const transcriptLines = lines.filter((l) =>
-		/^(Storyteller|Pixel): /i.test(l.trim()),
+		/^(Storyteller|Character): /i.test(l.trim()),
 	);
 
 	if (transcriptLines.length === 0) {
 		throw new StyleValidationError(
-			"No speaker-labelled transcript lines found. Expected lines starting with 'Storyteller: ' or 'Pixel: '.",
+			"No speaker-labelled transcript lines found. Expected lines starting with 'Storyteller: ' or 'Character: '.",
 		);
 	}
 
@@ -118,11 +117,13 @@ function validateStyledTranscript(output: string): void {
 	const hasStoryteller = transcriptLines.some((l) =>
 		/^Storyteller: /i.test(l.trim()),
 	);
-	const hasPixel = transcriptLines.some((l) => /^Pixel: /i.test(l.trim()));
+	const hasCharacter = transcriptLines.some((l) =>
+		/^Character: /i.test(l.trim()),
+	);
 
-	if (!hasStoryteller || !hasPixel) {
+	if (!hasStoryteller || !hasCharacter) {
 		throw new StyleValidationError(
-			"Styled transcript must contain both Storyteller and Pixel speaker lines.",
+			"Styled transcript must contain both Storyteller and Character speaker lines.",
 		);
 	}
 }
@@ -227,12 +228,12 @@ async function main() {
 
 	const lines = styled.split("\n").filter((l) => l.trim().length > 0);
 	const transcriptLines = lines.filter((l) =>
-		/^(Storyteller|Pixel): /i.test(l.trim()),
+		/^(Storyteller|Character): /i.test(l.trim()),
 	);
 	console.log(
 		`Wrote ${outputPath} (${transcriptLines.length} transcript lines: ` +
 			`${transcriptLines.filter((l) => l.trim().startsWith("Storyteller: ")).length} Storyteller, ` +
-			`${transcriptLines.filter((l) => l.trim().startsWith("Pixel: ")).length} Pixel)`,
+			`${transcriptLines.filter((l) => l.trim().startsWith("Character: ")).length} Character)`,
 	);
 }
 

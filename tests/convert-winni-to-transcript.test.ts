@@ -65,7 +65,7 @@ describe("convert-winni-to-transcript", () => {
 
 		for (const line of transcript.split("\n")) {
 			if (line.trim().length === 0) continue;
-			expect(line).toMatch(/^(Storyteller|Pixel): /);
+			expect(line).toMatch(/^(Storyteller|Character): /);
 		}
 	});
 
@@ -74,14 +74,14 @@ describe("convert-winni-to-transcript", () => {
 		expect(TRANSCRIPT_FILE).not.toContain("zack");
 	});
 
-	it("output contains both speakers Storyteller and Pixel", async () => {
+	it("output contains both speakers Storyteller and Character", async () => {
 		const { exitCode } = await runConvert(SCRIPT_ARGS);
 		expect(exitCode).toBe(0);
 
 		const transcript = await readFile(TRANSCRIPT_FILE, "utf-8");
 
 		expect(transcript).toMatch(/^Storyteller: /m);
-		expect(transcript).toMatch(/^Pixel: /m);
+		expect(transcript).toMatch(/^Character: /m);
 	});
 
 	it("starts with narration (Storyteller) before Luma's dialogue", async () => {
@@ -102,14 +102,14 @@ describe("convert-winni-to-transcript", () => {
 		const transcript = await readFile(TRANSCRIPT_FILE, "utf-8");
 		const lines = transcript.split("\n").filter((l) => l.trim().length > 0);
 
-		const pixelTexts = lines
-			.filter((l) => l.startsWith("Pixel:"))
-			.map((l) => l.slice("Pixel: ".length));
+		const characterTexts = lines
+			.filter((l) => l.startsWith("Character:"))
+			.map((l) => l.slice("Character: ".length));
 
-		expect(pixelTexts).toContain("Hello?");
-		expect(pixelTexts).toContain("Is anyone there?");
-		expect(pixelTexts).toContain("Should I open it?");
-		expect(pixelTexts).toContain("Wow,");
+		expect(characterTexts).toContain("Hello?");
+		expect(characterTexts).toContain("Is anyone there?");
+		expect(characterTexts).toContain("Should I open it?");
+		expect(characterTexts).toContain("Wow,");
 	});
 
 	it("ends with narration (Storyteller)", async () => {

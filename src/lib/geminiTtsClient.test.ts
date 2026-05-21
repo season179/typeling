@@ -62,7 +62,7 @@ function emptyInlineDataResponse(): GeminiAudioResponse {
 
 const SAMPLE_REQUEST: GeminiTtsRequest = {
 	model: "gemini-3.1-flash-tts-preview",
-	contents: [{ parts: [{ text: "Storyteller: Hello!\nPixel: Hi!" }] }],
+	contents: [{ parts: [{ text: "Storyteller: Hello!\nCharacter: Hi!" }] }],
 	generationConfig: {
 		responseModalities: ["AUDIO"],
 		speechConfig: {
@@ -73,7 +73,7 @@ const SAMPLE_REQUEST: GeminiTtsRequest = {
 						voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } },
 					},
 					{
-						speaker: "Pixel",
+						speaker: "Character",
 						voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } },
 					},
 				],

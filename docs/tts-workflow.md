@@ -13,12 +13,12 @@ seasons/<child>-s1.json                              (source — never modified)
 data/audio/<child>-s1-e<n>-source.txt                (raw episode text)
         │
         ▼  convert-to-transcript.ts
-data/audio/<child>-s1-e<n>-transcript.txt            (Storyteller/Pixel speaker labels)
+data/audio/<child>-s1-e<n>-transcript.txt            (Storyteller/Character speaker labels)
         │
         ▼  style-transcript.ts                        (requires OPENROUTER_API_KEY)
 data/audio/<child>-s1-e<n>-styled-transcript.txt     (Gemini-format: TTS preamble + [bracketed] tags)
         │
-        ▼  generate-zack-ch1-audio.ts                 (Gemini multi-speaker TTS)
+        ▼  generate-chapter-audio.ts                 (Gemini multi-speaker TTS)
 data/audio/<child>-s1-e<n>.wav                       (final audio)
 data/audio/<child>-s1-e<n>.meta.json                 (generation metadata)
         │
@@ -26,7 +26,38 @@ data/audio/<child>-s1-e<n>.meta.json                 (generation metadata)
 data/audio/<child>-s1-e<n>.words.json                (validated word timing sidecar)
 ```
 
-## Zack chapter 1 (Gemini)
+## Quick start: build a chapter end-to-end
+
+`scripts/build-chapter-audio.ts` walks all six steps for any season + episode. Each step writes a file in `data/audio/<season>-e<n>-*`; if a file already exists, the step is skipped (use `--force` to override). The orchestrator hard-fails up front if `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, or the `speech` CLI is missing.
+
+```bash
+# Build everything for Zack episode 0
+bun run scripts/build-chapter-audio.ts --season zack-s1 --episode-idx 0
+
+# Build everything for Winni episode 0
+bun run scripts/build-chapter-audio.ts --season winni-s1 --episode-idx 0
+
+# Re-run from step 4 onward, regenerating the audio + alignment + timings
+bun run scripts/build-chapter-audio.ts --season zack-s1 --episode-idx 0 --from audio --force
+
+# Force a clean re-run of every step
+bun run scripts/build-chapter-audio.ts --season zack-s1 --episode-idx 0 --force
+```
+
+Flags:
+- `--season <slug>` — required, e.g. `zack-s1`, `winni-s1`.
+- `--episode-idx <n>` — required, 0-based episode index.
+- `--from <step>` — start from one of `source | transcript | style | audio | align | timings`; earlier steps are skipped even if their outputs are missing.
+- `--force` — re-run from the starting step regardless of whether outputs already exist.
+
+After the run completes, inspect the three artifacts you'll listen to or ship:
+- `data/audio/<season>-e<n>-styled-transcript.txt`
+- `data/audio/<season>-e<n>.wav`
+- `data/audio/<season>-e<n>.words.json`
+
+The sections below describe each step in detail. Use them when you want to invoke a single step manually instead of the orchestrator.
+
+## Per-step manual control
 
 ### Gemini TTS reference
 
@@ -40,39 +71,47 @@ https://ai.google.dev/gemini-api/docs/speech-generation
 |---|---|
 | `GEMINI_API_KEY` | Calls the Gemini TTS endpoint. Get one at https://aistudio.google.com/apikey |
 | `OPENROUTER_API_KEY` | Styles the transcript via an LLM (step 3). Only needed if not using `--fixture`. |
+| `speech` CLI | Runs Qwen3-ForcedAligner for word timings (step 5). |
 | `bun install` | Dependencies must be installed. |
+
+### Speaker labels
+
+The transcript and styled transcript use only two speaker labels regardless of the season:
+
+- `Storyteller` — narration.
+- `Character` — every quoted line of dialogue, no matter which named character in the story is speaking.
+
+Gemini multi-speaker TTS allows two distinct voices per request, so all named characters in a season share the `Character` voice (Puck) while narration uses `Storyteller` (Kore).
 
 ### Step-by-step
 
+Examples below use `zack-s1` episode 0. Substitute `--season winni-s1` or any other slug to run the same step against a different season.
+
 #### 1. Extract the source text
 
-Pulls episode 0 from `seasons/zack-s1.json` into a plain-text file. This is the raw story text as typed by the child.
+Pulls the chosen episode from the season JSON into a plain-text file. This is the raw story text as typed by the child.
 
 ```bash
-bun run scripts/extract-audio-source.ts
+bun run scripts/extract-audio-source.ts \
+  --season seasons/zack-s1.json \
+  --episode-idx 0 \
+  --output data/audio/zack-s1-e0-source.txt
 ```
-
-Options:
-- `--season <path>` — Season JSON file (default: `seasons/zack-s1.json`)
-- `--episode-idx <n>` — Episode index to extract (default: `0`)
-- `--output <path>` — Output file (default: `data/audio/zack-s1-e0-source.txt`)
 
 #### 2. Build the two-speaker transcript
 
-Converts the raw source text into a speaker-labelled transcript. Dialogue (text inside `"quotes"`) is assigned to **Pixel**; narration is assigned to **Storyteller**.
+Converts the raw source text into a speaker-labelled transcript. Dialogue (text inside `"quotes"`) is assigned to **Character**; narration is assigned to **Storyteller**.
 
 ```bash
-bun run scripts/convert-to-transcript.ts
+bun run scripts/convert-to-transcript.ts \
+  --source data/audio/zack-s1-e0-source.txt \
+  --output data/audio/zack-s1-e0-transcript.txt
 ```
-
-Options:
-- `--source <path>` — Input file (default: `data/audio/zack-s1-e0-source.txt`)
-- `--output <path>` — Output file (default: `data/audio/zack-s1-e0-transcript.txt`)
 
 Output format:
 ```
 Storyteller: In a cosy workshop filled with soft light...
-Pixel: What a lovely day!
+Character: What a lovely day!
 Storyteller: said Pixel in a soft, buzzy voice.
 ```
 
@@ -81,20 +120,20 @@ Storyteller: said Pixel in a soft, buzzy voice.
 Sends the raw transcript to an LLM (via OpenRouter) which adds a TTS preamble and sparse `[audio tags]` for performance direction. The LLM does not change any story words — it only adds `[softly]`, `[gently]`, `[excitedly]`, etc.
 
 ```bash
-bun run scripts/style-transcript.ts
+bun run scripts/style-transcript.ts \
+  --source data/audio/zack-s1-e0-transcript.txt \
+  --output data/audio/zack-s1-e0-styled-transcript.txt
 ```
 
 Options:
-- `--source <path>` — Input file (default: `data/audio/zack-s1-e0-transcript.txt`)
-- `--output <path>` — Output file (default: `data/audio/zack-s1-e0-styled-transcript.txt`)
 - `--fixture <path>` — Skip the LLM call and use a pre-made file instead (useful for offline dev or re-running step 4 without paying for step 3 again).
 
-**Review the styled transcript before generating audio.** Open `data/audio/zack-s1-e0-styled-transcript.txt` and check:
+**Review the styled transcript before generating audio.** Open `data/audio/<season>-e<n>-styled-transcript.txt` and check:
 
 1. The story meaning is preserved — no words added, removed, or reworded.
 2. British English spelling is intact ("colour", "favourite", "centre").
 3. Tone is warm, kind, and kid-safe.
-4. Only `Storyteller:` and `Pixel:` speaker labels are present.
+4. Only `Storyteller:` and `Character:` speaker labels are present.
 5. Audio tags are sparse (one every 2–3 lines, not on every sentence).
 6. A TTS preamble exists on the first line (e.g. "Make Storyteller sound warm and gentle...").
 
@@ -105,21 +144,19 @@ If anything looks wrong, edit the file by hand before proceeding.
 Calls the Gemini TTS API with the styled transcript and writes a WAV file plus metadata.
 
 ```bash
-bun run tts:zack-s1-e0
+bun run scripts/generate-chapter-audio.ts \
+  --season zack-s1 \
+  --episode-idx 0
 ```
 
-This is equivalent to:
-
-```bash
-bun run scripts/generate-zack-ch1-audio.ts
-```
+`tts:zack-s1-e0` is a package.json shortcut for the same command.
 
 Options:
-- `--transcript <path>` — Styled transcript file (default: `data/audio/zack-s1-e0-styled-transcript.txt`)
-- `--output <path>` — WAV output path (default: `data/audio/zack-s1-e0.wav`)
-- `--season <name>` — Season slug for metadata + default output filename (default: `zack-s1`)
-- `--episode-idx <n>` — Episode index for metadata + default output filename (default: `0`)
-- `--max-retries <n>` — Max retry attempts for transient failures (default: `3`)
+- `--season <slug>` — required, season slug used for metadata + default file paths.
+- `--episode-idx <n>` — required, episode index.
+- `--transcript <path>` — Styled transcript file (default: `data/audio/<season>-e<n>-styled-transcript.txt`).
+- `--output <path>` — WAV output path (default: `data/audio/<season>-e<n>.wav`).
+- `--max-retries <n>` — Max retry attempts for transient failures (default: `3`).
 
 #### 5. Listen and check the output
 
@@ -134,7 +171,7 @@ play data/audio/zack-s1-e0.wav
 ```
 
 Check:
-- Both speakers are audible and distinct (Storyteller = Kore, Pixel = Puck).
+- Both speakers are audible and distinct (Storyteller = Kore, Character = Puck).
 - The full story is present — no truncated or missing lines.
 - The tone is warm and bedtime-appropriate.
 - Audio tags were respected (gentle/soft delivery where tagged).
@@ -152,61 +189,10 @@ speech align data/audio/zack-s1-e0.wav \
   --aligner-model aufklarer/Qwen3-ForcedAligner-0.6B-4bit \
   > data/audio/zack-s1-e0.qwen-align.raw.txt
 
-bun run audio:zack-s1-e0:timings
+bun run scripts/generate-word-timings.ts --season zack-s1 --episode-idx 0
 ```
 
 The Bun script hard-fails if the aligned words drift from the source text, timestamps move backwards, or timings exceed the WAV duration.
-
-## Winni chapter 1 (Gemini)
-
-The Winni pipeline reuses the same scripts as Zack with different arguments (season file, transcript path, output path). There is no dedicated `tts:winni-s1-e0` npm shortcut yet — step 4 invokes the runner directly.
-
-### Step-by-step
-
-#### 1. Extract the source text
-
-```bash
-bun run audio:winni-s1-e0:extract
-```
-
-This runs:
-
-```bash
-bun run scripts/extract-audio-source.ts --season seasons/winni-s1.json --output data/audio/winni-s1-e0-source.txt --episode-idx 0
-```
-
-#### 2. Build the two-speaker transcript
-
-```bash
-bun run audio:winni-s1-e0:transcript
-```
-
-This runs:
-
-```bash
-bun run scripts/convert-to-transcript.ts --source data/audio/winni-s1-e0-source.txt --output data/audio/winni-s1-e0-transcript.txt
-```
-
-#### 3. Style the transcript for TTS
-
-```bash
-bun run scripts/style-transcript.ts \
-  --source data/audio/winni-s1-e0-transcript.txt \
-  --output data/audio/winni-s1-e0-styled-transcript.txt
-```
-
-Review the same checklist as the Zack flow (story meaning preserved, British English intact, etc.).
-
-#### 4. Generate TTS audio
-
-Reuse the Gemini runner with Winni flags:
-
-```bash
-bun run scripts/generate-zack-ch1-audio.ts \
-  --season winni-s1 \
-  --transcript data/audio/winni-s1-e0-styled-transcript.txt \
-  --output data/audio/winni-s1-e0.wav
-```
 
 ## Where artifacts are written
 
@@ -215,7 +201,7 @@ All intermediate and final artifacts go in `data/audio/`:
 | File | Description |
 |---|---|
 | `<child>-s1-e<n>-source.txt` | Raw episode text extracted from the season file |
-| `<child>-s1-e<n>-transcript.txt` | Two-speaker transcript (Storyteller/Pixel) |
+| `<child>-s1-e<n>-transcript.txt` | Two-speaker transcript (Storyteller/Character) |
 | `<child>-s1-e<n>-styled-transcript.txt` | Styled transcript with TTS preamble and audio tags |
 | `<child>-s1-e<n>.wav` | Generated TTS audio (PCM, 24 kHz, WAV-wrapped) |
 | `<child>-s1-e<n>.meta.json` | Generation metadata (model, voices, transcript hash, timestamp) |
@@ -231,7 +217,7 @@ All intermediate and final artifacts go in `data/audio/`:
 These are known limitations of the Gemini TTS API that affect this workflow:
 
 - **Non-streaming only.** The API returns the full audio in a single response. There is no streaming mode. For long episodes this means the full generation happens in one request — expect a few seconds of latency.
-- **Occasional non-audio responses.** Gemini sometimes returns text instead of audio data. The `generate-zack-ch1-audio.ts` script retries these automatically (up to `--max-retries` times with exponential backoff). If all retries fail, the script exits with a clear error.
+- **Occasional non-audio responses.** Gemini sometimes returns text instead of audio data. The `generate-chapter-audio.ts` script retries these automatically (up to `--max-retries` times with exponential backoff). If all retries fail, the script exits with a clear error.
 - **Rate limits.** Heavy usage may trigger HTTP 429 responses. These are also retried automatically.
 - **Voice quality varies.** The same transcript can produce noticeably different audio on repeated runs. If the output sounds off, re-run the generation. The script does not cache or deduplicate outputs.
 - **Audio tags are hints, not commands.** Gemini interprets `[softly]`, `[gently]`, etc. as best-effort. The model does not always obey them precisely.

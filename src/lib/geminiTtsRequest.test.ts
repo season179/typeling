@@ -6,10 +6,10 @@ import {
 } from "./geminiTtsRequest";
 
 const STYLED_TRANSCRIPT = [
-	"Make Storyteller sound warm and gentle, like a parent reading a bedtime story. Make Pixel sound curious and bright, like a friendly young robot.",
+	"Make Storyteller sound warm and gentle, like a parent reading a bedtime story. Make Character sound curious and bright, like a friendly young robot.",
 	"",
 	"Storyteller: [gently] In a cosy workshop filled with soft light, there lived a small blue robot named Pixel.",
-	"Pixel: [excitedly] What a lovely day!",
+	"Character: [excitedly] What a lovely day!",
 	"Storyteller: [warmly] said Pixel in a soft, buzzy voice.",
 ].join("\n");
 
@@ -53,12 +53,12 @@ describe("buildTtsRequest", () => {
 		expect(configs).toHaveLength(2);
 	});
 
-	test("default speaker names are Storyteller and Pixel", () => {
+	test("default speaker names are Storyteller and Character", () => {
 		const names =
 			defaultRequest().generationConfig.speechConfig.multiSpeakerVoiceConfig.speakerVoiceConfigs.map(
 				(svc) => svc.speaker,
 			);
-		expect(names.sort()).toEqual(["Pixel", "Storyteller"]);
+		expect(names.sort()).toEqual(["Character", "Storyteller"]);
 	});
 
 	test("default voice choices match DEFAULT_VOICE_CHOICES", () => {
@@ -66,16 +66,18 @@ describe("buildTtsRequest", () => {
 		expect(voiceNameFor(req, "Storyteller")).toBe(
 			DEFAULT_VOICE_CHOICES.Storyteller,
 		);
-		expect(voiceNameFor(req, "Pixel")).toBe(DEFAULT_VOICE_CHOICES.Pixel);
+		expect(voiceNameFor(req, "Character")).toBe(
+			DEFAULT_VOICE_CHOICES.Character,
+		);
 	});
 
 	test("accepts custom voice choices", () => {
 		const req = buildTtsRequest({
 			styledTranscript: STYLED_TRANSCRIPT,
-			voiceChoices: { Storyteller: "Sulafat", Pixel: "Leda" },
+			voiceChoices: { Storyteller: "Sulafat", Character: "Leda" },
 		});
 		expect(voiceNameFor(req, "Storyteller")).toBe("Sulafat");
-		expect(voiceNameFor(req, "Pixel")).toBe("Leda");
+		expect(voiceNameFor(req, "Character")).toBe("Leda");
 	});
 
 	test("each speakerVoiceConfig has the expected shape", () => {
