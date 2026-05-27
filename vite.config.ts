@@ -47,7 +47,7 @@ export default defineConfig({
 	plugins: createPlugins(),
 	server: createServerConfig(),
 	build: {
-		outDir: "../../dist",
+		outDir: "../../dist/client",
 		emptyOutDir: true,
 	},
 });

@@ -12,7 +12,7 @@ import {
 	DEFAULT_STATE_PATH,
 	HOSTNAME,
 } from "./config";
-import { ensureStateFile } from "./state";
+import { ensureStateFile, type MutateFn } from "./state";
 import type {
 	AssetStore,
 	Season,
@@ -28,6 +28,32 @@ import {
 } from "./stores";
 
 const WILDCARD_HOSTNAME = "0.0.0.0";
+const STATE_STORE_OBJECT_NAME = "typeling";
+const STATE_STORE_ROW_ID = "state";
+
+interface DurableObjectContext {
+	storage: {
+		sql: SqlStorage;
+		transactionSync<T>(callback: () => T): T;
+	};
+	blockConcurrencyWhile(callback: () => Promise<void> | void): void;
+}
+
+interface SqlStorage {
+	exec<T = Record<string, unknown>>(
+		query: string,
+		...bindings: unknown[]
+	): SqlStorageCursor<T>;
+}
+
+interface SqlStorageCursor<T> {
+	toArray(): T[];
+	one(): T;
+}
+
+interface StoredStateRow {
+	json: string;
+}
 
 function isBunRuntime(): boolean {
 	return typeof Bun !== "undefined";
@@ -182,6 +208,23 @@ function getDefaultStateStore(): StateStoreBackend {
 
 function getStateStore(env: ServerBindings): StateStoreBackend {
 	return env.APP_STATE_STORE ?? getDefaultStateStore();
+}
+
+function hasBoundStateStore(env: ServerBindings): boolean {
+	return env.APP_STATE_STORE === undefined && env.STATE_STORE !== undefined;
+}
+
+function fetchFromBoundStateStore(
+	request: Request,
+	env: ServerBindings,
+): Response | Promise<Response> {
+	const namespace = env.STATE_STORE;
+	if (!namespace) {
+		throw new Error("STATE_STORE binding is missing");
+	}
+
+	const id = namespace.idFromName(STATE_STORE_OBJECT_NAME);
+	return namespace.get(id).fetch(request);
 }
 
 function getDefaultAssetStore(): AssetStore {
@@ -494,7 +537,9 @@ function isServerBindings(value: unknown): value is ServerBindings {
 	return (
 		typeof value === "object" &&
 		value !== null &&
-		("APP_STATE_STORE" in value || "ASSET_STORE" in value)
+		("APP_STATE_STORE" in value ||
+			"ASSET_STORE" in value ||
+			"STATE_STORE" in value)
 	);
 }
 
@@ -512,14 +557,86 @@ export function fetch(request: Request, envOrServer?: unknown) {
 	}
 
 	const env = isServerBindings(envOrServer) ? envOrServer : {};
+	if (hasBoundStateStore(env)) {
+		return fetchFromBoundStateStore(request, env);
+	}
 	return app.fetch(request, env);
 }
 
-export class StateStore {
-	fetch(): Response {
-		return new Response("StateStore is not implemented yet.", {
-			status: 501,
+export class StateStore implements StateStoreBackend {
+	#ctx: DurableObjectContext;
+	#env: ServerBindings;
+
+	constructor(ctx: DurableObjectContext, env: ServerBindings = {}) {
+		this.#ctx = ctx;
+		this.#env = env;
+		this.#ctx.blockConcurrencyWhile(() => {
+			this.#initializeStorage();
 		});
+	}
+
+	async readState(): Promise<State> {
+		return this.#readStoredState();
+	}
+
+	async mutateState(fn: MutateFn): Promise<State> {
+		return this.#ctx.storage.transactionSync(() => {
+			const current = this.#readStoredState();
+			const next = fn(current);
+			const parsed = stateSchema.parse(structuredClone(next));
+			if (next !== current) {
+				this.#writeState(parsed);
+			}
+			return structuredClone(parsed);
+		});
+	}
+
+	fetch(request: Request): Response | Promise<Response> {
+		return app.fetch(request, {
+			...this.#env,
+			APP_STATE_STORE: this,
+		});
+	}
+
+	#initializeStorage(): void {
+		this.#ctx.storage.sql.exec(`
+			CREATE TABLE IF NOT EXISTS app_state (
+				id TEXT PRIMARY KEY,
+				json TEXT NOT NULL
+			)
+		`);
+
+		const rows = this.#ctx.storage.sql
+			.exec<StoredStateRow>(
+				"SELECT json FROM app_state WHERE id = ?",
+				STATE_STORE_ROW_ID,
+			)
+			.toArray();
+		if (rows.length === 0) {
+			this.#writeState(bundledState);
+		}
+	}
+
+	#readStoredState(): State {
+		const row = this.#ctx.storage.sql
+			.exec<StoredStateRow>(
+				"SELECT json FROM app_state WHERE id = ?",
+				STATE_STORE_ROW_ID,
+			)
+			.one();
+		return stateSchema.parse(JSON.parse(row.json));
+	}
+
+	#writeState(state: State): void {
+		this.#ctx.storage.sql.exec(
+			`
+				INSERT INTO app_state (id, json)
+				VALUES (?, ?)
+				ON CONFLICT(id) DO UPDATE SET json = excluded.json
+			`,
+			STATE_STORE_ROW_ID,
+			JSON.stringify(stateSchema.parse(structuredClone(state))),
+		);
 	}
 }
 

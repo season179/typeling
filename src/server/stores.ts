@@ -208,6 +208,15 @@ export interface StateStore {
 	mutateState(fn: MutateFn): Promise<State>;
 }
 
+export interface DurableObjectStub {
+	fetch(request: Request): Response | Promise<Response>;
+}
+
+export interface DurableObjectNamespaceBinding {
+	idFromName(name: string): unknown;
+	get(id: unknown): DurableObjectStub;
+}
+
 export class InMemoryStateStore implements StateStore {
 	#state: State;
 	#queue = Promise.resolve();
@@ -255,4 +264,5 @@ export class DiskStateStore implements StateStore {
 export interface ServerBindings {
 	ASSET_STORE?: AssetStore;
 	APP_STATE_STORE?: StateStore;
+	STATE_STORE?: DurableObjectNamespaceBinding;
 }
