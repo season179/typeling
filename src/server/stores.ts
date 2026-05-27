@@ -40,6 +40,18 @@ interface StoredEpisodeAudioAsset extends EpisodeAudioAsset {
 	episodeIdx: number;
 }
 
+export interface R2ObjectBodyLike {
+	httpMetadata?: {
+		contentType?: string;
+	};
+	arrayBuffer(): Promise<ArrayBuffer>;
+	json<T>(): Promise<T>;
+}
+
+export interface R2BucketLike {
+	get(key: string): Promise<R2ObjectBodyLike | null>;
+}
+
 export interface AssetStore {
 	readSeason(seasonSlug: string): Promise<Season>;
 	readEpisodeAudio(
@@ -96,6 +108,60 @@ export class InMemoryAssetStore implements AssetStore {
 	}
 }
 
+export class R2AssetStore implements AssetStore {
+	#bucket: R2BucketLike;
+
+	constructor(bucket: R2BucketLike) {
+		this.#bucket = bucket;
+	}
+
+	async readSeason(seasonSlug: string): Promise<Season> {
+		const object = await this.#bucket.get(seasonObjectKey(seasonSlug));
+		if (!object) {
+			throw new SeasonFileNotFoundError(seasonSlug);
+		}
+		return seasonSchema.parse(await object.json());
+	}
+
+	async readEpisodeAudio(
+		seasonSlug: string,
+		episodeIdx: number,
+		episodeText: string,
+	): Promise<EpisodeAudioAsset | null> {
+		const baseName = audioBaseName(seasonSlug, episodeIdx);
+		const [audioObject, sidecarObject] = await Promise.all([
+			this.#bucket.get(`audio/${baseName}.wav`),
+			this.#bucket.get(`audio/${baseName}.words.json`),
+		]);
+
+		if (!audioObject || !sidecarObject) {
+			return null;
+		}
+
+		try {
+			const sidecar = wordTimingSidecarSchema.parse(await sidecarObject.json());
+			const audioBytes = new Uint8Array(await audioObject.arrayBuffer());
+			assertSidecarMatchesEpisode(
+				sidecar,
+				seasonSlug,
+				episodeIdx,
+				episodeText,
+				audioBytes,
+			);
+			return {
+				audioBytes,
+				sidecar,
+				contentType: audioObject.httpMetadata?.contentType,
+			};
+		} catch (error) {
+			if (error instanceof EpisodeAudioError) {
+				throw error;
+			}
+			throw new EpisodeAudioError("EpisodeAudioStale", 409);
+		}
+	}
+}
+
 export class DiskAssetStore implements AssetStore {
 	#seasonsDir: string;
 	#audioDir: string;
@@ -119,7 +185,7 @@ export class DiskAssetStore implements AssetStore {
 		episodeIdx: number,
 		episodeText: string,
 	): Promise<EpisodeAudioAsset | null> {
-		const baseName = `${seasonSlug}-e${episodeIdx}`;
+		const baseName = audioBaseName(seasonSlug, episodeIdx);
 		const audioFile = Bun.file(join(this.#audioDir, `${baseName}.wav`));
 		const timingsFile = Bun.file(
 			join(this.#audioDir, `${baseName}.words.json`),
@@ -151,6 +217,14 @@ export class DiskAssetStore implements AssetStore {
 
 function audioKey(seasonSlug: string, episodeIdx: number): string {
 	return `${seasonSlug}:e${episodeIdx}`;
+}
+
+function audioBaseName(seasonSlug: string, episodeIdx: number): string {
+	return `${seasonSlug}-e${episodeIdx}`;
+}
+
+function seasonObjectKey(seasonSlug: string): string {
+	return `seasons/${seasonSlug}.json`;
 }
 
 function sha256(input: string | Uint8Array): string {
@@ -263,6 +337,7 @@ export class DiskStateStore implements StateStore {
 
 export interface ServerBindings {
 	ASSET_STORE?: AssetStore;
+	ASSETS_BUCKET?: R2BucketLike;
 	APP_STATE_STORE?: StateStore;
 	STATE_STORE?: DurableObjectNamespaceBinding;
 }

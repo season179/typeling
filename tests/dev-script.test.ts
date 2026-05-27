@@ -47,6 +47,17 @@ describe("dev scripts", () => {
 		);
 	});
 
+	it("binds the Worker to the R2 assets bucket with Node compatibility", async () => {
+		const wranglerConfig = await Bun.file("wrangler.jsonc").json();
+		expect(wranglerConfig.compatibility_flags).toContain("nodejs_compat");
+		expect(wranglerConfig.r2_buckets).toEqual([
+			{
+				binding: "ASSETS_BUCKET",
+				bucket_name: "typeling-assets",
+			},
+		]);
+	});
+
 	it("dev:direct starts both Hono server and Vite dev server", async () => {
 		const apiPort = 3101;
 		const proc = Bun.spawn(["bun", "run", "dev:direct"], {

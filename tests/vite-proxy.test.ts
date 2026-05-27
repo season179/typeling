@@ -29,6 +29,10 @@ describe("vite proxy", () => {
     })).toBe(false);
   });
 
+  it("builds client assets into the Wrangler assets directory", () => {
+    expect(viteConfig.build?.outDir).toBe("../../dist/client");
+  });
+
   it("proxies /api/health through Vite dev server to Hono", async () => {
     // Start Hono server
     const honoServer = Bun.serve({

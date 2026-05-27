@@ -6,8 +6,19 @@ and tests.
 
 ## Bucket
 
-**`typeling-assets** (configured in `wrangler.jsonc` → `r2_buckets.bucket_name`,
+**`typeling-assets`** (configured in `wrangler.jsonc` → `r2_buckets.bucket_name`,
 binding name `ASSETS_BUCKET`).
+
+## Runtime Source Selection
+
+Production and `wrangler dev` Worker requests read assets through
+`env.ASSETS_BUCKET`. Wrangler's default local mode uses local R2 storage for
+that binding; use a `remote = true` R2 binding only for an intentional smoke
+test against the real bucket.
+
+The legacy Bun server keeps the disk fallback for local family testing:
+`TYPELING_SEASONS_DIR` and `TYPELING_AUDIO_DIR` still point at `seasons/` and
+`data/audio/` when no `ASSETS_BUCKET` binding is present.
 
 ---
 
@@ -28,7 +39,7 @@ Test slugs (`winni-s1-test`, `zack-s1-test`) are also uploaded if the
 JSON files exist under `seasons/`.
 
 The Worker resolves a season via `AssetStore.readSeason(seasonSlug)`,
-which reads `{seasonSlug}.json` from R2 (or disk in dev mode).
+which reads `seasons/{seasonSlug}.json` from R2 (or disk in legacy Bun mode).
 
 ---
 
@@ -44,7 +55,7 @@ for a given episode is `{seasonSlug}-e{episodeIdx}` (zero-indexed).
 | `audio/{seasonSlug}-e{episodeIdx}.wav`  | `data/audio/{seasonSlug}-e{episodeIdx}.wav` | `audio/wav` |
 
 Served by `GET /api/children/:id/episodes/:episodeIdx/audio/file`
-(200 full, 206 ranged — see #192).
+(200 full today; #192 adds 206 ranged reads).
 
 ### Word-timing sidecar
 

@@ -25,6 +25,7 @@ import {
 	EpisodeAudioError,
 	InMemoryAssetStore,
 	InMemoryStateStore,
+	R2AssetStore,
 } from "./stores";
 
 const WILDCARD_HOSTNAME = "0.0.0.0";
@@ -240,7 +241,13 @@ function getDefaultAssetStore(): AssetStore {
 }
 
 function getAssetStore(env: ServerBindings): AssetStore {
-	return env.ASSET_STORE ?? getDefaultAssetStore();
+	if (env.ASSET_STORE) {
+		return env.ASSET_STORE;
+	}
+	if (env.ASSETS_BUCKET) {
+		return new R2AssetStore(env.ASSETS_BUCKET);
+	}
+	return getDefaultAssetStore();
 }
 
 app.post("/api/sessions", async (c) => {
@@ -539,7 +546,8 @@ function isServerBindings(value: unknown): value is ServerBindings {
 		value !== null &&
 		("APP_STATE_STORE" in value ||
 			"ASSET_STORE" in value ||
-			"STATE_STORE" in value)
+			"STATE_STORE" in value ||
+			"ASSETS_BUCKET" in value)
 	);
 }
 
