@@ -23,6 +23,12 @@ describe("dev scripts", () => {
 		expect(packageJson.scripts.dev).not.toContain("TYPELING_CLOUDFLARE");
 	});
 
+	it("points direct wrangler dev at the built client assets", async () => {
+		const wranglerConfig = await Bun.file("wrangler.jsonc").json();
+		expect(wranglerConfig.assets.directory).toBe("./dist/client");
+		expect(wranglerConfig.assets.run_worker_first).toEqual(["/api/*"]);
+	});
+
 	it("dev:direct starts both Hono server and Vite dev server", async () => {
 		const apiPort = 3101;
 		const proc = Bun.spawn(["bun", "run", "dev:direct"], {
