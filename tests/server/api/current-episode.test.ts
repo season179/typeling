@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { extractAlignmentStoryWords } from "../../../src/lib/storyWordTokens";
 import { pcmToWavBuffer } from "../../../src/lib/wav";
-import fetch from "../../../src/server/index.ts";
+import { fetch } from "../../../src/server/index.ts";
 import { readState } from "../../../src/server/state";
 
 const fixtureSeason = {

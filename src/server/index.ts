@@ -1,8 +1,11 @@
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { Hono } from "hono";
+import seedStateData from "../../data/state.seed.json";
+import winniSeasonData from "../../seasons/winni-s1.json";
+import zackSeasonData from "../../seasons/zack-s1.json";
 import { MAX_EPISODES, seasonSchema } from "../lib/schemas/season";
-import { sessionSchema } from "../lib/schemas/state";
+import { type State, sessionSchema, stateSchema } from "../lib/schemas/state";
 import { extractAlignmentStoryWords } from "../lib/storyWordTokens";
 import {
 	type WordTimingSidecar,
@@ -16,10 +19,39 @@ export const DEFAULT_STATE_PATH = "data/state.json";
 export const DEFAULT_SEASONS_DIR = "seasons";
 export const DEFAULT_AUDIO_DIR = "data/audio";
 const WILDCARD_HOSTNAME = "0.0.0.0";
+const WORKER_STATE_STORE_ERROR = "WorkerStateStoreNotImplemented";
 
-const statePath = () => Bun.env.TYPELING_STATE_PATH ?? DEFAULT_STATE_PATH;
-const seasonsDir = () => Bun.env.TYPELING_SEASONS_DIR ?? DEFAULT_SEASONS_DIR;
-const audioDir = () => Bun.env.TYPELING_AUDIO_DIR ?? DEFAULT_AUDIO_DIR;
+function isBunRuntime(): boolean {
+	return typeof Bun !== "undefined";
+}
+
+function bunEnv(name: string, fallback: string): string {
+	if (!isBunRuntime()) {
+		return fallback;
+	}
+	return Bun.env[name] ?? fallback;
+}
+
+function statePath(): string {
+	return bunEnv("TYPELING_STATE_PATH", DEFAULT_STATE_PATH);
+}
+
+function seasonsDir(): string {
+	return bunEnv("TYPELING_SEASONS_DIR", DEFAULT_SEASONS_DIR);
+}
+
+function audioDir(): string {
+	return bunEnv("TYPELING_AUDIO_DIR", DEFAULT_AUDIO_DIR);
+}
+
+const bundledState = stateSchema.parse(seedStateData);
+const bundledSeasons = [winniSeasonData, zackSeasonData].map((season) =>
+	seasonSchema.parse(season),
+);
+type Season = (typeof bundledSeasons)[number];
+const bundledSeasonBySlug = new Map(
+	bundledSeasons.map((season) => [season.slug, season]),
+);
 
 export class SeasonFileNotFoundError extends Error {
 	constructor(seasonSlug: string) {
@@ -74,19 +106,38 @@ app.onError((error, c) => {
 	return c.json({ error: error.name }, 500);
 });
 
+async function readRuntimeState(): Promise<State> {
+	if (isBunRuntime()) {
+		return readState(statePath());
+	}
+	return structuredClone(bundledState);
+}
+
+async function loadSeason(seasonSlug: string): Promise<Season> {
+	if (!isBunRuntime()) {
+		const season = bundledSeasonBySlug.get(seasonSlug);
+		if (!season) {
+			throw new SeasonFileNotFoundError(seasonSlug);
+		}
+		return structuredClone(season);
+	}
+
+	const seasonPath = join(seasonsDir(), `${seasonSlug}.json`);
+	const seasonFile = Bun.file(seasonPath);
+	if (!(await seasonFile.exists())) {
+		throw new SeasonFileNotFoundError(seasonSlug);
+	}
+	return seasonSchema.parse(await seasonFile.json());
+}
+
 async function loadChildSeason(childId: string) {
-	const state = await readState(statePath());
+	const state = await readRuntimeState();
 	const child = state.children[childId];
 	if (!child) {
 		return { error: "ChildNotFound" as const, status: 404 as const };
 	}
 
-	const seasonPath = join(seasonsDir(), `${child.active_season}.json`);
-	const seasonFile = Bun.file(seasonPath);
-	if (!(await seasonFile.exists())) {
-		throw new SeasonFileNotFoundError(child.active_season);
-	}
-	const season = seasonSchema.parse(await seasonFile.json());
+	const season = await loadSeason(child.active_season);
 
 	return { child, season };
 }
@@ -188,6 +239,10 @@ const loadEpisodeAudio = async (
 	episodeIdx: number,
 	episodeText: string,
 ) => {
+	if (!isBunRuntime()) {
+		return null;
+	}
+
 	const paths = audioArtifactPaths(seasonSlug, episodeIdx);
 	const audioFile = Bun.file(paths.audioPath);
 	const timingsFile = Bun.file(paths.timingsPath);
@@ -228,6 +283,10 @@ const getStateQueue = () => {
 };
 
 app.post("/api/sessions", async (c) => {
+	if (!isBunRuntime()) {
+		return c.json({ error: WORKER_STATE_STORE_ERROR }, 501);
+	}
+
 	const body = await c.req.json().catch(() => null);
 	const parsed = sessionSchema.safeParse(body);
 	if (!parsed.success) {
@@ -280,13 +339,13 @@ app.get("/api/health", (c) => {
 });
 
 app.get("/api/children", async (c) => {
-	const state = await readState(statePath());
+	const state = await readRuntimeState();
 	return c.json(state.children);
 });
 
 app.get("/api/children/:id/sessions", async (c) => {
 	const childId = c.req.param("id");
-	const state = await readState(statePath());
+	const state = await readRuntimeState();
 	const child = state.children[childId];
 	if (!child) {
 		return c.json({ error: "ChildNotFound" }, 404);
@@ -428,6 +487,10 @@ app.get("/api/children/:id/episodes/:episodeIdx/audio/file", async (c) => {
 });
 
 app.post("/api/children/:id/episodes/:episodeIdx/reset", async (c) => {
+	if (!isBunRuntime()) {
+		return c.json({ error: WORKER_STATE_STORE_ERROR }, 501);
+	}
+
 	try {
 		const childId = c.req.param("id");
 		const episodeIdx = parseEpisodeIdx(c.req.param("episodeIdx"));
@@ -505,6 +568,14 @@ export const fetch = (request: Request) => {
 	return app.fetch(request);
 };
 
+export class StateStore {
+	fetch(): Response {
+		return new Response("StateStore is not implemented yet.", {
+			status: 501,
+		});
+	}
+}
+
 if (import.meta.main) {
 	const seedPath = join(import.meta.dir, "..", "..", "data", "state.seed.json");
 	const seeded = await ensureStateFile(statePath(), seedPath);
@@ -522,4 +593,4 @@ if (import.meta.main) {
 	console.log(`Server running on http://${HOSTNAME}:${port}`);
 }
 
-export default fetch;
+export default { fetch };

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import fetch from "../../../src/server/index.ts";
+import { fetch } from "../../../src/server/index.ts";
 
 const fixtureState = {
 	children: {

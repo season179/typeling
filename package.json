@@ -7,6 +7,7 @@
     "dev": "bun run dev:proxy && concurrently --kill-others --names api,web 'portless typeling-api bun --watch src/server/index.ts' 'SERVER_URL=https://typeling-api.localhost portless typeling vite'",
     "dev:proxy": "portless proxy start --https",
     "dev:direct": "concurrently --kill-others --names api,web 'PORT=${SERVER_PORT:-3001} bun --watch src/server/index.ts' 'SERVER_URL=http://127.0.0.1:${SERVER_PORT:-3001} vite --host 127.0.0.1 --port 5173 --strictPort'",
+    "dev:cloud": "TYPELING_CLOUDFLARE=1 vite --host 127.0.0.1",
     "server": "bun run src/server/index.ts",
     "web": "vite",
     "lint": "biome check src/",
@@ -28,9 +29,10 @@
     "wouter": "^3.9.0",
     "zod": "^4.4.3"
   },
-
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
+    "@cloudflare/vite-plugin": "^1.39.0",
+    "@cloudflare/workers-types": "^4.20260527.1",
     "@tailwindcss/vite": "^4.3.0",
     "@testing-library/react": "^16.3.2",
     "@types/bun": "latest",
@@ -42,6 +44,7 @@
     "portless": "^0.13.0",
     "tailwindcss": "^4.3.0",
     "typescript": "^5.9.3",
-    "vite": "^8.0.11"
+    "vite": "^8.0.11",
+    "wrangler": "^4.95.0"
   }
 }
