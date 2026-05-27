@@ -32,6 +32,26 @@ const fixtureState = {
 	sessions: [],
 };
 
+const r2OnlySeason = {
+	...fixtureSeason,
+	slug: "r2-only-season",
+	episodes: fixtureSeason.episodes.map((episode) => ({
+		...episode,
+		text: `R2 ${episode.text}`,
+	})),
+};
+
+const r2OnlyState = {
+	...fixtureState,
+	children: {
+		winni: {
+			...fixtureState.children.winni,
+			active_season: "r2-only-season",
+			current_episode: 1,
+		},
+	},
+};
+
 const validSessionBody = {
 	id: "test-session-1",
 	child_id: "winni",
@@ -130,6 +150,47 @@ const getEpisodeAudioFile = (
 		},
 	);
 
+function r2JsonObject(body: unknown) {
+	return {
+		async json<T>(): Promise<T> {
+			return structuredClone(body) as T;
+		},
+		async arrayBuffer(): Promise<ArrayBuffer> {
+			return new TextEncoder().encode(JSON.stringify(body)).buffer;
+		},
+	};
+}
+
+function r2BytesObject(body: Uint8Array, contentType = "audio/wav") {
+	return {
+		httpMetadata: { contentType },
+		async json<T>(): Promise<T> {
+			return JSON.parse(new TextDecoder().decode(body)) as T;
+		},
+		async arrayBuffer(): Promise<ArrayBuffer> {
+			return body.buffer.slice(
+				body.byteOffset,
+				body.byteOffset + body.byteLength,
+			) as ArrayBuffer;
+		},
+	};
+}
+
+function fakeR2Bucket(
+	objects: Record<
+		string,
+		ReturnType<typeof r2JsonObject> | ReturnType<typeof r2BytesObject>
+	>,
+) {
+	return {
+		requestedKeys: [] as string[],
+		async get(key: string) {
+			this.requestedKeys.push(key);
+			return objects[key] ?? null;
+		},
+	};
+}
+
 describe("server stores", () => {
 	it("mutates POST /api/sessions through an injected in-memory StateStore", async () => {
 		const stateStore = new InMemoryStateStore(fixtureState);
@@ -222,5 +283,121 @@ describe("server stores", () => {
 		expect(new Uint8Array(await res.arrayBuffer()).slice(0, 4)).toEqual(
 			new Uint8Array([82, 73, 70, 70]),
 		);
+	});
+
+	it("serves R2-only season and episode routes from the bucket binding", async () => {
+		const stateStore = new InMemoryStateStore(r2OnlyState);
+		const bucket = fakeR2Bucket({
+			"seasons/r2-only-season.json": r2JsonObject(r2OnlySeason),
+		});
+
+		const seasonRes = await fetch(
+			new Request("http://127.0.0.1:3001/api/children/winni/season"),
+			{
+				APP_STATE_STORE: stateStore,
+				ASSETS_BUCKET: bucket,
+			},
+		);
+		const currentEpisodeRes = await fetch(
+			new Request(
+				"http://127.0.0.1:3001/api/children/winni/current-episode",
+			),
+			{
+				APP_STATE_STORE: stateStore,
+				ASSETS_BUCKET: bucket,
+			},
+		);
+		const episodeRes = await fetch(
+			new Request("http://127.0.0.1:3001/api/children/winni/episodes/0"),
+			{
+				APP_STATE_STORE: stateStore,
+				ASSETS_BUCKET: bucket,
+			},
+		);
+
+		expect(seasonRes.status).toBe(200);
+		expect(await seasonRes.json()).toEqual({
+			slug: "r2-only-season",
+			total_episodes: 14,
+			current_episode: 1,
+		});
+		expect(currentEpisodeRes.status).toBe(200);
+		expect(await currentEpisodeRes.json()).toMatchObject({
+			text: "R2 Episode 2 text for testing.",
+			episode_idx: 1,
+			season_slug: "r2-only-season",
+		});
+		expect(episodeRes.status).toBe(200);
+		expect(await episodeRes.json()).toMatchObject({
+			text: "R2 Episode 1 text for testing.",
+			episode_idx: 0,
+			season_slug: "r2-only-season",
+		});
+	});
+
+	it("serves episode audio metadata from the R2 bucket binding", async () => {
+		const stateStore = new InMemoryStateStore({
+			...fixtureState,
+			children: {
+				winni: {
+					...fixtureState.children.winni,
+					current_episode: 2,
+				},
+			},
+		});
+		const audio = audioForEpisode(0);
+		const bucket = fakeR2Bucket({
+			"seasons/winni-s1-test.json": r2JsonObject(fixtureSeason),
+			"audio/winni-s1-test-e0.wav": r2BytesObject(audio.audioBytes),
+			"audio/winni-s1-test-e0.words.json": r2JsonObject(audio.sidecar),
+		});
+
+		const res = await fetch(
+			new Request(
+				"http://127.0.0.1:3001/api/children/winni/episodes/0/audio",
+			),
+			{
+				APP_STATE_STORE: stateStore,
+				ASSETS_BUCKET: bucket,
+			},
+		);
+
+		expect(res.status).toBe(200);
+		const body = await res.json();
+		expect(body).toMatchObject({
+			season_slug: "winni-s1-test",
+			episode_idx: 0,
+			audio_url: "/api/children/winni/episodes/0/audio/file",
+			duration_seconds: 2,
+		});
+		expect(bucket.requestedKeys).toEqual([
+			"seasons/winni-s1-test.json",
+			"audio/winni-s1-test-e0.wav",
+			"audio/winni-s1-test-e0.words.json",
+		]);
+	});
+
+	it("returns EpisodeAudioStale when R2 sidecar integrity fails", async () => {
+		const stateStore = new InMemoryStateStore(fixtureState);
+		const audio = audioForEpisode(0);
+		const staleSidecar = { ...audio.sidecar, audioHash: "0".repeat(64) };
+		const bucket = fakeR2Bucket({
+			"seasons/winni-s1-test.json": r2JsonObject(fixtureSeason),
+			"audio/winni-s1-test-e0.wav": r2BytesObject(audio.audioBytes),
+			"audio/winni-s1-test-e0.words.json": r2JsonObject(staleSidecar),
+		});
+
+		const res = await fetch(
+			new Request(
+				"http://127.0.0.1:3001/api/children/winni/episodes/0/audio",
+			),
+			{
+				APP_STATE_STORE: stateStore,
+				ASSETS_BUCKET: bucket,
+			},
+		);
+
+		expect(res.status).toBe(409);
+		expect(await res.json()).toEqual({ error: "EpisodeAudioStale" });
 	});
 });
