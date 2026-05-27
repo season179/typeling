@@ -35,21 +35,47 @@ export interface EpisodeAudioAsset {
 	contentType?: string;
 }
 
+export interface EpisodeAudioFileAsset {
+	body?: ReadableStream | ArrayBuffer;
+	contentLength?: number;
+	contentRange?: string;
+	contentType?: string;
+	status: 200 | 206 | 412;
+}
+
 interface StoredEpisodeAudioAsset extends EpisodeAudioAsset {
 	seasonSlug: string;
 	episodeIdx: number;
+}
+
+interface R2RangeLike {
+	offset?: number;
+	length?: number;
+	suffix?: number;
+}
+
+interface R2GetOptionsLike {
+	onlyIf?: Headers;
+	range?: Headers;
 }
 
 export interface R2ObjectBodyLike {
 	httpMetadata?: {
 		contentType?: string;
 	};
+	customMetadata?: Record<string, string>;
+	body?: ReadableStream;
+	range?: R2RangeLike;
+	size?: number;
 	arrayBuffer(): Promise<ArrayBuffer>;
 	json<T>(): Promise<T>;
 }
 
 export interface R2BucketLike {
-	get(key: string): Promise<R2ObjectBodyLike | null>;
+	get(
+		key: string,
+		options?: R2GetOptionsLike,
+	): Promise<R2ObjectBodyLike | null>;
 }
 
 export interface AssetStore {
@@ -59,6 +85,12 @@ export interface AssetStore {
 		episodeIdx: number,
 		episodeText: string,
 	): Promise<EpisodeAudioAsset | null>;
+	readEpisodeAudioFile(
+		seasonSlug: string,
+		episodeIdx: number,
+		episodeText: string,
+		requestHeaders: Headers,
+	): Promise<EpisodeAudioFileAsset | null>;
 }
 
 export class InMemoryAssetStore implements AssetStore {
@@ -105,6 +137,24 @@ export class InMemoryAssetStore implements AssetStore {
 			audio.audioBytes,
 		);
 		return cloneAudioAsset(audio);
+	}
+
+	async readEpisodeAudioFile(
+		seasonSlug: string,
+		episodeIdx: number,
+		episodeText: string,
+		_requestHeaders: Headers,
+	): Promise<EpisodeAudioFileAsset | null> {
+		const audio = await this.readEpisodeAudio(
+			seasonSlug,
+			episodeIdx,
+			episodeText,
+		);
+		if (!audio) {
+			return null;
+		}
+
+		return audioFileFromBytes(audio.audioBytes, audio.contentType);
 	}
 }
 
@@ -153,6 +203,43 @@ export class R2AssetStore implements AssetStore {
 				sidecar,
 				contentType: audioObject.httpMetadata?.contentType,
 			};
+		} catch (error) {
+			if (error instanceof EpisodeAudioError) {
+				throw error;
+			}
+			throw new EpisodeAudioError("EpisodeAudioStale", 409);
+		}
+	}
+
+	async readEpisodeAudioFile(
+		seasonSlug: string,
+		episodeIdx: number,
+		episodeText: string,
+		requestHeaders: Headers,
+	): Promise<EpisodeAudioFileAsset | null> {
+		const baseName = audioBaseName(seasonSlug, episodeIdx);
+		const [audioObject, sidecarObject] = await Promise.all([
+			this.#bucket.get(`audio/${baseName}.wav`, {
+				range: requestHeaders,
+				onlyIf: requestHeaders,
+			}),
+			this.#bucket.get(`audio/${baseName}.words.json`),
+		]);
+
+		if (!audioObject || !sidecarObject) {
+			return null;
+		}
+
+		try {
+			const sidecar = wordTimingSidecarSchema.parse(await sidecarObject.json());
+			assertSidecarMatchesEpisodeText(
+				sidecar,
+				seasonSlug,
+				episodeIdx,
+				episodeText,
+			);
+			assertR2AudioMetadataMatchesSidecar(audioObject, sidecar);
+			return audioFileFromR2Object(audioObject, requestHeaders.has("range"));
 		} catch (error) {
 			if (error instanceof EpisodeAudioError) {
 				throw error;
@@ -213,6 +300,24 @@ export class DiskAssetStore implements AssetStore {
 			throw new EpisodeAudioError("EpisodeAudioStale", 409);
 		}
 	}
+
+	async readEpisodeAudioFile(
+		seasonSlug: string,
+		episodeIdx: number,
+		episodeText: string,
+		_requestHeaders: Headers,
+	): Promise<EpisodeAudioFileAsset | null> {
+		const audio = await this.readEpisodeAudio(
+			seasonSlug,
+			episodeIdx,
+			episodeText,
+		);
+		if (!audio) {
+			return null;
+		}
+
+		return audioFileFromBytes(audio.audioBytes, audio.contentType);
+	}
 }
 
 function audioKey(seasonSlug: string, episodeIdx: number): string {
@@ -239,6 +344,92 @@ function cloneAudioAsset(audio: EpisodeAudioAsset): EpisodeAudioAsset {
 	};
 }
 
+function audioFileFromBytes(
+	audioBytes: Uint8Array,
+	contentType?: string,
+): EpisodeAudioFileAsset {
+	return {
+		body: audioBytes.buffer.slice(
+			audioBytes.byteOffset,
+			audioBytes.byteOffset + audioBytes.byteLength,
+		) as ArrayBuffer,
+		contentLength: audioBytes.byteLength,
+		contentType,
+		status: 200,
+	};
+}
+
+function audioFileFromR2Object(
+	object: R2ObjectBodyLike,
+	requestedRange: boolean,
+): EpisodeAudioFileAsset {
+	const contentType = object.httpMetadata?.contentType;
+	if (!object.body) {
+		return { contentType, status: 412 };
+	}
+
+	const range = object.range;
+	if (!requestedRange || !range) {
+		return {
+			body: object.body,
+			contentLength: object.size,
+			contentType,
+			status: 200,
+		};
+	}
+
+	const resolvedRange = resolveR2Range(range, object.size);
+	if (!resolvedRange) {
+		return {
+			body: object.body,
+			contentType,
+			status: 200,
+		};
+	}
+
+	return {
+		body: object.body,
+		contentLength: resolvedRange.length,
+		contentRange: contentRangeHeader(resolvedRange),
+		contentType,
+		status: 206,
+	};
+}
+
+function resolveR2Range(
+	range: R2RangeLike,
+	size: number | undefined,
+): { offset: number; length: number; size: number } | undefined {
+	if (size === undefined) {
+		return undefined;
+	}
+
+	if (range.offset !== undefined && range.length !== undefined) {
+		return { offset: range.offset, length: range.length, size };
+	}
+	if (range.offset !== undefined) {
+		return { offset: range.offset, length: size - range.offset, size };
+	}
+	if (range.suffix !== undefined) {
+		const length = Math.min(range.suffix, size);
+		return { offset: size - length, length, size };
+	}
+	if (range.length !== undefined) {
+		return { offset: 0, length: range.length, size };
+	}
+
+	return undefined;
+}
+
+function contentRangeHeader(range: {
+	offset: number;
+	length: number;
+	size: number;
+}): string {
+	const end = range.offset + range.length - 1;
+	return `bytes ${range.offset}-${end}/${range.size}`;
+}
+
 function assertSidecarMatchesEpisode(
 	sidecar: WordTimingSidecar,
 	seasonSlug: string,
@@ -246,10 +437,21 @@ function assertSidecarMatchesEpisode(
 	episodeText: string,
 	audioBytes: Uint8Array,
 ): void {
+	assertSidecarMatchesEpisodeText(sidecar, seasonSlug, episodeIdx, episodeText);
+	if (sidecar.audioHash !== sha256(audioBytes)) {
+		throw new EpisodeAudioError("EpisodeAudioStale", 409);
+	}
+}
+
+function assertSidecarMatchesEpisodeText(
+	sidecar: WordTimingSidecar,
+	seasonSlug: string,
+	episodeIdx: number,
+	episodeText: string,
+): void {
 	if (
 		sidecar.seasonSlug !== seasonSlug ||
 		sidecar.episodeIdx !== episodeIdx ||
-		sidecar.audioHash !== sha256(audioBytes) ||
 		sidecar.textHash !== sha256(episodeText)
 	) {
 		throw new EpisodeAudioError("EpisodeAudioStale", 409);
@@ -274,6 +476,16 @@ function assertSidecarMatchesEpisode(
 			throw new EpisodeAudioError("EpisodeAudioStale", 409);
 		}
 		previousEnd = word.end;
+	}
+}
+
+function assertR2AudioMetadataMatchesSidecar(
+	object: R2ObjectBodyLike,
+	sidecar: WordTimingSidecar,
+): void {
+	const audioHash = object.customMetadata?.sha256;
+	if (audioHash !== undefined && audioHash !== sidecar.audioHash) {
+		throw new EpisodeAudioError("EpisodeAudioStale", 409);
 	}
 }
 

@@ -440,22 +440,19 @@ app.get("/api/children/:id/episodes/:episodeIdx/audio/file", async (c) => {
 			c.req.param("episodeIdx"),
 			c.env,
 		);
-		const audio = await getAssetStore(c.env).readEpisodeAudio(
+		const audio = await getAssetStore(c.env).readEpisodeAudioFile(
 			season.slug,
 			episodeIdx,
 			episode.text,
+			c.req.raw.headers,
 		);
 		if (!audio) {
 			return c.json({ error: "EpisodeAudioMissing" }, 404);
 		}
 
-		const audioBody = audio.audioBytes.buffer.slice(
-			audio.audioBytes.byteOffset,
-			audio.audioBytes.byteOffset + audio.audioBytes.byteLength,
-		) as ArrayBuffer;
-
-		return new Response(audioBody, {
-			headers: { "content-type": "audio/wav" },
+		return new Response(audio.body, {
+			status: audio.status,
+			headers: audioFileHeaders(audio),
 		});
 	} catch (error) {
 		if (error instanceof EpisodeAccessError) {
@@ -467,6 +464,26 @@ app.get("/api/children/:id/episodes/:episodeIdx/audio/file", async (c) => {
 		throw error;
 	}
 });
+
+function audioFileHeaders(audio: {
+	contentLength?: number;
+	contentRange?: string;
+	contentType?: string;
+}): Headers {
+	const headers = new Headers({
+		"accept-ranges": "bytes",
+		"content-type": audio.contentType ?? "audio/wav",
+	});
+
+	if (audio.contentLength !== undefined) {
+		headers.set("content-length", String(audio.contentLength));
+	}
+	if (audio.contentRange) {
+		headers.set("content-range", audio.contentRange);
+	}
+
+	return headers;
+}
 
 app.post("/api/children/:id/episodes/:episodeIdx/reset", async (c) => {
 	const stateStore = getStateStore(c.env);
