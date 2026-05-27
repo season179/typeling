@@ -8,6 +8,7 @@
     "dev:proxy": "portless proxy start --https",
     "dev:direct": "concurrently --kill-others --names api,web 'PORT=${SERVER_PORT:-3001} bun --watch src/server/index.ts' 'SERVER_URL=http://127.0.0.1:${SERVER_PORT:-3001} vite --host 127.0.0.1 --port 5173 --strictPort'",
     "dev:cloud": "TYPELING_CLOUDFLARE=1 vite --host 127.0.0.1",
+    "deploy": "vite build && wrangler deploy",
     "server": "bun run src/server/index.ts",
     "web": "vite",
     "lint": "biome check src/",
