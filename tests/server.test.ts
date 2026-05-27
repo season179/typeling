@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import fetch from "../src/server/index.ts";
+import { fetch } from "../src/server/index.ts";
 
 describe("server", () => {
   it("GET /api/health returns { ok: true }", async () => {

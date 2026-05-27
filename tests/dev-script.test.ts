@@ -15,6 +15,14 @@ describe("dev scripts", () => {
 		expect(packageJson.scripts.dev).not.toContain("SERVER_PORT");
 	});
 
+	it("keeps Cloudflare dev separate from the legacy Portless flow", async () => {
+		const packageJson = await Bun.file("package.json").json();
+		expect(packageJson.scripts["dev:cloud"]).toBe(
+			"TYPELING_CLOUDFLARE=1 vite --host 127.0.0.1",
+		);
+		expect(packageJson.scripts.dev).not.toContain("TYPELING_CLOUDFLARE");
+	});
+
 	it("dev:direct starts both Hono server and Vite dev server", async () => {
 		const apiPort = 3101;
 		const proc = Bun.spawn(["bun", "run", "dev:direct"], {

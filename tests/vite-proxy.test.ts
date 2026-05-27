@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import { createServer } from "vite";
-import serverFetch from "../src/server/index.ts";
+import { fetch as serverFetch } from "../src/server/index.ts";
 import viteConfig, { resolveServerUrl } from "../vite.config.ts";
 
 describe("vite proxy", () => {
@@ -13,6 +13,20 @@ describe("vite proxy", () => {
 
   it("can proxy /api to a Portless API URL", () => {
     expect(resolveServerUrl({ SERVER_URL: "https://typeling-api.localhost" })).toBe("https://typeling-api.localhost");
+  });
+
+  it("keeps the Cloudflare plugin behind the cloud dev script", async () => {
+    const packageJson = await Bun.file("package.json").json();
+    expect(packageJson.scripts["dev:cloud"]).toBe(
+      "TYPELING_CLOUDFLARE=1 vite --host 127.0.0.1",
+    );
+    expect(viteConfig.plugins?.some((plugin) => {
+      if (!plugin || typeof plugin === "string" || plugin instanceof Promise) {
+        return false;
+      }
+      if (Array.isArray(plugin)) return false;
+      return plugin.name.includes("cloudflare");
+    })).toBe(false);
   });
 
   it("proxies /api/health through Vite dev server to Hono", async () => {
