@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import viteConfig from "../vite.config";
 
 describe("dev scripts", () => {
 	it("runs Hono and Vite as separate Portless apps", async () => {
@@ -27,6 +28,23 @@ describe("dev scripts", () => {
 		const wranglerConfig = await Bun.file("wrangler.jsonc").json();
 		expect(wranglerConfig.assets.directory).toBe("./dist/client");
 		expect(wranglerConfig.assets.run_worker_first).toEqual(["/api/*"]);
+		expect(viteConfig.build?.outDir).toBe("../../dist/client");
+	});
+
+	it("configures StateStore as a SQLite-backed Durable Object", async () => {
+		const wranglerConfig = await Bun.file("wrangler.jsonc").json();
+
+		expect(wranglerConfig.durable_objects.bindings).toContainEqual({
+			name: "STATE_STORE",
+			class_name: "StateStore",
+		});
+		expect(wranglerConfig.migrations).toContainEqual({
+			tag: "v1",
+			new_sqlite_classes: ["StateStore"],
+		});
+		expect(JSON.stringify(wranglerConfig.migrations)).not.toContain(
+			"new_classes",
+		);
 	});
 
 	it("dev:direct starts both Hono server and Vite dev server", async () => {
