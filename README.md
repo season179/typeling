@@ -118,6 +118,23 @@ The package.json shortcuts `tts:zack-s1-e0`, `audio:winni-s1-e0:extract`, `audio
 
 Full Gemini API reference: <https://ai.google.dev/gemini-api/docs/speech-generation>.
 
+## Cloudflare deployment
+
+Typeling can deploy to Cloudflare Workers. The same Hono app runs inside a Worker with Durable Object state and R2 storage.
+
+| Command | What it does |
+| --- | --- |
+| `bun run dev:cloud` | Local Workers runtime via the Cloudflare Vite plugin. No Bun server needed. |
+| `bun run deploy` | Build the SPA and deploy to Cloudflare (`vite build && wrangler deploy`). Requires `wrangler login`. |
+
+**Which dev mode should I use?**
+
+- **`bun run dev` (Portless)** — default for everyday development and kid testing. Runs the real Bun server with `data/state.json`.
+- **`bun run dev:cloud`** — use when testing Worker-specific behaviour (Durable Objects, R2 bindings) before a deploy.
+- **`bun run deploy`** — ship to production on Cloudflare.
+
+Full details: [`docs/cloudflare-deploy-plan.md`](docs/cloudflare-deploy-plan.md).
+
 ## Scripts
 
 | Script | What it does |
@@ -125,6 +142,8 @@ Full Gemini API reference: <https://ai.google.dev/gemini-api/docs/speech-generat
 | `bun run dev` | Portless HTTPS stack: Hono at `https://typeling-api.localhost`, Vite at `https://typeling.localhost`. |
 | `bun run dev:proxy` | Ensure the standard HTTPS Portless proxy is running. |
 | `bun run dev:direct` | Hono on `127.0.0.1:3001`, Vite on `127.0.0.1:5173`; override Hono with `SERVER_PORT`. |
+| `bun run dev:cloud` | Local Cloudflare Workers dev via Vite plugin. |
+| `bun run deploy` | Build SPA and deploy to Cloudflare. |
 | `bun run server` | Hono API server only. |
 | `bun run web` | Vite dev server only. |
 | `bun run lint` | Biome check on `src/`. |
