@@ -2,7 +2,7 @@ import { cloudflare } from "@cloudflare/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { type PluginOption, type UserConfig, defineConfig } from "vite";
-import { DEFAULT_PORT, HOSTNAME } from "./src/server/index.ts";
+import { DEFAULT_PORT, HOSTNAME } from "./src/server/config";
 
 export function resolveServerUrl(env: NodeJS.ProcessEnv = process.env): string {
 	const serverPort = Number(env.SERVER_PORT) || DEFAULT_PORT;

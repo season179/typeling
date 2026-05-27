@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { Hono } from "hono";
 import seedStateData from "../../data/state.seed.json";
@@ -6,20 +5,29 @@ import winniSeasonData from "../../seasons/winni-s1.json";
 import zackSeasonData from "../../seasons/zack-s1.json";
 import { MAX_EPISODES, seasonSchema } from "../lib/schemas/season";
 import { type State, sessionSchema, stateSchema } from "../lib/schemas/state";
-import { extractAlignmentStoryWords } from "../lib/storyWordTokens";
 import {
-	type WordTimingSidecar,
-	wordTimingSidecarSchema,
-} from "../lib/wordTimings";
-import { createStateQueue, ensureStateFile, readState } from "./state";
+	DEFAULT_AUDIO_DIR,
+	DEFAULT_PORT,
+	DEFAULT_SEASONS_DIR,
+	DEFAULT_STATE_PATH,
+	HOSTNAME,
+} from "./config";
+import { ensureStateFile } from "./state";
+import type {
+	AssetStore,
+	Season,
+	ServerBindings,
+	StateStore as StateStoreBackend,
+} from "./stores";
+import {
+	DiskAssetStore,
+	DiskStateStore,
+	EpisodeAudioError,
+	InMemoryAssetStore,
+	InMemoryStateStore,
+} from "./stores";
 
-export const DEFAULT_PORT = 3001;
-export const HOSTNAME = "127.0.0.1";
-export const DEFAULT_STATE_PATH = "data/state.json";
-export const DEFAULT_SEASONS_DIR = "seasons";
-export const DEFAULT_AUDIO_DIR = "data/audio";
 const WILDCARD_HOSTNAME = "0.0.0.0";
-const WORKER_STATE_STORE_ERROR = "WorkerStateStoreNotImplemented";
 
 function isBunRuntime(): boolean {
 	return typeof Bun !== "undefined";
@@ -45,41 +53,36 @@ function audioDir(): string {
 }
 
 const bundledState = stateSchema.parse(seedStateData);
-const bundledSeasons = [winniSeasonData, zackSeasonData].map((season) =>
-	seasonSchema.parse(season),
-);
-type Season = (typeof bundledSeasons)[number];
-const bundledSeasonBySlug = new Map(
-	bundledSeasons.map((season) => [season.slug, season]),
+const bundledSeasons: Season[] = [winniSeasonData, zackSeasonData].map(
+	(season) => seasonSchema.parse(season),
 );
 
-export class SeasonFileNotFoundError extends Error {
-	constructor(seasonSlug: string) {
-		super(`Season file not found for slug: ${seasonSlug}`);
-		this.name = "SeasonFileNotFoundError";
-	}
-}
+type MismatchCode = "child_not_found" | "season_mismatch" | "episode_mismatch";
+type Child = State["children"][string];
+type ChildSeasonResult =
+	| { child: Child; season: Season }
+	| { error: "ChildNotFound"; status: 404 };
+type OpenEpisode = {
+	child: Child;
+	season: Season;
+	episodeIdx: number;
+	episode: Season["episodes"][number];
+};
 
-export type MismatchCode =
-	| "child_not_found"
-	| "season_mismatch"
-	| "episode_mismatch";
-
-export class SessionMismatchError extends Error {
+class SessionMismatchError extends Error {
 	constructor(code: MismatchCode) {
 		super(code);
 		this.name = "SessionMismatchError";
 	}
 }
 
-export type EpisodeAccessCode =
+type EpisodeAccessCode =
 	| "ChildNotFound"
 	| "InvalidEpisode"
 	| "EpisodeNotFound"
 	| "EpisodeLocked";
-type EpisodeAudioCode = "EpisodeAudioMissing" | "EpisodeAudioStale";
 
-export class EpisodeAccessError extends Error {
+class EpisodeAccessError extends Error {
 	status: 400 | 403 | 404;
 
 	constructor(code: EpisodeAccessCode, status: 400 | 403 | 404) {
@@ -89,82 +92,55 @@ export class EpisodeAccessError extends Error {
 	}
 }
 
-export class EpisodeAudioError extends Error {
-	status: 404 | 409;
-
-	constructor(code: EpisodeAudioCode, status: 404 | 409) {
-		super(code);
-		this.name = "EpisodeAudioError";
-		this.status = status;
-	}
-}
-
-export const app = new Hono();
+const app = new Hono<{ Bindings: ServerBindings }>();
 
 app.onError((error, c) => {
 	console.error(error);
 	return c.json({ error: error.name }, 500);
 });
 
-async function readRuntimeState(): Promise<State> {
-	if (isBunRuntime()) {
-		return readState(statePath());
-	}
-	return structuredClone(bundledState);
-}
-
-async function loadSeason(seasonSlug: string): Promise<Season> {
-	if (!isBunRuntime()) {
-		const season = bundledSeasonBySlug.get(seasonSlug);
-		if (!season) {
-			throw new SeasonFileNotFoundError(seasonSlug);
-		}
-		return structuredClone(season);
-	}
-
-	const seasonPath = join(seasonsDir(), `${seasonSlug}.json`);
-	const seasonFile = Bun.file(seasonPath);
-	if (!(await seasonFile.exists())) {
-		throw new SeasonFileNotFoundError(seasonSlug);
-	}
-	return seasonSchema.parse(await seasonFile.json());
-}
-
-async function loadChildSeason(childId: string) {
-	const state = await readRuntimeState();
+async function loadChildSeason(
+	childId: string,
+	env: ServerBindings = {},
+): Promise<ChildSeasonResult> {
+	const state = await getStateStore(env).readState();
 	const child = state.children[childId];
 	if (!child) {
 		return { error: "ChildNotFound" as const, status: 404 as const };
 	}
 
-	const season = await loadSeason(child.active_season);
+	const season = await getAssetStore(env).readSeason(child.active_season);
 
 	return { child, season };
 }
 
-const parseEpisodeIdx = (raw: string) => {
+function parseEpisodeIdx(raw: string): number {
 	const episodeIdx = Number.parseInt(raw, 10);
 	if (!Number.isInteger(episodeIdx) || String(episodeIdx) !== raw) {
 		throw new EpisodeAccessError("InvalidEpisode", 400);
 	}
 	return episodeIdx;
-};
+}
 
-const assertEpisodeIsOpen = (
+function assertEpisodeIsOpen(
 	episodeIdx: number,
 	currentEpisode: number,
 	totalEpisodes: number,
-) => {
+): void {
 	if (episodeIdx < 0 || episodeIdx >= totalEpisodes) {
 		throw new EpisodeAccessError("EpisodeNotFound", 404);
 	}
 	if (episodeIdx > currentEpisode) {
 		throw new EpisodeAccessError("EpisodeLocked", 403);
 	}
-};
+}
 
-const loadOpenEpisode = async (childId: string, rawEpisodeIdx: string) => {
-	const result = await loadChildSeason(childId);
+async function loadOpenEpisode(
+	childId: string,
+	rawEpisodeIdx: string,
+	env: ServerBindings = {},
+): Promise<OpenEpisode> {
+	const result = await loadChildSeason(childId, env);
 	if ("error" in result) {
 		throw new EpisodeAccessError("ChildNotFound", 404);
 	}
@@ -183,109 +159,49 @@ const loadOpenEpisode = async (childId: string, rawEpisodeIdx: string) => {
 	}
 
 	return { child, season, episodeIdx, episode };
-};
+}
 
-const audioArtifactPaths = (seasonSlug: string, episodeIdx: number) => {
-	const baseName = `${seasonSlug}-e${episodeIdx}`;
-	return {
-		audioPath: join(audioDir(), `${baseName}.wav`),
-		timingsPath: join(audioDir(), `${baseName}.words.json`),
-	};
-};
+const localStateStores = new Map<string, DiskStateStore>();
+let workerStateStore: InMemoryStateStore | undefined;
+let workerAssetStore: InMemoryAssetStore | undefined;
 
-const sha256 = (input: string | Uint8Array) =>
-	createHash("sha256").update(input).digest("hex");
-
-const assertSidecarMatchesEpisode = (
-	sidecar: WordTimingSidecar,
-	seasonSlug: string,
-	episodeIdx: number,
-	episodeText: string,
-	audioBytes: Uint8Array,
-) => {
-	if (
-		sidecar.seasonSlug !== seasonSlug ||
-		sidecar.episodeIdx !== episodeIdx ||
-		sidecar.audioHash !== sha256(audioBytes) ||
-		sidecar.textHash !== sha256(episodeText)
-	) {
-		throw new EpisodeAudioError("EpisodeAudioStale", 409);
-	}
-
-	const expectedWords = extractAlignmentStoryWords(episodeText);
-	if (sidecar.words.length !== expectedWords.length) {
-		throw new EpisodeAudioError("EpisodeAudioStale", 409);
-	}
-
-	let previousEnd = 0;
-	for (const [index, word] of sidecar.words.entries()) {
-		const expected = expectedWords[index];
-		if (
-			!expected ||
-			word.index !== expected.wordIndex ||
-			word.text !== expected.text ||
-			word.end < word.start ||
-			word.start < previousEnd ||
-			word.end > sidecar.durationSeconds
-		) {
-			throw new EpisodeAudioError("EpisodeAudioStale", 409);
-		}
-		previousEnd = word.end;
-	}
-};
-
-const loadEpisodeAudio = async (
-	seasonSlug: string,
-	episodeIdx: number,
-	episodeText: string,
-) => {
+function getDefaultStateStore(): StateStoreBackend {
 	if (!isBunRuntime()) {
-		return null;
+		workerStateStore ??= new InMemoryStateStore(bundledState);
+		return workerStateStore;
 	}
 
-	const paths = audioArtifactPaths(seasonSlug, episodeIdx);
-	const audioFile = Bun.file(paths.audioPath);
-	const timingsFile = Bun.file(paths.timingsPath);
-
-	if (!(await audioFile.exists()) || !(await timingsFile.exists())) {
-		return null;
-	}
-
-	try {
-		const sidecar = wordTimingSidecarSchema.parse(await timingsFile.json());
-		const audioBytes = new Uint8Array(await audioFile.arrayBuffer());
-		assertSidecarMatchesEpisode(
-			sidecar,
-			seasonSlug,
-			episodeIdx,
-			episodeText,
-			audioBytes,
-		);
-		return { ...paths, sidecar };
-	} catch (error) {
-		if (error instanceof EpisodeAudioError) {
-			throw error;
-		}
-		throw new EpisodeAudioError("EpisodeAudioStale", 409);
-	}
-};
-
-const stateQueues = new Map<string, ReturnType<typeof createStateQueue>>();
-
-const getStateQueue = () => {
 	const path = statePath();
-	let q = stateQueues.get(path);
-	if (!q) {
-		q = createStateQueue(path);
-		stateQueues.set(path, q);
+	let store = localStateStores.get(path);
+	if (!store) {
+		store = new DiskStateStore(path);
+		localStateStores.set(path, store);
 	}
-	return q;
-};
+	return store;
+}
+
+function getStateStore(env: ServerBindings): StateStoreBackend {
+	return env.APP_STATE_STORE ?? getDefaultStateStore();
+}
+
+function getDefaultAssetStore(): AssetStore {
+	if (!isBunRuntime()) {
+		workerAssetStore ??= new InMemoryAssetStore({ seasons: bundledSeasons });
+		return workerAssetStore;
+	}
+
+	return new DiskAssetStore({
+		seasonsDir: seasonsDir(),
+		audioDir: audioDir(),
+	});
+}
+
+function getAssetStore(env: ServerBindings): AssetStore {
+	return env.ASSET_STORE ?? getDefaultAssetStore();
+}
 
 app.post("/api/sessions", async (c) => {
-	if (!isBunRuntime()) {
-		return c.json({ error: WORKER_STATE_STORE_ERROR }, 501);
-	}
+	const stateStore = getStateStore(c.env);
 
 	const body = await c.req.json().catch(() => null);
 	const parsed = sessionSchema.safeParse(body);
@@ -294,7 +210,7 @@ app.post("/api/sessions", async (c) => {
 	}
 
 	try {
-		const nextState = await getStateQueue().mutateState((current) => {
+		const nextState = await stateStore.mutateState((current) => {
 			if (current.sessions.some((s) => s.id === parsed.data.id)) return current;
 
 			const child = current.children[parsed.data.child_id];
@@ -339,13 +255,13 @@ app.get("/api/health", (c) => {
 });
 
 app.get("/api/children", async (c) => {
-	const state = await readRuntimeState();
+	const state = await getStateStore(c.env).readState();
 	return c.json(state.children);
 });
 
 app.get("/api/children/:id/sessions", async (c) => {
 	const childId = c.req.param("id");
-	const state = await readRuntimeState();
+	const state = await getStateStore(c.env).readState();
 	const child = state.children[childId];
 	if (!child) {
 		return c.json({ error: "ChildNotFound" }, 404);
@@ -359,7 +275,7 @@ app.get("/api/children/:id/sessions", async (c) => {
 });
 
 app.get("/api/children/:id/season", async (c) => {
-	const result = await loadChildSeason(c.req.param("id"));
+	const result = await loadChildSeason(c.req.param("id"), c.env);
 	if ("error" in result) {
 		return c.json({ error: result.error }, result.status);
 	}
@@ -372,7 +288,7 @@ app.get("/api/children/:id/season", async (c) => {
 });
 
 app.get("/api/children/:id/current-episode", async (c) => {
-	const result = await loadChildSeason(c.req.param("id"));
+	const result = await loadChildSeason(c.req.param("id"), c.env);
 	if ("error" in result) {
 		return c.json({ error: result.error }, result.status);
 	}
@@ -412,6 +328,7 @@ app.get("/api/children/:id/episodes/:episodeIdx", async (c) => {
 		const { child, season, episodeIdx, episode } = await loadOpenEpisode(
 			c.req.param("id"),
 			c.req.param("episodeIdx"),
+			c.env,
 		);
 
 		return c.json({
@@ -435,8 +352,13 @@ app.get("/api/children/:id/episodes/:episodeIdx/audio", async (c) => {
 		const { season, episodeIdx, episode } = await loadOpenEpisode(
 			childId,
 			c.req.param("episodeIdx"),
+			c.env,
 		);
-		const audio = await loadEpisodeAudio(season.slug, episodeIdx, episode.text);
+		const audio = await getAssetStore(c.env).readEpisodeAudio(
+			season.slug,
+			episodeIdx,
+			episode.text,
+		);
 		if (!audio) {
 			return c.json({ error: "EpisodeAudioMissing" }, 404);
 		}
@@ -466,13 +388,23 @@ app.get("/api/children/:id/episodes/:episodeIdx/audio/file", async (c) => {
 		const { season, episodeIdx, episode } = await loadOpenEpisode(
 			c.req.param("id"),
 			c.req.param("episodeIdx"),
+			c.env,
 		);
-		const audio = await loadEpisodeAudio(season.slug, episodeIdx, episode.text);
+		const audio = await getAssetStore(c.env).readEpisodeAudio(
+			season.slug,
+			episodeIdx,
+			episode.text,
+		);
 		if (!audio) {
 			return c.json({ error: "EpisodeAudioMissing" }, 404);
 		}
 
-		return new Response(Bun.file(audio.audioPath), {
+		const audioBody = audio.audioBytes.buffer.slice(
+			audio.audioBytes.byteOffset,
+			audio.audioBytes.byteOffset + audio.audioBytes.byteLength,
+		) as ArrayBuffer;
+
+		return new Response(audioBody, {
 			headers: { "content-type": "audio/wav" },
 		});
 	} catch (error) {
@@ -487,15 +419,13 @@ app.get("/api/children/:id/episodes/:episodeIdx/audio/file", async (c) => {
 });
 
 app.post("/api/children/:id/episodes/:episodeIdx/reset", async (c) => {
-	if (!isBunRuntime()) {
-		return c.json({ error: WORKER_STATE_STORE_ERROR }, 501);
-	}
+	const stateStore = getStateStore(c.env);
 
 	try {
 		const childId = c.req.param("id");
 		const episodeIdx = parseEpisodeIdx(c.req.param("episodeIdx"));
 
-		const nextState = await getStateQueue().mutateState((current) => {
+		const nextState = await stateStore.mutateState((current) => {
 			const child = current.children[childId];
 			if (!child) {
 				throw new EpisodeAccessError("ChildNotFound", 404);
@@ -540,7 +470,7 @@ app.post("/api/children/:id/episodes/:episodeIdx/reset", async (c) => {
 	}
 });
 
-const readPort = () => {
+function readPort(): number {
 	const value = Bun.env.PORT;
 	if (value === undefined || value === "") {
 		return DEFAULT_PORT;
@@ -552,21 +482,38 @@ const readPort = () => {
 	}
 
 	return port;
-};
+}
 
-const isWildcardAddressRequest = (request: Request) => {
+function isWildcardAddressRequest(request: Request): boolean {
 	const urlHostname = new URL(request.url).hostname;
 	const hostHeader = request.headers.get("host")?.split(":")[0];
 	return urlHostname === WILDCARD_HOSTNAME || hostHeader === WILDCARD_HOSTNAME;
-};
+}
 
-export const fetch = (request: Request) => {
+function isServerBindings(value: unknown): value is ServerBindings {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		("APP_STATE_STORE" in value || "ASSET_STORE" in value)
+	);
+}
+
+export function fetch(
+	request: Request,
+	env?: ServerBindings,
+): Response | Promise<Response>;
+export function fetch(
+	request: Request,
+	envOrServer?: unknown,
+): Response | Promise<Response>;
+export function fetch(request: Request, envOrServer?: unknown) {
 	if (isWildcardAddressRequest(request)) {
 		return Response.error();
 	}
 
-	return app.fetch(request);
-};
+	const env = isServerBindings(envOrServer) ? envOrServer : {};
+	return app.fetch(request, env);
+}
 
 export class StateStore {
 	fetch(): Response {
