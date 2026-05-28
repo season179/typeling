@@ -54,6 +54,12 @@ interface R2RangeLike {
 	suffix?: number;
 }
 
+interface ResolvedByteRange {
+	offset: number;
+	length: number;
+	size: number;
+}
+
 interface R2GetOptionsLike {
 	onlyIf?: Headers;
 	range?: Headers;
@@ -143,7 +149,7 @@ export class InMemoryAssetStore implements AssetStore {
 		seasonSlug: string,
 		episodeIdx: number,
 		episodeText: string,
-		_requestHeaders: Headers,
+		requestHeaders: Headers,
 	): Promise<EpisodeAudioFileAsset | null> {
 		const audio = await this.readEpisodeAudio(
 			seasonSlug,
@@ -154,7 +160,11 @@ export class InMemoryAssetStore implements AssetStore {
 			return null;
 		}
 
-		return audioFileFromBytes(audio.audioBytes, audio.contentType);
+		return audioFileFromBytes(
+			audio.audioBytes,
+			audio.contentType,
+			requestHeaders,
+		);
 	}
 }
 
@@ -305,7 +315,7 @@ export class DiskAssetStore implements AssetStore {
 		seasonSlug: string,
 		episodeIdx: number,
 		episodeText: string,
-		_requestHeaders: Headers,
+		requestHeaders: Headers,
 	): Promise<EpisodeAudioFileAsset | null> {
 		const audio = await this.readEpisodeAudio(
 			seasonSlug,
@@ -316,7 +326,11 @@ export class DiskAssetStore implements AssetStore {
 			return null;
 		}
 
-		return audioFileFromBytes(audio.audioBytes, audio.contentType);
+		return audioFileFromBytes(
+			audio.audioBytes,
+			audio.contentType,
+			requestHeaders,
+		);
 	}
 }
 
@@ -347,16 +361,36 @@ function cloneAudioAsset(audio: EpisodeAudioAsset): EpisodeAudioAsset {
 function audioFileFromBytes(
 	audioBytes: Uint8Array,
 	contentType?: string,
+	requestHeaders?: Headers,
 ): EpisodeAudioFileAsset {
+	const range = resolveByteRangeHeader(
+		requestHeaders?.get("range") ?? null,
+		audioBytes.byteLength,
+	);
+	if (range) {
+		const body = audioBytes.slice(range.offset, range.offset + range.length);
+		return {
+			body: arrayBufferFromBytes(body),
+			contentLength: range.length,
+			contentRange: contentRangeHeader(range),
+			contentType,
+			status: 206,
+		};
+	}
+
 	return {
-		body: audioBytes.buffer.slice(
-			audioBytes.byteOffset,
-			audioBytes.byteOffset + audioBytes.byteLength,
-		) as ArrayBuffer,
+		body: arrayBufferFromBytes(audioBytes),
 		contentLength: audioBytes.byteLength,
 		contentType,
 		status: 200,
 	};
+}
+
+function arrayBufferFromBytes(bytes: Uint8Array): ArrayBuffer {
+	return bytes.buffer.slice(
+		bytes.byteOffset,
+		bytes.byteOffset + bytes.byteLength,
+	) as ArrayBuffer;
 }
 
 function audioFileFromR2Object(
@@ -399,7 +433,7 @@ function audioFileFromR2Object(
 function resolveR2Range(
 	range: R2RangeLike,
 	size: number | undefined,
-): { offset: number; length: number; size: number } | undefined {
+): ResolvedByteRange | undefined {
 	if (size === undefined) {
 		return undefined;
 	}
@@ -421,11 +455,77 @@ function resolveR2Range(
 	return undefined;
 }
 
-function contentRangeHeader(range: {
-	offset: number;
-	length: number;
-	size: number;
-}): string {
+function resolveByteRangeHeader(
+	rangeHeader: string | null,
+	size: number,
+): ResolvedByteRange | undefined {
+	if (!rangeHeader?.startsWith("bytes=") || size === 0) {
+		return undefined;
+	}
+
+	const parts = rangeHeader.slice("bytes=".length).split("-");
+	if (parts.length !== 2) {
+		return undefined;
+	}
+
+	const startRaw = parts[0];
+	const endRaw = parts[1];
+	if (startRaw === undefined || endRaw === undefined) {
+		return undefined;
+	}
+
+	if (startRaw === "" && endRaw === "") {
+		return undefined;
+	}
+	if (startRaw === "") {
+		return resolveSuffixByteRange(endRaw, size);
+	}
+	return resolveOffsetByteRange(startRaw, endRaw, size);
+}
+
+function resolveSuffixByteRange(
+	suffixRaw: string,
+	size: number,
+): ResolvedByteRange | undefined {
+	const suffixLength = parseRangeInteger(suffixRaw);
+	if (suffixLength === undefined || suffixLength <= 0) {
+		return undefined;
+	}
+
+	const length = Math.min(suffixLength, size);
+	return { offset: size - length, length, size };
+}
+
+function resolveOffsetByteRange(
+	startRaw: string,
+	endRaw: string,
+	size: number,
+): ResolvedByteRange | undefined {
+	const start = parseRangeInteger(startRaw);
+	if (start === undefined || start >= size) {
+		return undefined;
+	}
+
+	let end = size - 1;
+	if (endRaw !== "") {
+		const parsedEnd = parseRangeInteger(endRaw);
+		if (parsedEnd === undefined || parsedEnd < start) {
+			return undefined;
+		}
+		end = Math.min(parsedEnd, size - 1);
+	}
+
+	return { offset: start, length: end - start + 1, size };
+}
+
+function parseRangeInteger(value: string): number | undefined {
+	if (!/^\d+$/.test(value)) {
+		return undefined;
+	}
+	return Number.parseInt(value, 10);
+}
+
+function contentRangeHeader(range: ResolvedByteRange): string {
 	const end = range.offset + range.length - 1;
 	return `bytes ${range.offset}-${end}/${range.size}`;
 }

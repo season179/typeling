@@ -119,7 +119,7 @@ class EpisodeAccessError extends Error {
 	}
 }
 
-const app = new Hono<{ Bindings: ServerBindings }>();
+export const app = new Hono<{ Bindings: ServerBindings }>();
 
 app.onError((error, c) => {
 	console.error(error);
