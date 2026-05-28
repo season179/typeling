@@ -53,7 +53,7 @@ describe("dev scripts", () => {
 		expect(wranglerConfig.r2_buckets).toEqual([
 			{
 				binding: "ASSETS_BUCKET",
-				bucket_name: "typeling-assets",
+				bucket_name: "typeling-prod-assets",
 			},
 		]);
 	});

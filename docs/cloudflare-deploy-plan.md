@@ -40,7 +40,7 @@ Key settings:
 
 - Node.js / Bun with wrangler installed as a dev dependency.
 - `wrangler login` run once to authenticate.
-- R2 bucket `typeling-assets` created (`wrangler r2 bucket create typeling-assets`).
+- R2 bucket `typeling-prod-assets` created (`wrangler r2 bucket create typeling-prod-assets`).
 
 ## Secrets
 

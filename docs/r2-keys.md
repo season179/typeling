@@ -1,12 +1,12 @@
 # R2 Object Key Layout
 
 Single source of truth for every key pattern stored in the
-`typeling-assets` R2 bucket and consumed by the Worker, publish script,
+`typeling-prod-assets` R2 bucket and consumed by the Worker, publish script,
 and tests.
 
 ## Bucket
 
-**`typeling-assets`** (configured in `wrangler.jsonc` → `r2_buckets.bucket_name`,
+**`typeling-prod-assets`** (configured in `wrangler.jsonc` → `r2_buckets.bucket_name`,
 binding name `ASSETS_BUCKET`).
 
 ## Runtime Source Selection

@@ -12,7 +12,7 @@
 	"r2_buckets": [
 		{
 			"binding": "ASSETS_BUCKET",
-			"bucket_name": "typeling-assets"
+			"bucket_name": "typeling-prod-assets"
 		}
 	],
 	"durable_objects": {
