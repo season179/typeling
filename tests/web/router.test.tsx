@@ -120,7 +120,7 @@ describe("Router /parent", () => {
 			);
 
 			await waitFor(() => {
-				expect(getByText("Parent View")).toBeDefined();
+				expect(getByText("Admin Progress")).toBeDefined();
 			});
 		} finally {
 			globalThis.fetch = originalFetch;

@@ -148,7 +148,7 @@ export default function ParentView() {
 			<div className="mx-auto max-w-3xl">
 				<header className="mb-10">
 					<h1 className="font-serif text-3xl font-bold text-stone-800 tracking-tight">
-						Parent View
+						Admin Progress
 					</h1>
 					<p className="mt-1 text-sm text-stone-400">
 						Typing sessions for each child

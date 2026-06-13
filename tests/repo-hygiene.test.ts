@@ -1,16 +1,23 @@
 import { describe, expect, it } from "bun:test";
 
 describe("repo hygiene", () => {
-	it.each(["data/state.json", "data/state.json.bak"])("ignores %s", async (path) => {
+	it.each([
+		"data/state.json",
+		"data/state.json.bak",
+		"seasons/winni-s1.json.bak",
+	])("ignores %s", async (path) => {
 		const proc = Bun.spawn(["git", "check-ignore", "-q", path]);
 		expect(await proc.exited).toBe(0);
 	});
 
 	it("tracks data/.gitkeep so the directory exists in fresh checkouts", async () => {
-		const proc = Bun.spawn(["git", "ls-files", "--error-unmatch", "data/.gitkeep"], {
-			stdout: "pipe",
-			stderr: "pipe",
-		});
+		const proc = Bun.spawn(
+			["git", "ls-files", "--error-unmatch", "data/.gitkeep"],
+			{
+				stdout: "pipe",
+				stderr: "pipe",
+			},
+		);
 		expect(await proc.exited).toBe(0);
 	});
 

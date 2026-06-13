@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { Route, Router } from "wouter";
+import AdminView from "./AdminView";
 import App from "./App";
 import CompleteEpisode from "./CompleteEpisode";
 import ParentView from "./ParentView";
@@ -17,6 +18,7 @@ createRoot(rootElement).render(
 	<StrictMode>
 		<Router>
 			<Route path="/" component={App} />
+			<Route path="/admin" component={AdminView} />
 			<Route path="/parent" component={ParentView} />
 			<Route path="/play/:childId" component={PlayEpisode} />
 			<Route
