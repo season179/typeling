@@ -17,8 +17,8 @@ const makeEpisodes = (count: number) =>
 	}));
 
 const validSeason = {
-	slug: "winni-season-01",
-	child_id: "winni",
+	slug: "rainbow-season-01",
+	name: "Rainbow Meadow",
 	theme: "rainbow-unicorn",
 	episodes: makeEpisodes(MAX_EPISODES),
 };
@@ -44,13 +44,10 @@ describe("episodeSchema", () => {
 		expect(() => episodeSchema.parse({ ...validEpisode, text: 42 })).toThrow();
 	});
 
-	it.each(["idx", "text"] as const)(
-		"rejects an episode missing %s",
-		(key) => {
-			const { [key]: _, ...rest } = validEpisode;
-			expect(() => episodeSchema.parse(rest)).toThrow();
-		},
-	);
+	it.each(["idx", "text"] as const)("rejects an episode missing %s", (key) => {
+		const { [key]: _, ...rest } = validEpisode;
+		expect(() => episodeSchema.parse(rest)).toThrow();
+	});
 });
 
 describe("seasonSchema", () => {
@@ -58,13 +55,15 @@ describe("seasonSchema", () => {
 		expect(seasonSchema.parse(validSeason)).toEqual(validSeason);
 	});
 
-	it.each(["slug", "child_id", "theme", "episodes"] as const)(
-		"rejects a season missing %s",
-		(key) => {
-			const { [key]: _, ...rest } = validSeason;
-			expect(() => seasonSchema.parse(rest)).toThrow();
-		},
-	);
+	it.each([
+		"slug",
+		"name",
+		"theme",
+		"episodes",
+	] as const)("rejects a season missing %s", (key) => {
+		const { [key]: _, ...rest } = validSeason;
+		expect(() => seasonSchema.parse(rest)).toThrow();
+	});
 
 	it("rejects an empty episodes array", () => {
 		expect(() =>
@@ -101,11 +100,9 @@ describe("seasonSchema", () => {
 		expect(parsed.episodes[0]).not.toHaveProperty("extra");
 	});
 
-	it("rejects empty strings for slug, child_id, theme", () => {
+	it("rejects empty strings for slug, name, theme", () => {
 		expect(() => seasonSchema.parse({ ...validSeason, slug: "" })).toThrow();
-		expect(() =>
-			seasonSchema.parse({ ...validSeason, child_id: "" }),
-		).toThrow();
+		expect(() => seasonSchema.parse({ ...validSeason, name: "" })).toThrow();
 		expect(() => seasonSchema.parse({ ...validSeason, theme: "" })).toThrow();
 	});
 });

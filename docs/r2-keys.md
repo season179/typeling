@@ -25,16 +25,18 @@ The legacy Bun server keeps the disk fallback for local family testing:
 
 ## Story text
 
-Story text and season metadata live in D1 through the `STORY_DB` binding
-(`typeling-content`). Local `seasons/*.json` files remain seed fixtures and
-local Bun fallback data, but `publish-assets.ts` no longer uploads them to R2.
+Story text and story metadata live in D1 through the `STORY_DB` binding
+(`typeling-content`). Each story has an independent `slug`, display `name`,
+`theme`, and one row per episode. Local `seasons/*.json` files remain seed
+fixtures and local Bun fallback data, but `publish-assets.ts` no longer uploads
+them to R2.
 
 ### Current slugs
 
-| Slug       | Child | File                    |
-|------------|-------|-------------------------|
-| `winni-s1` | Winni | `seasons/winni-s1.json` |
-| `zack-s1`  | Zack  | `seasons/zack-s1.json`  |
+| Slug       | Story name                 | File                    |
+|------------|----------------------------|-------------------------|
+| `winni-s1` | The Rainbow Door           | `seasons/winni-s1.json` |
+| `zack-s1`  | Pixel's Science Garden     | `seasons/zack-s1.json`  |
 
 Test slugs (`winni-s1-test`, `zack-s1-test`) remain local fixtures unless
 explicitly seeded for tests.
@@ -131,8 +133,9 @@ audio/zack-s1-e0.qwen-align.raw.txt
 
 ## Naming convention
 
-- **`{seasonSlug}`** — matches the `slug` field in D1
-  (e.g. `winni-s1`, `zack-s1`). Format: `{childId}-s{seasonNumber}`.
+- **`{seasonSlug}`** — matches the story `slug` field in D1
+  (for example, the current legacy audio-compatible slugs are `winni-s1` and
+  `zack-s1`). New story slugs should describe the story rather than a child.
 - **`{episodeIdx}`** — zero-indexed integer matching `episode.idx` in
   the D1 episode row.
 - **`{baseName}`** — `{seasonSlug}-e{episodeIdx}`.

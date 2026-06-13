@@ -1,6 +1,6 @@
 {
   "slug": "winni-s1-test",
-  "child_id": "winni",
+  "name": "The Pink Unicorn",
   "theme": "pink unicorn",
   "episodes": [
     { "idx": 0, "text": "The pink unicorn skipped through the meadow and met a kind, curious little bee." },

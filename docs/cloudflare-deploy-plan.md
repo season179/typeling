@@ -9,7 +9,7 @@ Typeling can run on Cloudflare Workers with D1 for story content, R2 for audio a
 - **Worker entry**: `src/server/index.ts` — exports `default { fetch }` and the `StateStore` Durable Object class.
 - **SPA assets**: Built by Vite into `dist/client/`, served by Cloudflare's asset binding with SPA fallback.
 - **API routing**: Requests matching `/api/*` hit the Worker first (`run_worker_first`); everything else falls through to static assets.
-- **Story content**: D1 database `typeling-content` via `STORY_DB` stores seasons and episode text.
+- **Story content**: D1 database `typeling-content` via `STORY_DB` stores independent story names, themes, slugs, and episode text.
 - **State**: Durable Object with SQLite storage (`StateStore` class) replaces the local `data/state.json` file.
 - **Assets (R2)**: `ASSETS_BUCKET` binding stores audio files and word-timing sidecars.
 
@@ -43,7 +43,7 @@ Key settings:
 - Node.js / Bun with wrangler installed as a dev dependency.
 - `wrangler login` run once to authenticate.
 - R2 bucket `typeling-prod-assets` created (`wrangler r2 bucket create typeling-prod-assets`).
-- D1 database `typeling-content` created and seeded from `seasons/winni-s1.json` and `seasons/zack-s1.json`.
+- D1 database `typeling-content` created and seeded from the current `seasons/*.json` story fixtures.
 
 ## Secrets
 

@@ -10,7 +10,7 @@ export const episodeSchema = z.object({
 
 export const seasonSchema = z.object({
 	slug: z.string().min(1),
-	child_id: z.string().min(1),
+	name: z.string().min(1),
 	theme: z.string().min(1),
 	episodes: z.array(episodeSchema).length(MAX_EPISODES),
 });

@@ -33,6 +33,7 @@ import {
 	InMemoryStateStore,
 	InMemoryStoryStore,
 	R2AssetStore,
+	SeasonFileNotFoundError,
 } from "./stores";
 
 const WILDCARD_HOSTNAME = "0.0.0.0";
@@ -42,6 +43,10 @@ const LOCAL_ADMIN_HOSTNAMES = new Set(["127.0.0.1", "localhost", "::1"]);
 
 const adminEpisodeUpdateSchema = z.object({
 	text: z.string().min(1),
+});
+
+const childStorySelectionSchema = z.object({
+	story_slug: z.string().min(1),
 });
 
 interface DurableObjectContext {
@@ -506,6 +511,10 @@ app.get("/api/health", (c) => {
 	return c.json({ ok: true });
 });
 
+app.get("/api/stories", async (c) => {
+	return c.json(await getStoryStore(c.env).listStories());
+});
+
 app.get("/api/admin/children", async (c) => {
 	try {
 		assertLocalAdminRequest(c.req.raw);
@@ -702,6 +711,66 @@ app.get("/api/children/:id/sessions", async (c) => {
 	return c.json(childSessions);
 });
 
+app.put("/api/children/:id/story", async (c) => {
+	const childId = c.req.param("id");
+	const body = await c.req.json().catch(() => null);
+	const parsed = childStorySelectionSchema.safeParse(body);
+	if (!parsed.success) {
+		return c.json({ error: "InvalidStorySelection" }, 400);
+	}
+
+	const storyStore = getStoryStore(c.env);
+	let season: Season;
+	try {
+		season = await storyStore.readSeason(parsed.data.story_slug);
+	} catch (error) {
+		if (error instanceof SeasonFileNotFoundError) {
+			return c.json({ error: "StoryNotFound" }, 404);
+		}
+		throw error;
+	}
+
+	try {
+		const nextState = await getStateStore(c.env).mutateState((current) => {
+			const child = current.children[childId];
+			if (!child) {
+				throw new EpisodeAccessError("ChildNotFound", 404);
+			}
+			if (child.active_season === season.slug) {
+				return current;
+			}
+
+			return {
+				...current,
+				children: {
+					...current.children,
+					[childId]: {
+						...child,
+						active_season: season.slug,
+						current_episode: 0,
+						current_session_id: null,
+					},
+				},
+			};
+		});
+		const child = nextState.children[childId];
+		return c.json({
+			child: child ? { id: childId, ...child } : null,
+			story: {
+				slug: season.slug,
+				name: season.name,
+				theme: season.theme,
+				total_episodes: season.episodes.length,
+			},
+		});
+	} catch (error) {
+		if (error instanceof EpisodeAccessError) {
+			return c.json({ error: error.message }, error.status);
+		}
+		throw error;
+	}
+});
+
 app.get("/api/children/:id/season", async (c) => {
 	const result = await loadChildSeason(c.req.param("id"), c.env);
 	if ("error" in result) {
@@ -710,6 +779,8 @@ app.get("/api/children/:id/season", async (c) => {
 
 	return c.json({
 		slug: result.season.slug,
+		name: result.season.name,
+		theme: result.season.theme,
 		total_episodes: result.season.episodes.length,
 		current_episode: result.child.current_episode,
 	});
@@ -728,6 +799,7 @@ app.get("/api/children/:id/current-episode", async (c) => {
 			complete: true,
 			current_episode: child.current_episode,
 			season_slug: season.slug,
+			story_name: season.name,
 			total_episodes: season.episodes.length,
 		});
 	}
@@ -738,6 +810,7 @@ app.get("/api/children/:id/current-episode", async (c) => {
 			complete: true,
 			current_episode: child.current_episode,
 			season_slug: season.slug,
+			story_name: season.name,
 			total_episodes: season.episodes.length,
 		});
 	}
@@ -747,6 +820,7 @@ app.get("/api/children/:id/current-episode", async (c) => {
 		episode_idx: child.current_episode,
 		current_episode: child.current_episode,
 		season_slug: season.slug,
+		story_name: season.name,
 		total_episodes: season.episodes.length,
 	});
 });
@@ -764,6 +838,7 @@ app.get("/api/children/:id/episodes/:episodeIdx", async (c) => {
 			episode_idx: episodeIdx,
 			current_episode: child.current_episode,
 			season_slug: season.slug,
+			story_name: season.name,
 			total_episodes: season.episodes.length,
 		});
 	} catch (error) {

@@ -12,7 +12,7 @@ import {
 
 const fixtureSeason = {
 	slug: "winni-s1-test",
-	child_id: "winni",
+	name: "Test Rainbow Story",
 	theme: "pink unicorn",
 	episodes: Array.from({ length: 14 }, (_, i) => ({
 		idx: i,

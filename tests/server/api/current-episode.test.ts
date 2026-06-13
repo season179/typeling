@@ -10,7 +10,7 @@ import { readState } from "../../../src/server/state";
 
 const fixtureSeason = {
 	slug: "winni-s1-test",
-	child_id: "winni",
+	name: "Test Rainbow Story",
 	theme: "pink unicorn",
 	episodes: Array.from({ length: 14 }, (_, i) => ({
 		idx: i,
@@ -174,6 +174,7 @@ describe("GET /api/children/:id/current-episode", () => {
 			episode_idx: 0,
 			current_episode: 0,
 			season_slug: "winni-s1-test",
+			story_name: "Test Rainbow Story",
 			total_episodes: 14,
 		});
 	});
@@ -223,6 +224,7 @@ describe("GET /api/children/:id/current-episode", () => {
 			complete: true,
 			current_episode: 14,
 			season_slug: "winni-s1-test",
+			story_name: "Test Rainbow Story",
 			total_episodes: 14,
 		});
 	});
@@ -250,6 +252,7 @@ describe("GET /api/children/:id/episodes/:episodeIdx", () => {
 			episode_idx: 0,
 			current_episode: 2,
 			season_slug: "winni-s1-test",
+			story_name: "Test Rainbow Story",
 			total_episodes: 14,
 		});
 	});

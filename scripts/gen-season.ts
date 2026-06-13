@@ -129,6 +129,14 @@ const slg: string = slug;
 const statePath =
 	process.env.TYPELING_STATE_PATH ?? join(ROOT, "data", "state.json");
 
+function storyNameFromTheme(theme: string): string {
+	return theme
+		.split(/[^A-Za-z0-9]+/)
+		.filter(Boolean)
+		.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+		.join(" ");
+}
+
 async function loadFromFixture(path: string): Promise<unknown> {
 	let raw: string;
 	try {
@@ -212,7 +220,7 @@ async function loadFromLLM(child: Child): Promise<unknown> {
 
 	return {
 		slug: slg,
-		child_id: cid,
+		name: storyNameFromTheme(child.theme),
 		theme: child.theme,
 		episodes,
 	};
@@ -249,12 +257,7 @@ function validateSeason(raw: unknown, child: Child): Season {
 
 		const wordCount = text.split(/\s+/).filter(Boolean).length;
 		if (wordCount < budget.min || wordCount > budget.max) {
-			throw new WordCountError(
-				episode.idx,
-				wordCount,
-				budget.min,
-				budget.max,
-			);
+			throw new WordCountError(episode.idx, wordCount, budget.min, budget.max);
 		}
 
 		episode.text = text;
@@ -314,13 +317,13 @@ async function main() {
 
 	const output = JSON.stringify(season, null, 2);
 	await writeFile(join(ROOT, "seasons", `${slg}.json`), output);
-	console.log(
-		`Wrote seasons/${slg}.json (${season.episodes.length} episodes)`,
-	);
+	console.log(`Wrote seasons/${slg}.json (${season.episodes.length} episodes)`);
 }
 
 main().catch((err) => {
 	const name = err instanceof Error ? err.name : "Error";
-	console.error(`[${name}] ${err instanceof Error ? err.message : String(err)}`);
+	console.error(
+		`[${name}] ${err instanceof Error ? err.message : String(err)}`,
+	);
 	process.exit(1);
 });

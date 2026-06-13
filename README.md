@@ -22,7 +22,7 @@ On first run, copy the seed state into place:
 cp data/state.seed.json data/state.json
 ```
 
-Runtime state is written to `data/state.json` and is gitignored. The committed `data/state.seed.json` holds the initial Winni-only defaults.
+Runtime state is written to `data/state.json` and is gitignored. The committed `data/state.seed.json` holds the initial child progress defaults.
 
 ## End-to-end tests
 
@@ -44,12 +44,12 @@ All three exit `0` on success and non-zero on any assertion failure.
 
 ## Audio generation
 
-Episodes are narrated with Gemini multi-speaker TTS and aligned word-by-word with Qwen3 forced alignment. Source season JSON (`seasons/<child>-s1.json`) is **read-only** — every artifact lands in `data/audio/`.
+Episodes are narrated with Gemini multi-speaker TTS and aligned word-by-word with Qwen3 forced alignment. Source story JSON (`seasons/<story-slug>.json`) is **read-only** — every artifact lands in `data/audio/`.
 
 ### Pipeline
 
 ```
-seasons/<child>-s1.json
+seasons/<story-slug>.json
         │  extract-audio-source.ts
 data/audio/<season>-e<n>-source.txt
         │  convert-to-transcript.ts

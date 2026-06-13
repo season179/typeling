@@ -11,7 +11,7 @@ import { fakeD1StoryDatabase } from "../../lib/fakeD1Story";
 
 const fixtureSeason = {
 	slug: "winni-s1-test",
-	child_id: "winni",
+	name: "Test Rainbow Story",
 	theme: "rainbow-unicorn",
 	episodes: Array.from({ length: 14 }, (_, i) => ({
 		idx: i,

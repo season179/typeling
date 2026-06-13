@@ -1,11 +1,26 @@
 import { describe, it, expect } from "bun:test";
-import { render, waitFor } from "@testing-library/react";
+import { fireEvent, render, waitFor } from "@testing-library/react";
 import { Router, Route } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 import App from "../src/web/App";
 import { setupDom } from "./web/setup";
 
 setupDom();
+
+const defaultStories = [
+	{
+		slug: "rainbow-story",
+		name: "Rainbow Meadow",
+		theme: "rainbow",
+		total_episodes: 14,
+	},
+	{
+		slug: "robot-story",
+		name: "Robot Garden",
+		theme: "robot",
+		total_episodes: 14,
+	},
+];
 
 function renderApp(initialPath = "/") {
 	const { hook } = memoryLocation({ path: initialPath });
@@ -24,10 +39,18 @@ describe("App (ProfileSelect)", () => {
 	it("shows loading state while fetching children", async () => {
 		const originalFetch = globalThis.fetch;
 		let resolveFetch: (value: Response) => void;
-		globalThis.fetch = (() =>
-			new Promise<Response>((resolve) => {
+		globalThis.fetch = ((input: RequestInfo | URL) => {
+			if (String(input).includes("/api/stories")) {
+				return Promise.resolve(
+					new Response(JSON.stringify(defaultStories), {
+						headers: { "content-type": "application/json" },
+					}),
+				);
+			}
+			return new Promise<Response>((resolve) => {
 				resolveFetch = resolve;
-			})) as unknown as typeof fetch;
+			});
+		}) as unknown as typeof fetch;
 
 		try {
 			const { getByText, queryByText } = renderApp();
@@ -61,26 +84,38 @@ describe("App (ProfileSelect)", () => {
 		}
 	});
 
-	it("renders a card for each child with name and theme", async () => {
+	it("renders a card for each child with selectable stories", async () => {
 		const originalFetch = globalThis.fetch;
-		globalThis.fetch = (() =>
+		globalThis.fetch = ((input: RequestInfo | URL) =>
 			Promise.resolve(
 				new Response(
-					JSON.stringify({
-						winni: { name: "Winni", theme: "rainbow-unicorn" },
-						zack: { name: "Zack", theme: "robot-builders" },
-					}),
+					JSON.stringify(
+						String(input).includes("/api/stories")
+							? defaultStories
+							: {
+									winni: {
+										name: "Winni",
+										theme: "rainbow-unicorn",
+										active_season: "rainbow-story",
+									},
+									zack: {
+										name: "Zack",
+										theme: "robot-builders",
+										active_season: "robot-story",
+									},
+								},
+					),
 					{ headers: { "content-type": "application/json" } },
 				),
 			)) as unknown as typeof fetch;
 
 		try {
-			const { getByText } = renderApp();
+			const { getAllByText, getByText } = renderApp();
 			await waitFor(() => {
 				expect(getByText("Winni")).toBeDefined();
 				expect(getByText("Zack")).toBeDefined();
-				expect(getByText("rainbow-unicorn")).toBeDefined();
-				expect(getByText("robot-builders")).toBeDefined();
+				expect(getAllByText("Rainbow Meadow").length).toBeGreaterThan(0);
+				expect(getAllByText("Robot Garden").length).toBeGreaterThan(0);
 			});
 		} finally {
 			globalThis.fetch = originalFetch;
@@ -89,11 +124,14 @@ describe("App (ProfileSelect)", () => {
 
 	it("shows empty state when no children exist", async () => {
 		const originalFetch = globalThis.fetch;
-		globalThis.fetch = (() =>
+		globalThis.fetch = ((input: RequestInfo | URL) =>
 			Promise.resolve(
-				new Response(JSON.stringify({}), {
-					headers: { "content-type": "application/json" },
-				}),
+				new Response(
+					JSON.stringify(String(input).includes("/api/stories") ? [] : {}),
+					{
+						headers: { "content-type": "application/json" },
+					},
+				),
 			)) as unknown as typeof fetch;
 
 		try {
@@ -123,28 +161,111 @@ describe("App (ProfileSelect)", () => {
 		}
 	});
 
-	it("clicking a child card navigates to /play/:childId", async () => {
+	it("pressing Start navigates to /play/:childId", async () => {
 		const originalFetch = globalThis.fetch;
-		globalThis.fetch = (() =>
+		globalThis.fetch = ((input: RequestInfo | URL) =>
 			Promise.resolve(
 				new Response(
-					JSON.stringify({
-						winni: { name: "Winni", theme: "rainbow-unicorn" },
-					}),
+					JSON.stringify(
+						String(input).includes("/api/stories")
+							? defaultStories
+							: {
+									winni: {
+										name: "Winni",
+										theme: "rainbow-unicorn",
+										active_season: "rainbow-story",
+									},
+								},
+					),
 					{ headers: { "content-type": "application/json" } },
 				),
 			)) as unknown as typeof fetch;
 
 		try {
-			const { getByText, getByTestId } = renderApp();
+			const { getByRole, getByText, getByTestId } = renderApp();
 			await waitFor(() => {
 				expect(getByText("Winni")).toBeDefined();
 			});
 
-			getByText("Winni").click();
+			fireEvent.click(getByRole("button", { name: "Start" }));
 
 			await waitFor(() => {
 				expect(getByTestId("play-page")).toBeDefined();
+			});
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
+	it("updates the child story before starting when a new story is selected", async () => {
+		const originalFetch = globalThis.fetch;
+		const requests: Array<{ url: string; method: string; body?: string }> = [];
+		globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+			const url = String(input);
+			const method = init?.method ?? "GET";
+			requests.push({
+				url,
+				method,
+				body: typeof init?.body === "string" ? init.body : undefined,
+			});
+			if (url.includes("/api/stories")) {
+				return Promise.resolve(
+					new Response(JSON.stringify(defaultStories), {
+						headers: { "content-type": "application/json" },
+					}),
+				);
+			}
+			if (method === "PUT") {
+				return Promise.resolve(
+					new Response(
+						JSON.stringify({
+							child: {
+								id: "winni",
+								name: "Winni",
+								theme: "rainbow-unicorn",
+								target_wpm: 15,
+								active_season: "robot-story",
+								current_episode: 0,
+								current_session_id: null,
+							},
+							story: defaultStories[1],
+						}),
+						{ headers: { "content-type": "application/json" } },
+					),
+				);
+			}
+			return Promise.resolve(
+				new Response(
+					JSON.stringify({
+						winni: {
+							name: "Winni",
+							theme: "rainbow-unicorn",
+							active_season: "rainbow-story",
+						},
+					}),
+					{ headers: { "content-type": "application/json" } },
+				),
+			);
+		}) as unknown as typeof fetch;
+
+		try {
+			const { getByLabelText, getByRole, getByText, getByTestId } = renderApp();
+			await waitFor(() => {
+				expect(getByText("Winni")).toBeDefined();
+			});
+
+			fireEvent.change(getByLabelText("Winni story"), {
+				target: { value: "robot-story" },
+			});
+			fireEvent.click(getByRole("button", { name: "Start" }));
+
+			await waitFor(() => {
+				expect(getByTestId("play-page")).toBeDefined();
+			});
+			expect(requests).toContainEqual({
+				url: "/api/children/winni/story",
+				method: "PUT",
+				body: JSON.stringify({ story_slug: "robot-story" }),
 			});
 		} finally {
 			globalThis.fetch = originalFetch;

@@ -36,10 +36,10 @@ async function buildSeedSql(): Promise<string> {
 		const season = await loadSeason(resolve(projectRoot, relativePath));
 		statements.push(
 			[
-				"INSERT INTO seasons (slug, child_id, theme)",
-				`VALUES (${sqlString(season.slug)}, ${sqlString(season.child_id)}, ${sqlString(season.theme)})`,
+				"INSERT INTO seasons (slug, name, theme)",
+				`VALUES (${sqlString(season.slug)}, ${sqlString(season.name)}, ${sqlString(season.theme)})`,
 				"ON CONFLICT(slug) DO UPDATE SET",
-				"child_id = excluded.child_id,",
+				"name = excluded.name,",
 				"theme = excluded.theme,",
 				"updated_at = CURRENT_TIMESTAMP;",
 			].join("\n"),

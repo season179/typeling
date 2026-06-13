@@ -19,7 +19,7 @@ interface AdminEpisode {
 
 interface AdminSeason {
 	slug: string;
-	child_id: string;
+	name: string;
 	theme: string;
 	episodes: AdminEpisode[];
 }
@@ -290,6 +290,14 @@ export default function AdminView() {
 							<dl className="space-y-3">
 								<div>
 									<dt className="text-xs font-semibold uppercase tracking-normal text-stone-400">
+										Story
+									</dt>
+									<dd className="mt-1 text-stone-700">
+										{selectedChild.season.name}
+									</dd>
+								</div>
+								<div>
+									<dt className="text-xs font-semibold uppercase tracking-normal text-stone-400">
 										Theme
 									</dt>
 									<dd className="mt-1 text-stone-700">{selectedChild.theme}</dd>
@@ -353,7 +361,8 @@ export default function AdminView() {
 								<div className="flex flex-wrap items-start justify-between gap-3">
 									<div>
 										<h2 className="font-serif text-2xl font-bold tracking-tight">
-											{selectedChild.name} chapter {selectedEpisode.idx + 1}
+											{selectedChild.season.name} chapter{" "}
+											{selectedEpisode.idx + 1}
 										</h2>
 										<p className="mt-1 text-sm text-stone-500">
 											{selectedChild.active_season}

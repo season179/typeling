@@ -3,7 +3,7 @@ import type { D1DatabaseLike, Season } from "../../src/server/stores";
 
 interface SeasonRow {
 	slug: string;
-	child_id: string;
+	name: string;
 	theme: string;
 }
 
@@ -31,7 +31,7 @@ class FakeD1PreparedStatement {
 
 	async first<T = Record<string, unknown>>(): Promise<T | null> {
 		const query = normaliseSql(this.#query);
-		if (query.startsWith("SELECT SLUG, CHILD_ID, THEME FROM SEASONS")) {
+		if (query.startsWith("SELECT SLUG, NAME, THEME FROM SEASONS")) {
 			const slug = stringValue(this.#values[0]);
 			return (this.#db.seasons.get(slug) ?? null) as T | null;
 		}
@@ -40,6 +40,27 @@ class FakeD1PreparedStatement {
 
 	async all<T = Record<string, unknown>>(): Promise<{ results: T[] }> {
 		const query = normaliseSql(this.#query);
+		if (query.startsWith("SELECT SEASONS.SLUG, SEASONS.NAME")) {
+			const episodeCounts = new Map<string, number>();
+			for (const episode of this.#db.episodes.values()) {
+				episodeCounts.set(
+					episode.season_slug,
+					(episodeCounts.get(episode.season_slug) ?? 0) + 1,
+				);
+			}
+			const results = [...this.#db.seasons.values()]
+				.map((season) => ({
+					slug: season.slug,
+					name: season.name,
+					theme: season.theme,
+					total_episodes: episodeCounts.get(season.slug) ?? 0,
+				}))
+				.sort(
+					(a, b) =>
+						a.name.localeCompare(b.name) || a.slug.localeCompare(b.slug),
+				);
+			return { results: results as T[] };
+		}
 		if (query.startsWith("SELECT IDX, TEXT FROM EPISODES")) {
 			const seasonSlug = stringValue(this.#values[0]);
 			const results = [...this.#db.episodes.values()]
@@ -93,7 +114,7 @@ export function fakeD1StoryDatabase(seasons: Season[]): FakeD1StoryDatabase {
 	for (const season of seasons) {
 		db.seasons.set(season.slug, {
 			slug: season.slug,
-			child_id: season.child_id,
+			name: season.name,
 			theme: season.theme,
 		});
 		for (const episode of season.episodes) {

@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { extractAlignmentStoryWords } from "../lib/storyWordTokens";
 import type { WordTimingSidecar } from "../lib/wordTimings";
 import {
+	DiskStoryStore,
 	type EpisodeAudioAsset,
 	EpisodeAudioError,
 	InMemoryAssetStore,
@@ -18,7 +22,7 @@ const EPISODE_TEXT = "The cat sat on the mat.";
 
 const VALID_SEASON = {
 	slug: SEASON_SLUG,
-	child_id: "child-1",
+	name: "Test Story",
 	theme: "adventure",
 	episodes: Array.from({ length: 14 }, (_, i) => ({
 		idx: i,
@@ -101,6 +105,42 @@ describe("InMemoryStoryStore.readSeason", () => {
 		await expect(store.readSeason("no-such-season")).rejects.toThrow(
 			SeasonFileNotFoundError,
 		);
+	});
+});
+
+describe("DiskStoryStore.listStories", () => {
+	test("lists production stories and leaves test fixtures out of the picker", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "typeling-stories-"));
+		try {
+			await writeFile(
+				join(dir, "story-a.json"),
+				JSON.stringify({
+					...VALID_SEASON,
+					slug: "story-a",
+					name: "A Story",
+				}),
+			);
+			await writeFile(
+				join(dir, "story-a-test.json"),
+				JSON.stringify({
+					...VALID_SEASON,
+					slug: "story-a-test",
+					name: "Fixture Story",
+				}),
+			);
+
+			const store = new DiskStoryStore({ seasonsDir: dir });
+			await expect(store.listStories()).resolves.toEqual([
+				{
+					slug: "story-a",
+					name: "A Story",
+					theme: "adventure",
+					total_episodes: 14,
+				},
+			]);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
 	});
 });
 

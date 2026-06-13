@@ -18,7 +18,7 @@ const adminPayload = {
 			current_session_id: null,
 			season: {
 				slug: "winni-s1-test",
-				child_id: "winni",
+				name: "Test Rainbow Story",
 				theme: "rainbow-unicorn",
 				episodes: [
 					{

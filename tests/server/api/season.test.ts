@@ -6,7 +6,7 @@ import { fetch } from "../../../src/server/index.ts";
 
 const fixtureSeason = {
 	slug: "winni-s1-test",
-	child_id: "winni",
+	name: "Test Rainbow Story",
 	theme: "pink unicorn",
 	episodes: Array.from({ length: 14 }, (_, i) => ({
 		idx: i,
@@ -70,7 +70,7 @@ const writeSeason = (slug: string, season: unknown) =>
 	writeFile(join(seasonsDir, `${slug}.json`), JSON.stringify(season), "utf8");
 
 describe("GET /api/children/:id/season", () => {
-	it("returns 200 with slug and total_episodes", async () => {
+	it("returns 200 with story metadata and total_episodes", async () => {
 		await writeState(fixtureState);
 		await writeSeason(fixtureSeason.slug, fixtureSeason);
 
@@ -79,6 +79,8 @@ describe("GET /api/children/:id/season", () => {
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({
 			slug: "winni-s1-test",
+			name: "Test Rainbow Story",
+			theme: "pink unicorn",
 			total_episodes: 14,
 			current_episode: 2,
 		});

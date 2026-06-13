@@ -13,7 +13,7 @@ import { fakeD1StoryDatabase } from "../lib/fakeD1Story";
 
 const fixtureSeason = {
 	slug: "winni-s1-test",
-	child_id: "winni",
+	name: "Test Rainbow Story",
 	theme: "pink unicorn",
 	episodes: Array.from({ length: 14 }, (_, i) => ({
 		idx: i,
@@ -290,6 +290,19 @@ function rangeForFakeR2Offset(
 }
 
 describe("D1StoryStore", () => {
+	it("lists independent stories with names", async () => {
+		const store = new D1StoryStore(fakeD1StoryDatabase([fixtureSeason]));
+
+		await expect(store.listStories()).resolves.toEqual([
+			{
+				slug: "winni-s1-test",
+				name: "Test Rainbow Story",
+				theme: "pink unicorn",
+				total_episodes: 14,
+			},
+		]);
+	});
+
 	it("returns a season with ordered episodes", async () => {
 		const shuffledSeason = {
 			...fixtureSeason,
@@ -300,6 +313,7 @@ describe("D1StoryStore", () => {
 		const season = await store.readSeason(fixtureSeason.slug);
 
 		expect(season.slug).toBe("winni-s1-test");
+		expect(season.name).toBe("Test Rainbow Story");
 		expect(season.episodes).toHaveLength(14);
 		expect(season.episodes.map((episode) => episode.idx)).toEqual(
 			Array.from({ length: 14 }, (_, i) => i),
@@ -330,7 +344,11 @@ describe("D1StoryStore", () => {
 		const store = new D1StoryStore(fakeD1StoryDatabase([fixtureSeason]));
 		const nextText = "Luma found a careful little test sentence.";
 
-		const season = await store.writeEpisodeText(fixtureSeason.slug, 0, nextText);
+		const season = await store.writeEpisodeText(
+			fixtureSeason.slug,
+			0,
+			nextText,
+		);
 
 		expect(season.episodes[0]?.text).toBe(nextText);
 	});
@@ -367,9 +385,79 @@ describe("server stores", () => {
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({
 			slug: "winni-s1-test",
+			name: "Test Rainbow Story",
+			theme: "pink unicorn",
 			total_episodes: 14,
 			current_episode: 2,
 		});
+	});
+
+	it("serves independent story summaries through injected StoryStore", async () => {
+		const storyStore = new InMemoryStoryStore({ seasons: [fixtureSeason] });
+
+		const res = await fetch(new Request("http://127.0.0.1:3001/api/stories"), {
+			STORY_STORE: storyStore,
+		});
+
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual([
+			{
+				slug: "winni-s1-test",
+				name: "Test Rainbow Story",
+				theme: "pink unicorn",
+				total_episodes: 14,
+			},
+		]);
+	});
+
+	it("lets a child select a different story and resets that story progress", async () => {
+		const nextSeason = {
+			...fixtureSeason,
+			slug: "robot-story-test",
+			name: "Robot Story Test",
+			theme: "blue robot",
+		};
+		const stateStore = new InMemoryStateStore({
+			...fixtureState,
+			children: {
+				winni: {
+					...fixtureState.children.winni,
+					current_episode: 5,
+					current_session_id: "session-in-progress",
+				},
+			},
+		});
+
+		const res = await fetch(
+			new Request("http://127.0.0.1:3001/api/children/winni/story", {
+				method: "PUT",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ story_slug: "robot-story-test" }),
+			}),
+			{
+				APP_STATE_STORE: stateStore,
+				STORY_STORE: new InMemoryStoryStore({
+					seasons: [fixtureSeason, nextSeason],
+				}),
+			},
+		);
+
+		expect(res.status).toBe(200);
+		expect(await res.json()).toMatchObject({
+			child: {
+				id: "winni",
+				active_season: "robot-story-test",
+				current_episode: 0,
+				current_session_id: null,
+			},
+			story: {
+				slug: "robot-story-test",
+				name: "Robot Story Test",
+			},
+		});
+		const state = await stateStore.readState();
+		expect(state.children.winni?.active_season).toBe("robot-story-test");
+		expect(state.children.winni?.current_episode).toBe(0);
 	});
 
 	it("serves episode audio metadata through an injected AssetStore", async () => {
@@ -457,6 +545,8 @@ describe("server stores", () => {
 		expect(seasonRes.status).toBe(200);
 		expect(await seasonRes.json()).toEqual({
 			slug: "d1-only-season",
+			name: "Test Rainbow Story",
+			theme: "pink unicorn",
 			total_episodes: 14,
 			current_episode: 1,
 		});

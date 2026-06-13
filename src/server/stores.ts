@@ -40,7 +40,7 @@ export interface D1DatabaseLike {
 
 interface D1SeasonRow {
 	slug: string;
-	child_id: string;
+	name: string;
 	theme: string;
 }
 
@@ -49,7 +49,15 @@ interface D1EpisodeRow {
 	text: string;
 }
 
+export interface StorySummary {
+	slug: string;
+	name: string;
+	theme: string;
+	total_episodes: number;
+}
+
 export interface StoryStore {
+	listStories(): Promise<StorySummary[]>;
 	readSeason(seasonSlug: string): Promise<Season>;
 	writeEpisodeText(
 		seasonSlug: string,
@@ -68,6 +76,12 @@ export class InMemoryStoryStore implements StoryStore {
 				return [parsed.slug, parsed];
 			}),
 		);
+	}
+
+	async listStories(): Promise<StorySummary[]> {
+		return [...this.#seasons.values()]
+			.map((season) => storySummary(season))
+			.sort(compareStorySummaries);
 	}
 
 	async readSeason(seasonSlug: string): Promise<Season> {
@@ -105,6 +119,22 @@ export class DiskStoryStore implements StoryStore {
 
 	constructor(input: { seasonsDir: string }) {
 		this.#seasonsDir = input.seasonsDir;
+	}
+
+	async listStories(): Promise<StorySummary[]> {
+		const stories: StorySummary[] = [];
+		const glob = new Bun.Glob("*.json");
+		for await (const filePath of glob.scan({
+			cwd: this.#seasonsDir,
+			absolute: true,
+		})) {
+			if (filePath.endsWith("-test.json")) {
+				continue;
+			}
+			const season = seasonSchema.parse(await Bun.file(filePath).json());
+			stories.push(storySummary(season));
+		}
+		return stories.sort(compareStorySummaries);
 	}
 
 	async readSeason(seasonSlug: string): Promise<Season> {
@@ -150,9 +180,24 @@ export class D1StoryStore implements StoryStore {
 		this.#db = db;
 	}
 
+	async listStories(): Promise<StorySummary[]> {
+		const stories = await this.#db
+			.prepare(
+				`
+					SELECT seasons.slug, seasons.name, seasons.theme, COUNT(episodes.idx) AS total_episodes
+					FROM seasons
+					LEFT JOIN episodes ON episodes.season_slug = seasons.slug
+					GROUP BY seasons.slug, seasons.name, seasons.theme
+					ORDER BY seasons.name ASC, seasons.slug ASC
+				`,
+			)
+			.all<StorySummary>();
+		return stories.results ?? [];
+	}
+
 	async readSeason(seasonSlug: string): Promise<Season> {
 		const season = await this.#db
-			.prepare("SELECT slug, child_id, theme FROM seasons WHERE slug = ?")
+			.prepare("SELECT slug, name, theme FROM seasons WHERE slug = ?")
 			.bind(seasonSlug)
 			.first<D1SeasonRow>();
 		if (!season) {
@@ -168,7 +213,7 @@ export class D1StoryStore implements StoryStore {
 
 		return seasonSchema.parse({
 			slug: season.slug,
-			child_id: season.child_id,
+			name: season.name,
 			theme: season.theme,
 			episodes: (episodes.results ?? []).map((episode) => ({
 				idx: episode.idx,
@@ -200,6 +245,19 @@ export class D1StoryStore implements StoryStore {
 
 		return this.readSeason(seasonSlug);
 	}
+}
+
+function storySummary(season: Season): StorySummary {
+	return {
+		slug: season.slug,
+		name: season.name,
+		theme: season.theme,
+		total_episodes: season.episodes.length,
+	};
+}
+
+function compareStorySummaries(a: StorySummary, b: StorySummary): number {
+	return a.name.localeCompare(b.name) || a.slug.localeCompare(b.slug);
 }
 
 export class EpisodeAudioError extends Error {

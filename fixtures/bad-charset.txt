@@ -1,6 +1,6 @@
 {
   "slug": "winni-s1",
-  "child_id": "winni",
+  "name": "Rainbow Fixture",
   "theme": "rainbow unicorn",
   "episodes": [
     {
