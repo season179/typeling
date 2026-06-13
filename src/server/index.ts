@@ -1,8 +1,12 @@
+import { rename } from "node:fs/promises";
 import { join } from "node:path";
 import { Hono } from "hono";
+import { z } from "zod";
 import seedStateData from "../../data/state.seed.json";
 import winniSeasonData from "../../seasons/winni-s1.json";
 import zackSeasonData from "../../seasons/zack-s1.json";
+import { assertCharset, CharsetError } from "../lib/assertCharset";
+import { contentBlacklist } from "../lib/contentBlacklist";
 import { MAX_EPISODES, seasonSchema } from "../lib/schemas/season";
 import { type State, sessionSchema, stateSchema } from "../lib/schemas/state";
 import {
@@ -31,6 +35,11 @@ import {
 const WILDCARD_HOSTNAME = "0.0.0.0";
 const STATE_STORE_OBJECT_NAME = "typeling";
 const STATE_STORE_ROW_ID = "state";
+const LOCAL_ADMIN_HOSTNAMES = new Set(["127.0.0.1", "localhost", "::1"]);
+
+const adminEpisodeUpdateSchema = z.object({
+	text: z.string().min(1),
+});
 
 interface DurableObjectContext {
 	storage: {
@@ -95,6 +104,14 @@ type OpenEpisode = {
 	episodeIdx: number;
 	episode: Season["episodes"][number];
 };
+type AdminAudioStatus =
+	| {
+			status: "ready";
+			duration_seconds: number;
+			words: number;
+	  }
+	| { status: "missing" }
+	| { status: "stale"; error: string };
 
 class SessionMismatchError extends Error {
 	constructor(code: MismatchCode) {
@@ -115,6 +132,16 @@ class EpisodeAccessError extends Error {
 	constructor(code: EpisodeAccessCode, status: 400 | 403 | 404) {
 		super(code);
 		this.name = "EpisodeAccessError";
+		this.status = status;
+	}
+}
+
+class AdminAccessError extends Error {
+	status: 400 | 403 | 404 | 409 | 422;
+
+	constructor(code: string, status: 400 | 403 | 404 | 409 | 422) {
+		super(code);
+		this.name = "AdminAccessError";
 		this.status = status;
 	}
 }
@@ -250,6 +277,171 @@ function getAssetStore(env: ServerBindings): AssetStore {
 	return getDefaultAssetStore();
 }
 
+function isLocalAdminHostname(hostname: string | null | undefined): boolean {
+	if (!hostname) return false;
+	const normalized = hostname.toLowerCase();
+	return (
+		LOCAL_ADMIN_HOSTNAMES.has(normalized) || normalized.endsWith(".localhost")
+	);
+}
+
+function isLocalAdminRequest(request: Request): boolean {
+	const url = new URL(request.url);
+	if (isLocalAdminHostname(url.hostname)) return true;
+
+	const host = request.headers.get("host")?.split(":")[0];
+	return isLocalAdminHostname(host);
+}
+
+function assertLocalAdminRequest(request: Request): void {
+	if (!isLocalAdminRequest(request)) {
+		throw new AdminAccessError("AdminLocalOnly", 403);
+	}
+}
+
+function assertLocalDiskAdmin(env: ServerBindings): void {
+	if (!isBunRuntime() || env.ASSETS_BUCKET) {
+		throw new AdminAccessError("AdminLocalDiskOnly", 403);
+	}
+}
+
+function escapeRegExp(input: string): string {
+	return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function findRealChildName(text: string, state: State): string | null {
+	for (const child of Object.values(state.children)) {
+		const name = child.name.trim();
+		if (!name) continue;
+		const pattern = new RegExp(`\\b${escapeRegExp(name)}\\b`, "i");
+		if (pattern.test(text)) return name;
+	}
+	return null;
+}
+
+function assertAdminStoryText(text: string, state: State): void {
+	try {
+		assertCharset(text);
+	} catch (error) {
+		if (error instanceof CharsetError) {
+			throw new AdminAccessError("InvalidStoryCharset", 422);
+		}
+		throw error;
+	}
+
+	if (contentBlacklist(text).length > 0) {
+		throw new AdminAccessError("UnsafeStoryText", 422);
+	}
+
+	if (findRealChildName(text, state)) {
+		throw new AdminAccessError("RealChildNameInStory", 422);
+	}
+}
+
+async function writeSeasonAtomic(
+	season: Season,
+	env: ServerBindings,
+): Promise<Season> {
+	assertLocalDiskAdmin(env);
+	const parsed = seasonSchema.parse(structuredClone(season));
+	const seasonPath = join(seasonsDir(), `${parsed.slug}.json`);
+	const existing = Bun.file(seasonPath);
+	if (!(await existing.exists())) {
+		throw new AdminAccessError("SeasonFileNotFound", 404);
+	}
+
+	await Bun.write(`${seasonPath}.bak`, existing);
+	const tmpPath = `${seasonPath}.tmp`;
+	await Bun.write(tmpPath, `${JSON.stringify(parsed, null, 2)}\n`);
+	await rename(tmpPath, seasonPath);
+	return parsed;
+}
+
+async function loadAdminAudioStatus(
+	assetStore: AssetStore,
+	season: Season,
+	episodeIdx: number,
+	episodeText: string,
+): Promise<AdminAudioStatus> {
+	try {
+		const audio = await assetStore.readEpisodeAudio(
+			season.slug,
+			episodeIdx,
+			episodeText,
+		);
+		if (!audio) {
+			return { status: "missing" };
+		}
+		return {
+			status: "ready",
+			duration_seconds: audio.sidecar.durationSeconds,
+			words: audio.sidecar.words.length,
+		};
+	} catch (error) {
+		if (error instanceof EpisodeAudioError) {
+			return { status: "stale", error: error.message };
+		}
+		throw error;
+	}
+}
+
+async function loadAdminSeason(
+	child: Child,
+	env: ServerBindings,
+): Promise<
+	Season & {
+		episodes: Array<
+			Season["episodes"][number] & {
+				audio: AdminAudioStatus;
+				char_count: number;
+				word_count: number;
+			}
+		>;
+	}
+> {
+	const assetStore = getAssetStore(env);
+	const season = await assetStore.readSeason(child.active_season);
+	const episodes = await Promise.all(
+		season.episodes.map(async (episode) => ({
+			...episode,
+			char_count: episode.text.length,
+			word_count: episode.text.split(/\s+/).filter(Boolean).length,
+			audio: await loadAdminAudioStatus(
+				assetStore,
+				season,
+				episode.idx,
+				episode.text,
+			),
+		})),
+	);
+	return { ...season, episodes };
+}
+
+function formatVttTimestamp(seconds: number): string {
+	const totalMilliseconds = Math.max(0, Math.round(seconds * 1000));
+	const hours = Math.floor(totalMilliseconds / 3_600_000);
+	const minutes = Math.floor((totalMilliseconds % 3_600_000) / 60_000);
+	const secs = Math.floor((totalMilliseconds % 60_000) / 1000);
+	const millis = totalMilliseconds % 1000;
+	return `${hours.toString().padStart(2, "0")}:${minutes
+		.toString()
+		.padStart(2, "0")}:${secs.toString().padStart(2, "0")}.${millis
+		.toString()
+		.padStart(3, "0")}`;
+}
+
+function buildEpisodeCaptions(
+	episodeText: string,
+	durationSeconds: number,
+): string {
+	const safeText = episodeText
+		.replace(/\r\n?/g, "\n")
+		.replaceAll("-->", "->")
+		.trim();
+	const end = formatVttTimestamp(Math.max(0.001, durationSeconds));
+	return `WEBVTT\n\n${formatVttTimestamp(0)} --> ${end}\n${safeText}\n`;
+}
+
 app.post("/api/sessions", async (c) => {
 	const stateStore = getStateStore(c.env);
 
@@ -303,6 +495,186 @@ app.post("/api/sessions", async (c) => {
 app.get("/api/health", (c) => {
 	return c.json({ ok: true });
 });
+
+app.get("/api/admin/children", async (c) => {
+	try {
+		assertLocalAdminRequest(c.req.raw);
+
+		const state = await getStateStore(c.env).readState();
+		const children = await Promise.all(
+			Object.entries(state.children).map(async ([id, child]) => ({
+				id,
+				...child,
+				season: await loadAdminSeason(child, c.env),
+			})),
+		);
+
+		return c.json({
+			admin: {
+				access: "local-only",
+			},
+			children,
+		});
+	} catch (error) {
+		if (error instanceof AdminAccessError) {
+			return c.json({ error: error.message }, error.status);
+		}
+		throw error;
+	}
+});
+
+app.put("/api/admin/seasons/:slug/episodes/:episodeIdx", async (c) => {
+	try {
+		assertLocalAdminRequest(c.req.raw);
+		assertLocalDiskAdmin(c.env);
+
+		const state = await getStateStore(c.env).readState();
+		const body = await c.req.json().catch(() => null);
+		const parsed = adminEpisodeUpdateSchema.safeParse(body);
+		if (!parsed.success) {
+			return c.json({ error: "InvalidAdminEpisodeUpdate" }, 400);
+		}
+
+		const slug = c.req.param("slug");
+		const episodeIdx = parseEpisodeIdx(c.req.param("episodeIdx"));
+		const assetStore = getAssetStore(c.env);
+		const season = await assetStore.readSeason(slug);
+		const episode = season.episodes[episodeIdx];
+		if (!episode) {
+			throw new AdminAccessError("EpisodeNotFound", 404);
+		}
+
+		assertAdminStoryText(parsed.data.text, state);
+
+		const nextSeason = seasonSchema.parse({
+			...season,
+			episodes: season.episodes.map((current) =>
+				current.idx === episodeIdx
+					? { ...current, text: parsed.data.text }
+					: current,
+			),
+		});
+		const savedSeason = await writeSeasonAtomic(nextSeason, c.env);
+		const savedEpisode = savedSeason.episodes[episodeIdx];
+		if (!savedEpisode) {
+			throw new AdminAccessError("EpisodeNotFound", 404);
+		}
+
+		return c.json({
+			episode: {
+				...savedEpisode,
+				char_count: savedEpisode.text.length,
+				word_count: savedEpisode.text.split(/\s+/).filter(Boolean).length,
+				audio: await loadAdminAudioStatus(
+					getAssetStore(c.env),
+					savedSeason,
+					episodeIdx,
+					savedEpisode.text,
+				),
+			},
+			season_slug: savedSeason.slug,
+		});
+	} catch (error) {
+		if (error instanceof AdminAccessError) {
+			return c.json({ error: error.message }, error.status);
+		}
+		if (error instanceof EpisodeAccessError) {
+			return c.json({ error: error.message }, error.status);
+		}
+		throw error;
+	}
+});
+
+app.get(
+	"/api/admin/seasons/:slug/episodes/:episodeIdx/audio/file",
+	async (c) => {
+		try {
+			assertLocalAdminRequest(c.req.raw);
+
+			const slug = c.req.param("slug");
+			const episodeIdx = parseEpisodeIdx(c.req.param("episodeIdx"));
+			const assetStore = getAssetStore(c.env);
+			const season = await assetStore.readSeason(slug);
+			const episode = season.episodes[episodeIdx];
+			if (!episode) {
+				throw new AdminAccessError("EpisodeNotFound", 404);
+			}
+
+			const audio = await assetStore.readEpisodeAudioFile(
+				season.slug,
+				episodeIdx,
+				episode.text,
+				c.req.raw.headers,
+			);
+			if (!audio) {
+				return c.json({ error: "EpisodeAudioMissing" }, 404);
+			}
+
+			return new Response(audio.body, {
+				status: audio.status,
+				headers: audioFileHeaders(audio),
+			});
+		} catch (error) {
+			if (error instanceof AdminAccessError) {
+				return c.json({ error: error.message }, error.status);
+			}
+			if (error instanceof EpisodeAccessError) {
+				return c.json({ error: error.message }, error.status);
+			}
+			if (error instanceof EpisodeAudioError) {
+				return c.json({ error: error.message }, error.status);
+			}
+			throw error;
+		}
+	},
+);
+
+app.get(
+	"/api/admin/seasons/:slug/episodes/:episodeIdx/audio/captions.vtt",
+	async (c) => {
+		try {
+			assertLocalAdminRequest(c.req.raw);
+
+			const slug = c.req.param("slug");
+			const episodeIdx = parseEpisodeIdx(c.req.param("episodeIdx"));
+			const assetStore = getAssetStore(c.env);
+			const season = await assetStore.readSeason(slug);
+			const episode = season.episodes[episodeIdx];
+			if (!episode) {
+				throw new AdminAccessError("EpisodeNotFound", 404);
+			}
+
+			const audio = await assetStore.readEpisodeAudio(
+				season.slug,
+				episodeIdx,
+				episode.text,
+			);
+			if (!audio) {
+				return c.json({ error: "EpisodeAudioMissing" }, 404);
+			}
+
+			return new Response(
+				buildEpisodeCaptions(episode.text, audio.sidecar.durationSeconds),
+				{
+					headers: {
+						"content-type": "text/vtt; charset=utf-8",
+					},
+				},
+			);
+		} catch (error) {
+			if (error instanceof AdminAccessError) {
+				return c.json({ error: error.message }, error.status);
+			}
+			if (error instanceof EpisodeAccessError) {
+				return c.json({ error: error.message }, error.status);
+			}
+			if (error instanceof EpisodeAudioError) {
+				return c.json({ error: error.message }, error.status);
+			}
+			throw error;
+		}
+	},
+);
 
 app.get("/api/children", async (c) => {
 	const state = await getStateStore(c.env).readState();
