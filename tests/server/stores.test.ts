@@ -4,9 +4,12 @@ import { extractAlignmentStoryWords } from "../../src/lib/storyWordTokens";
 import { pcmToWavBuffer } from "../../src/lib/wav";
 import { fetch } from "../../src/server/index";
 import {
+	D1StoryStore,
 	InMemoryAssetStore,
 	InMemoryStateStore,
+	InMemoryStoryStore,
 } from "../../src/server/stores";
+import { fakeD1StoryDatabase } from "../lib/fakeD1Story";
 
 const fixtureSeason = {
 	slug: "winni-s1-test",
@@ -32,21 +35,21 @@ const fixtureState = {
 	sessions: [],
 };
 
-const r2OnlySeason = {
+const d1OnlySeason = {
 	...fixtureSeason,
-	slug: "r2-only-season",
+	slug: "d1-only-season",
 	episodes: fixtureSeason.episodes.map((episode) => ({
 		...episode,
-		text: `R2 ${episode.text}`,
+		text: `D1 ${episode.text}`,
 	})),
 };
 
-const r2OnlyState = {
+const d1OnlyState = {
 	...fixtureState,
 	children: {
 		winni: {
 			...fixtureState.children.winni,
-			active_season: "r2-only-season",
+			active_season: "d1-only-season",
 			current_episode: 1,
 		},
 	},
@@ -111,11 +114,11 @@ const postSession = (body: unknown, stateStore: InMemoryStateStore) =>
 const getSeason = (
 	childId: string,
 	stateStore: InMemoryStateStore,
-	assetStore: InMemoryAssetStore,
+	storyStore: InMemoryStoryStore,
 ) =>
 	fetch(new Request(`http://127.0.0.1:3001/api/children/${childId}/season`), {
 		APP_STATE_STORE: stateStore,
-		ASSET_STORE: assetStore,
+		STORY_STORE: storyStore,
 	});
 
 const getEpisodeAudio = (
@@ -131,6 +134,7 @@ const getEpisodeAudio = (
 		{
 			APP_STATE_STORE: stateStore,
 			ASSET_STORE: assetStore,
+			STORY_STORE: new InMemoryStoryStore({ seasons: [fixtureSeason] }),
 		},
 	);
 
@@ -147,6 +151,7 @@ const getEpisodeAudioFile = (
 		{
 			APP_STATE_STORE: stateStore,
 			ASSET_STORE: assetStore,
+			STORY_STORE: new InMemoryStoryStore({ seasons: [fixtureSeason] }),
 		},
 	);
 
@@ -213,7 +218,6 @@ function fakeR2AudioBucket(
 	options: { audioObject?: FakeR2BytesObject; sidecar?: unknown } = {},
 ) {
 	return fakeR2Bucket({
-		"seasons/winni-s1-test.json": r2JsonObject(fixtureSeason),
 		"audio/winni-s1-test-e0.wav":
 			options.audioObject ?? r2BytesObject(audio.audioBytes),
 		"audio/winni-s1-test-e0.words.json": r2JsonObject(
@@ -285,6 +289,53 @@ function rangeForFakeR2Offset(
 	return { offset, length };
 }
 
+describe("D1StoryStore", () => {
+	it("returns a season with ordered episodes", async () => {
+		const shuffledSeason = {
+			...fixtureSeason,
+			episodes: [...fixtureSeason.episodes].reverse(),
+		};
+		const store = new D1StoryStore(fakeD1StoryDatabase([shuffledSeason]));
+
+		const season = await store.readSeason(fixtureSeason.slug);
+
+		expect(season.slug).toBe("winni-s1-test");
+		expect(season.episodes).toHaveLength(14);
+		expect(season.episodes.map((episode) => episode.idx)).toEqual(
+			Array.from({ length: 14 }, (_, i) => i),
+		);
+	});
+
+	it("throws SeasonFileNotFoundError when a D1 season is missing", async () => {
+		const store = new D1StoryStore(fakeD1StoryDatabase([fixtureSeason]));
+
+		await expect(store.readSeason("no-such-season")).rejects.toThrow(
+			"Season file not found for slug: no-such-season",
+		);
+	});
+
+	it("validates D1 season output through the season schema", async () => {
+		const incompleteSeason = {
+			...fixtureSeason,
+			episodes: fixtureSeason.episodes.slice(0, 13),
+		};
+		const store = new D1StoryStore(
+			fakeD1StoryDatabase([incompleteSeason as typeof fixtureSeason]),
+		);
+
+		await expect(store.readSeason(fixtureSeason.slug)).rejects.toThrow();
+	});
+
+	it("updates episode text and text hash through D1", async () => {
+		const store = new D1StoryStore(fakeD1StoryDatabase([fixtureSeason]));
+		const nextText = "Luma found a careful little test sentence.";
+
+		const season = await store.writeEpisodeText(fixtureSeason.slug, 0, nextText);
+
+		expect(season.episodes[0]?.text).toBe(nextText);
+	});
+});
+
 describe("server stores", () => {
 	it("mutates POST /api/sessions through an injected in-memory StateStore", async () => {
 		const stateStore = new InMemoryStateStore(fixtureState);
@@ -299,7 +350,7 @@ describe("server stores", () => {
 		expect(state.children.winni?.current_episode).toBe(1);
 	});
 
-	it("serves season metadata through injected StateStore and AssetStore", async () => {
+	it("serves season metadata through injected StateStore and StoryStore", async () => {
 		const stateStore = new InMemoryStateStore({
 			...fixtureState,
 			children: {
@@ -309,9 +360,9 @@ describe("server stores", () => {
 				},
 			},
 		});
-		const assetStore = new InMemoryAssetStore({ seasons: [fixtureSeason] });
+		const storyStore = new InMemoryStoryStore({ seasons: [fixtureSeason] });
 
-		const res = await getSeason("winni", stateStore, assetStore);
+		const res = await getSeason("winni", stateStore, storyStore);
 
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({
@@ -332,7 +383,6 @@ describe("server stores", () => {
 			},
 		});
 		const assetStore = new InMemoryAssetStore({
-			seasons: [fixtureSeason],
 			audio: [audioForEpisode(0)],
 		});
 
@@ -366,7 +416,6 @@ describe("server stores", () => {
 			},
 		});
 		const assetStore = new InMemoryAssetStore({
-			seasons: [fixtureSeason],
 			audio: [audioForEpisode(0)],
 		});
 
@@ -379,51 +428,49 @@ describe("server stores", () => {
 		);
 	});
 
-	it("serves R2-only season and episode routes from the bucket binding", async () => {
-		const stateStore = new InMemoryStateStore(r2OnlyState);
-		const bucket = fakeR2Bucket({
-			"seasons/r2-only-season.json": r2JsonObject(r2OnlySeason),
-		});
+	it("serves D1-only season and episode routes from the story DB binding", async () => {
+		const stateStore = new InMemoryStateStore(d1OnlyState);
+		const storyDb = fakeD1StoryDatabase([d1OnlySeason]);
 
 		const seasonRes = await fetch(
 			new Request("http://127.0.0.1:3001/api/children/winni/season"),
 			{
 				APP_STATE_STORE: stateStore,
-				ASSETS_BUCKET: bucket,
+				STORY_DB: storyDb,
 			},
 		);
 		const currentEpisodeRes = await fetch(
 			new Request("http://127.0.0.1:3001/api/children/winni/current-episode"),
 			{
 				APP_STATE_STORE: stateStore,
-				ASSETS_BUCKET: bucket,
+				STORY_DB: storyDb,
 			},
 		);
 		const episodeRes = await fetch(
 			new Request("http://127.0.0.1:3001/api/children/winni/episodes/0"),
 			{
 				APP_STATE_STORE: stateStore,
-				ASSETS_BUCKET: bucket,
+				STORY_DB: storyDb,
 			},
 		);
 
 		expect(seasonRes.status).toBe(200);
 		expect(await seasonRes.json()).toEqual({
-			slug: "r2-only-season",
+			slug: "d1-only-season",
 			total_episodes: 14,
 			current_episode: 1,
 		});
 		expect(currentEpisodeRes.status).toBe(200);
 		expect(await currentEpisodeRes.json()).toMatchObject({
-			text: "R2 Episode 2 text for testing.",
+			text: "D1 Episode 2 text for testing.",
 			episode_idx: 1,
-			season_slug: "r2-only-season",
+			season_slug: "d1-only-season",
 		});
 		expect(episodeRes.status).toBe(200);
 		expect(await episodeRes.json()).toMatchObject({
-			text: "R2 Episode 1 text for testing.",
+			text: "D1 Episode 1 text for testing.",
 			episode_idx: 0,
-			season_slug: "r2-only-season",
+			season_slug: "d1-only-season",
 		});
 	});
 
@@ -437,6 +484,7 @@ describe("server stores", () => {
 			{
 				APP_STATE_STORE: stateStore,
 				ASSETS_BUCKET: bucket,
+				STORY_DB: fakeD1StoryDatabase([fixtureSeason]),
 			},
 		);
 
@@ -449,7 +497,6 @@ describe("server stores", () => {
 			duration_seconds: 2,
 		});
 		expect(bucket.requestedKeys).toEqual([
-			"seasons/winni-s1-test.json",
 			"audio/winni-s1-test-e0.wav",
 			"audio/winni-s1-test-e0.words.json",
 		]);
@@ -467,6 +514,7 @@ describe("server stores", () => {
 		const res = await fetch(request, {
 			APP_STATE_STORE: stateStore,
 			ASSETS_BUCKET: bucket,
+			STORY_DB: fakeD1StoryDatabase([fixtureSeason]),
 		});
 
 		expect(res.status).toBe(206);
@@ -499,6 +547,7 @@ describe("server stores", () => {
 		const res = await fetch(request, {
 			APP_STATE_STORE: stateStore,
 			ASSETS_BUCKET: bucket,
+			STORY_DB: fakeD1StoryDatabase([fixtureSeason]),
 		});
 
 		expect(res.status).toBe(206);
@@ -523,6 +572,7 @@ describe("server stores", () => {
 		const res = await fetch(request, {
 			APP_STATE_STORE: stateStore,
 			ASSETS_BUCKET: bucket,
+			STORY_DB: fakeD1StoryDatabase([fixtureSeason]),
 		});
 
 		const firstByte = audio.audioBytes.byteLength - suffixLength;
@@ -550,6 +600,7 @@ describe("server stores", () => {
 		const res = await fetch(request, {
 			APP_STATE_STORE: stateStore,
 			ASSETS_BUCKET: bucket,
+			STORY_DB: fakeD1StoryDatabase([fixtureSeason]),
 		});
 
 		expect(res.status).toBe(200);
@@ -578,6 +629,33 @@ describe("server stores", () => {
 			{
 				APP_STATE_STORE: stateStore,
 				ASSETS_BUCKET: bucket,
+				STORY_DB: fakeD1StoryDatabase([fixtureSeason]),
+			},
+		);
+
+		expect(res.status).toBe(409);
+		expect(await res.json()).toEqual({ error: "EpisodeAudioStale" });
+	});
+
+	it("returns EpisodeAudioStale when D1 story text changed after audio generation", async () => {
+		const stateStore = new InMemoryStateStore(fixtureState);
+		const audio = audioForEpisode(0);
+		const bucket = fakeR2AudioBucket(audio);
+		const changedSeason = {
+			...fixtureSeason,
+			episodes: fixtureSeason.episodes.map((episode) =>
+				episode.idx === 0
+					? { ...episode, text: "A newer D1 story sentence appears." }
+					: episode,
+			),
+		};
+
+		const res = await fetch(
+			new Request("http://127.0.0.1:3001/api/children/winni/episodes/0/audio"),
+			{
+				APP_STATE_STORE: stateStore,
+				ASSETS_BUCKET: bucket,
+				STORY_DB: fakeD1StoryDatabase([changedSeason]),
 			},
 		);
 
@@ -598,6 +676,7 @@ describe("server stores", () => {
 			{
 				APP_STATE_STORE: stateStore,
 				ASSETS_BUCKET: bucket,
+				STORY_DB: fakeD1StoryDatabase([fixtureSeason]),
 			},
 		);
 

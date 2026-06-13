@@ -6,7 +6,7 @@ import {
 	type EpisodeAudioAsset,
 	EpisodeAudioError,
 	InMemoryAssetStore,
-	R2AssetStore,
+	InMemoryStoryStore,
 	SeasonFileNotFoundError,
 } from "./stores";
 
@@ -86,62 +86,19 @@ function tamperWord(
 	return words.map((w, i) => (i === idx ? { ...w, ...override } : w));
 }
 
-function r2Object(body: unknown) {
-	return {
-		async json<T>(): Promise<T> {
-			return structuredClone(body) as T;
-		},
-		async arrayBuffer(): Promise<ArrayBuffer> {
-			return new TextEncoder().encode(JSON.stringify(body)).buffer;
-		},
-	};
-}
-
-function fakeR2Bucket(objects: Record<string, ReturnType<typeof r2Object>>) {
-	return {
-		requestedKeys: [] as string[],
-		async get(key: string) {
-			this.requestedKeys.push(key);
-			return objects[key] ?? null;
-		},
-	};
-}
-
 // ── readSeason ───────────────────────────────────────────────────────
 
-describe("InMemoryAssetStore.readSeason", () => {
+describe("InMemoryStoryStore.readSeason", () => {
 	test("returns season when it exists", async () => {
-		const store = new InMemoryAssetStore({ seasons: [VALID_SEASON] });
+		const store = new InMemoryStoryStore({ seasons: [VALID_SEASON] });
 		const season = await store.readSeason(SEASON_SLUG);
 		expect(season.slug).toBe(SEASON_SLUG);
 		expect(season.episodes).toHaveLength(14);
 	});
 
 	test("throws SeasonFileNotFoundError when season missing", async () => {
-		const store = new InMemoryAssetStore({ seasons: [VALID_SEASON] });
-		expect(store.readSeason("no-such-season")).rejects.toThrow(
-			SeasonFileNotFoundError,
-		);
-	});
-});
-
-describe("R2AssetStore.readSeason", () => {
-	test("reads season JSON from R2", async () => {
-		const bucket = fakeR2Bucket({
-			[`seasons/${SEASON_SLUG}.json`]: r2Object(VALID_SEASON),
-		});
-		const store = new R2AssetStore(bucket);
-
-		const season = await store.readSeason(SEASON_SLUG);
-
-		expect(season.slug).toBe(SEASON_SLUG);
-		expect(bucket.requestedKeys).toEqual([`seasons/${SEASON_SLUG}.json`]);
-	});
-
-	test("throws SeasonFileNotFoundError when season missing from R2", async () => {
-		const store = new R2AssetStore(fakeR2Bucket({}));
-
-		expect(store.readSeason("no-such-season")).rejects.toThrow(
+		const store = new InMemoryStoryStore({ seasons: [VALID_SEASON] });
+		await expect(store.readSeason("no-such-season")).rejects.toThrow(
 			SeasonFileNotFoundError,
 		);
 	});
@@ -159,7 +116,7 @@ describe("InMemoryAssetStore.readEpisodeAudio", () => {
 	});
 
 	test("returns null when no audio stored for episode", async () => {
-		const store = new InMemoryAssetStore({ seasons: [VALID_SEASON] });
+		const store = new InMemoryAssetStore({});
 		expect(await readAudio(store)).toBeNull();
 	});
 });

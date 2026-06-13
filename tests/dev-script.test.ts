@@ -58,6 +58,17 @@ describe("dev scripts", () => {
 		]);
 	});
 
+	it("binds the Worker to the D1 story content database", async () => {
+		const wranglerConfig = await Bun.file("wrangler.jsonc").json();
+		expect(wranglerConfig.d1_databases).toEqual([
+			{
+				binding: "STORY_DB",
+				database_name: "typeling-content",
+				database_id: "a3df3c02-1dec-414a-8a90-507b55549a4c",
+			},
+		]);
+	});
+
 	it("dev:direct starts both Hono server and Vite dev server", async () => {
 		const apiPort = 3101;
 		const proc = Bun.spawn(["bun", "run", "dev:direct"], {

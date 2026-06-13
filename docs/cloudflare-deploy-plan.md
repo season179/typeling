@@ -2,15 +2,16 @@
 
 ## Overview
 
-Typeling can run on Cloudflare Workers with R2 for asset storage and Durable Objects for state. The Worker serves both the React SPA and the Hono API from a single deployment.
+Typeling can run on Cloudflare Workers with D1 for story content, R2 for audio assets, and Durable Objects for state. The Worker serves both the React SPA and the Hono API from a single deployment.
 
 ## Architecture
 
 - **Worker entry**: `src/server/index.ts` — exports `default { fetch }` and the `StateStore` Durable Object class.
 - **SPA assets**: Built by Vite into `dist/client/`, served by Cloudflare's asset binding with SPA fallback.
 - **API routing**: Requests matching `/api/*` hit the Worker first (`run_worker_first`); everything else falls through to static assets.
+- **Story content**: D1 database `typeling-content` via `STORY_DB` stores seasons and episode text.
 - **State**: Durable Object with SQLite storage (`StateStore` class) replaces the local `data/state.json` file.
-- **Assets (R2)**: `ASSETS_BUCKET` binding for future audio/file storage.
+- **Assets (R2)**: `ASSETS_BUCKET` binding stores audio files and word-timing sidecars.
 
 ## Configuration
 
@@ -21,6 +22,7 @@ Key settings:
 - `compatibility_flags`: `nodejs_compat` for Hono/Node APIs.
 - `assets.not_found_handling`: `single-page-application` for client-side routing.
 - `assets.run_worker_first`: `["/api/*"]` so API calls always reach the Worker.
+- `d1_databases`: `STORY_DB` points at `typeling-content`.
 
 ## Commands
 
@@ -41,6 +43,7 @@ Key settings:
 - Node.js / Bun with wrangler installed as a dev dependency.
 - `wrangler login` run once to authenticate.
 - R2 bucket `typeling-prod-assets` created (`wrangler r2 bucket create typeling-prod-assets`).
+- D1 database `typeling-content` created and seeded from `seasons/winni-s1.json` and `seasons/zack-s1.json`.
 
 ## Secrets
 

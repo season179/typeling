@@ -1,4 +1,3 @@
-import { rename } from "node:fs/promises";
 import { join } from "node:path";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -22,13 +21,17 @@ import type {
 	Season,
 	ServerBindings,
 	StateStore as StateStoreBackend,
+	StoryStore,
 } from "./stores";
 import {
+	D1StoryStore,
 	DiskAssetStore,
 	DiskStateStore,
+	DiskStoryStore,
 	EpisodeAudioError,
 	InMemoryAssetStore,
 	InMemoryStateStore,
+	InMemoryStoryStore,
 	R2AssetStore,
 } from "./stores";
 
@@ -163,7 +166,7 @@ async function loadChildSeason(
 		return { error: "ChildNotFound" as const, status: 404 as const };
 	}
 
-	const season = await getAssetStore(env).readSeason(child.active_season);
+	const season = await getStoryStore(env).readSeason(child.active_season);
 
 	return { child, season };
 }
@@ -218,6 +221,7 @@ async function loadOpenEpisode(
 const localStateStores = new Map<string, DiskStateStore>();
 let workerStateStore: InMemoryStateStore | undefined;
 let workerAssetStore: InMemoryAssetStore | undefined;
+let workerStoryStore: InMemoryStoryStore | undefined;
 
 function getDefaultStateStore(): StateStoreBackend {
 	if (!isBunRuntime()) {
@@ -257,12 +261,11 @@ function fetchFromBoundStateStore(
 
 function getDefaultAssetStore(): AssetStore {
 	if (!isBunRuntime()) {
-		workerAssetStore ??= new InMemoryAssetStore({ seasons: bundledSeasons });
+		workerAssetStore ??= new InMemoryAssetStore({});
 		return workerAssetStore;
 	}
 
 	return new DiskAssetStore({
-		seasonsDir: seasonsDir(),
 		audioDir: audioDir(),
 	});
 }
@@ -275,6 +278,27 @@ function getAssetStore(env: ServerBindings): AssetStore {
 		return new R2AssetStore(env.ASSETS_BUCKET);
 	}
 	return getDefaultAssetStore();
+}
+
+function getDefaultStoryStore(): StoryStore {
+	if (!isBunRuntime()) {
+		workerStoryStore ??= new InMemoryStoryStore({ seasons: bundledSeasons });
+		return workerStoryStore;
+	}
+
+	return new DiskStoryStore({
+		seasonsDir: seasonsDir(),
+	});
+}
+
+function getStoryStore(env: ServerBindings): StoryStore {
+	if (env.STORY_STORE) {
+		return env.STORY_STORE;
+	}
+	if (env.STORY_DB) {
+		return new D1StoryStore(env.STORY_DB);
+	}
+	return getDefaultStoryStore();
 }
 
 function isLocalAdminHostname(hostname: string | null | undefined): boolean {
@@ -300,9 +324,14 @@ function assertLocalAdminRequest(request: Request): void {
 }
 
 function assertLocalDiskAdmin(env: ServerBindings): void {
-	if (!isBunRuntime() || env.ASSETS_BUCKET) {
+	if (!isBunRuntime() || env.ASSETS_BUCKET || env.STORY_DB) {
 		throw new AdminAccessError("AdminLocalDiskOnly", 403);
 	}
+}
+
+function assertStoryWriteAllowed(env: ServerBindings): void {
+	if (env.STORY_DB || env.STORY_STORE) return;
+	assertLocalDiskAdmin(env);
 }
 
 function escapeRegExp(input: string): string {
@@ -336,25 +365,6 @@ function assertAdminStoryText(text: string, state: State): void {
 	if (findRealChildName(text, state)) {
 		throw new AdminAccessError("RealChildNameInStory", 422);
 	}
-}
-
-async function writeSeasonAtomic(
-	season: Season,
-	env: ServerBindings,
-): Promise<Season> {
-	assertLocalDiskAdmin(env);
-	const parsed = seasonSchema.parse(structuredClone(season));
-	const seasonPath = join(seasonsDir(), `${parsed.slug}.json`);
-	const existing = Bun.file(seasonPath);
-	if (!(await existing.exists())) {
-		throw new AdminAccessError("SeasonFileNotFound", 404);
-	}
-
-	await Bun.write(`${seasonPath}.bak`, existing);
-	const tmpPath = `${seasonPath}.tmp`;
-	await Bun.write(tmpPath, `${JSON.stringify(parsed, null, 2)}\n`);
-	await rename(tmpPath, seasonPath);
-	return parsed;
 }
 
 async function loadAdminAudioStatus(
@@ -400,7 +410,7 @@ async function loadAdminSeason(
 	}
 > {
 	const assetStore = getAssetStore(env);
-	const season = await assetStore.readSeason(child.active_season);
+	const season = await getStoryStore(env).readSeason(child.active_season);
 	const episodes = await Promise.all(
 		season.episodes.map(async (episode) => ({
 			...episode,
@@ -526,7 +536,7 @@ app.get("/api/admin/children", async (c) => {
 app.put("/api/admin/seasons/:slug/episodes/:episodeIdx", async (c) => {
 	try {
 		assertLocalAdminRequest(c.req.raw);
-		assertLocalDiskAdmin(c.env);
+		assertStoryWriteAllowed(c.env);
 
 		const state = await getStateStore(c.env).readState();
 		const body = await c.req.json().catch(() => null);
@@ -537,8 +547,8 @@ app.put("/api/admin/seasons/:slug/episodes/:episodeIdx", async (c) => {
 
 		const slug = c.req.param("slug");
 		const episodeIdx = parseEpisodeIdx(c.req.param("episodeIdx"));
-		const assetStore = getAssetStore(c.env);
-		const season = await assetStore.readSeason(slug);
+		const storyStore = getStoryStore(c.env);
+		const season = await storyStore.readSeason(slug);
 		const episode = season.episodes[episodeIdx];
 		if (!episode) {
 			throw new AdminAccessError("EpisodeNotFound", 404);
@@ -546,15 +556,11 @@ app.put("/api/admin/seasons/:slug/episodes/:episodeIdx", async (c) => {
 
 		assertAdminStoryText(parsed.data.text, state);
 
-		const nextSeason = seasonSchema.parse({
-			...season,
-			episodes: season.episodes.map((current) =>
-				current.idx === episodeIdx
-					? { ...current, text: parsed.data.text }
-					: current,
-			),
-		});
-		const savedSeason = await writeSeasonAtomic(nextSeason, c.env);
+		const savedSeason = await storyStore.writeEpisodeText(
+			slug,
+			episodeIdx,
+			parsed.data.text,
+		);
 		const savedEpisode = savedSeason.episodes[episodeIdx];
 		if (!savedEpisode) {
 			throw new AdminAccessError("EpisodeNotFound", 404);
@@ -594,7 +600,7 @@ app.get(
 			const slug = c.req.param("slug");
 			const episodeIdx = parseEpisodeIdx(c.req.param("episodeIdx"));
 			const assetStore = getAssetStore(c.env);
-			const season = await assetStore.readSeason(slug);
+			const season = await getStoryStore(c.env).readSeason(slug);
 			const episode = season.episodes[episodeIdx];
 			if (!episode) {
 				throw new AdminAccessError("EpisodeNotFound", 404);
@@ -638,7 +644,7 @@ app.get(
 			const slug = c.req.param("slug");
 			const episodeIdx = parseEpisodeIdx(c.req.param("episodeIdx"));
 			const assetStore = getAssetStore(c.env);
-			const season = await assetStore.readSeason(slug);
+			const season = await getStoryStore(c.env).readSeason(slug);
 			const episode = season.episodes[episodeIdx];
 			if (!episode) {
 				throw new AdminAccessError("EpisodeNotFound", 404);
@@ -935,6 +941,8 @@ function isServerBindings(value: unknown): value is ServerBindings {
 		value !== null &&
 		("APP_STATE_STORE" in value ||
 			"ASSET_STORE" in value ||
+			"STORY_DB" in value ||
+			"STORY_STORE" in value ||
 			"STATE_STORE" in value ||
 			"ASSETS_BUCKET" in value)
 	);

@@ -1,0 +1,20 @@
+CREATE TABLE seasons (
+	slug TEXT PRIMARY KEY,
+	child_id TEXT NOT NULL,
+	theme TEXT NOT NULL,
+	created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+) STRICT;
+
+CREATE TABLE episodes (
+	season_slug TEXT NOT NULL,
+	idx INTEGER NOT NULL,
+	text TEXT NOT NULL,
+	text_hash TEXT NOT NULL,
+	created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (season_slug, idx),
+	FOREIGN KEY (season_slug) REFERENCES seasons(slug) ON DELETE CASCADE
+) STRICT;
+
+CREATE INDEX episodes_season_idx ON episodes(season_slug, idx);

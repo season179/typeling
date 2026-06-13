@@ -6,6 +6,8 @@ import { join } from "node:path";
 import { extractAlignmentStoryWords } from "../../../src/lib/storyWordTokens";
 import { pcmToWavBuffer } from "../../../src/lib/wav";
 import { fetch } from "../../../src/server/index.ts";
+import { InMemoryStateStore } from "../../../src/server/stores";
+import { fakeD1StoryDatabase } from "../../lib/fakeD1Story";
 
 const fixtureSeason = {
 	slug: "winni-s1-test",
@@ -203,6 +205,33 @@ describe("admin API", () => {
 				join(seasonsDir, `${fixtureSeason.slug}.json.bak`),
 			).exists(),
 		).toBe(true);
+	});
+
+	it("updates a D1-bound season episode and refreshes its text hash", async () => {
+		const storyDb = fakeD1StoryDatabase([fixtureSeason]);
+		const nextText = "Luma found a small brass key beside the rainbow gate.";
+
+		const res = await fetch(
+			new Request(
+				"http://127.0.0.1:3001/api/admin/seasons/winni-s1-test/episodes/0",
+				{
+					method: "PUT",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({ text: nextText }),
+				},
+			),
+			{
+				APP_STATE_STORE: new InMemoryStateStore(fixtureState),
+				STORY_DB: storyDb,
+			},
+		);
+
+		expect(res.status).toBe(200);
+		const body = await res.json();
+		expect(body.episode.text).toBe(nextText);
+		expect(storyDb.episodeTextHash(fixtureSeason.slug, 0)).toBe(
+			sha256(nextText),
+		);
 	});
 
 	it("rejects story text with real child names before writing", async () => {

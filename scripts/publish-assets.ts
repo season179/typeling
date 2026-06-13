@@ -1,13 +1,13 @@
 #!/usr/bin/env bun
 /**
- * publish-assets.ts — Upload seasons/ and data/audio/ to Cloudflare R2
+ * publish-assets.ts — Upload data/audio/ to Cloudflare R2
  * with content-hash idempotency.
  *
  * Required env vars:
  *   CLOUDFLARE_ACCOUNT_ID  — R2 account ID
  *   R2_ACCESS_KEY_ID       — R2 API token access key
  *   R2_SECRET_ACCESS_KEY   — R2 API token secret key
- *   R2_BUCKET              — Bucket name (default: typeling-assets)
+ *   R2_BUCKET              — Bucket name (default: typeling-prod-assets)
  *
  * Usage:
  *   bun run scripts/publish-assets.ts            # upload changed files
@@ -237,14 +237,13 @@ async function main() {
 	const accountId = requireEnv("CLOUDFLARE_ACCOUNT_ID");
 	const accessKey = requireEnv("R2_ACCESS_KEY_ID");
 	const secretKey = requireEnv("R2_SECRET_ACCESS_KEY");
-	const bucket = process.env.R2_BUCKET || "typeling-assets";
+	const bucket = process.env.R2_BUCKET || "typeling-prod-assets";
 
 	const projectRoot = resolve(import.meta.dir, "..");
 	const store = new R2S3Client({ accountId, bucket, accessKey, secretKey });
 
 	const result = await publishAssets({
 		store,
-		seasonsDir: resolve(projectRoot, "seasons"),
 		audioDir: resolve(projectRoot, "data", "audio"),
 		dryRun: values["dry-run"],
 		onLog: (msg) => console.log(msg),

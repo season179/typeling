@@ -32,8 +32,8 @@ function fakeStore(): R2ObjectStore & {
 const SEASONS_DIR = join(TMP, "seasons");
 const AUDIO_DIR = join(TMP, "data", "audio");
 
-/** Sorted keys for the two test fixture files. */
-const ALL_KEYS = ["audio/winni-s1/e0/chapter.wav", "seasons/winni-s1.json"];
+/** Sorted keys for the audio test fixture files. */
+const ALL_KEYS = ["audio/winni-s1/e0/chapter.wav"];
 
 /** Publish with default test fixtures, overriding only specific opts. */
 function publish(
@@ -42,7 +42,6 @@ function publish(
 ) {
 	return publishAssets({
 		store: s,
-		seasonsDir: SEASONS_DIR,
 		audioDir: AUDIO_DIR,
 		...overrides,
 	});
@@ -77,16 +76,16 @@ describe("publishAssets", () => {
 		expect(result.skipped.sort()).toEqual(ALL_KEYS);
 	});
 
-	it("uploads only changed file when one changes", async () => {
+	it("ignores changed season JSON because story text now seeds D1", async () => {
 		const s = fakeStore();
 		await publish(s);
 		await writeFile(join(SEASONS_DIR, "winni-s1.json"), '{"changed":true}');
 		const result = await publish(s);
-		expect(result.uploaded).toEqual(["seasons/winni-s1.json"]);
+		expect(result.uploaded).toEqual([]);
 		expect(result.skipped).toEqual(["audio/winni-s1/e0/chapter.wav"]);
 	});
 
-	it("dry-run performs zero writes", async () => {
+	it("dry-run performs zero writes for audio uploads", async () => {
 		const s = fakeStore();
 		const logs: string[] = [];
 		const result = await publish(s, {
@@ -103,35 +102,33 @@ describe("publishAssets", () => {
 		const result = await publish(fakeStore(), {
 			audioDir: join(TMP, "nonexistent-audio"),
 		});
-		expect(result.uploaded).toEqual(["seasons/winni-s1.json"]);
+		expect(result.uploaded).toEqual([]);
 		expect(result.skipped).toEqual([]);
 	});
 });
 
 describe("publishAssets edge cases", () => {
-	it("skips dotfiles like .DS_Store", async () => {
+	it("skips dotfiles like .DS_Store in audio artifacts", async () => {
 		const dir = join(TMP, "dotfiles");
-		const seasonsDir = join(dir, "seasons");
-		await mkdir(seasonsDir, { recursive: true });
-		await writeFile(join(seasonsDir, "winni-s1.json"), "{}");
-		await writeFile(join(seasonsDir, ".DS_Store"), "junk");
+		const audioDir = join(dir, "audio");
+		await mkdir(audioDir, { recursive: true });
+		await writeFile(join(audioDir, "chapter.wav"), "fake-audio");
+		await writeFile(join(audioDir, ".DS_Store"), "junk");
 
 		const result = await publish(fakeStore(), {
-			seasonsDir,
-			audioDir: join(dir, "audio"),
+			audioDir,
 		});
-		expect(result.uploaded).toEqual(["seasons/winni-s1.json"]);
+		expect(result.uploaded).toEqual(["audio/chapter.wav"]);
 		await rm(dir, { recursive: true, force: true });
 	});
 
-	it("returns empty results for empty seasons dir", async () => {
+	it("returns empty results for empty audio dir", async () => {
 		const dir = join(TMP, "empty");
-		const seasonsDir = join(dir, "seasons");
-		await mkdir(seasonsDir, { recursive: true });
+		const audioDir = join(dir, "audio");
+		await mkdir(audioDir, { recursive: true });
 
 		const result = await publish(fakeStore(), {
-			seasonsDir,
-			audioDir: join(dir, "audio"),
+			audioDir,
 		});
 		expect(result.uploaded).toEqual([]);
 		expect(result.skipped).toEqual([]);

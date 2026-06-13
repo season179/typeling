@@ -10,7 +10,7 @@ Right now Winni and Zack can only play Typeling when Dad's Mac is on and running
 
 ## Solution
 
-Move the whole thing onto Cloudflare. The React app and the Hono server run as a Cloudflare Worker, the audio and story files live in Cloudflare R2 (storage), the progress file becomes a Durable Object (tiny database), and a login gate keeps strangers out. Audio generation keeps running on Dad's Mac as it does today.
+Move the whole thing onto Cloudflare. The React app and the Hono server run as a Cloudflare Worker, the story text lives in Cloudflare D1, audio files live in Cloudflare R2, the progress file becomes a Durable Object (tiny database), and a login gate keeps strangers out. Audio generation keeps running on Dad's Mac as it does today.
 
 ## The 7 steps (in build order)
 
@@ -24,19 +24,19 @@ Nothing else can run on Cloudflare until this is done, so it has to come first.
 
 **Done when:** `wrangler dev` boots the API locally and every route returns the same shape it does under `bun run server`.
 
-### Step 2 — Move the season files off the laptop
+### Step 2 — Move the story text off the laptop
 
-The story JSON in `seasons/` goes into a Cloudflare R2 bucket (think Dropbox for apps). The route that loads a child's season reads it from R2 instead of disk.
+The story JSON in `seasons/` seeds a Cloudflare D1 database. The route that loads a child's season reads it from D1 instead of disk.
 
-Seasons go first because they're tiny (~44 KB total) and the read path is simple — good way to prove out the R2 pattern before touching audio.
+Seasons go first because they're tiny (~44 KB total) and the read path is simple — good way to prove out the content-store pattern before touching audio.
 
 **Done when:** `GET /api/children/:id/season` and the episode endpoints return correct content with no local `seasons/` folder needed.
 
 ### Step 3 — Move the audio files off the laptop
 
-The WAVs and word-timing JSON in `data/audio/` go into the same R2 bucket, so the kids can stream them from anywhere. The audio route forwards browser `Range` requests through to R2 so the scrub bar still works.
+The WAVs and word-timing JSON in `data/audio/` go into R2, so the kids can stream them from anywhere. The audio route forwards browser `Range` requests through to R2 so the scrub bar still works.
 
-Audio comes after seasons because it reuses the same R2 read pattern but adds the `Range` header forwarding — easier to debug when R2 itself is already known-good.
+Audio comes after story content because it reuses the same episode text hashes but adds R2 object reads and `Range` header forwarding.
 
 **Done when:** opening a chapter in the deployed app plays audio synced word-by-word, and the scrub bar can jump mid-chapter.
 
@@ -50,7 +50,7 @@ This is the riskiest correctness change (idempotent sessions, mismatch 409s, cur
 
 ### Step 5 — Add a one-command publishing step
 
-A small Bun script (`scripts/publish-assets.ts`) walks `seasons/` and `data/audio/` and uploads anything new to R2. Idempotent — unchanged files are skipped via a content-hash check. Run it after generating a new chapter.
+A small Bun script (`scripts/publish-assets.ts`) walks `data/audio/` and uploads anything new to R2. Idempotent — unchanged files are skipped via a content-hash check. Story text is seeded separately into D1.
 
 Up to this point you've been doing manual `wrangler r2 object put`s. Now codify it.
 

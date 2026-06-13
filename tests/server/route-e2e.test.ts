@@ -6,6 +6,7 @@ import { app } from "../../src/server/index";
 import {
 	InMemoryAssetStore,
 	InMemoryStateStore,
+	InMemoryStoryStore,
 	type ServerBindings,
 } from "../../src/server/stores";
 
@@ -75,7 +76,8 @@ function audioForEpisode(
 function bindings(): ServerBindings {
 	return {
 		APP_STATE_STORE: new InMemoryStateStore(fixtureState),
-		ASSET_STORE: new InMemoryAssetStore({ seasons: [fixtureSeason] }),
+		ASSET_STORE: new InMemoryAssetStore({}),
+		STORY_STORE: new InMemoryStoryStore({ seasons: [fixtureSeason] }),
 	};
 }
 
@@ -85,9 +87,9 @@ function bindingsWithAudio(
 	return {
 		APP_STATE_STORE: new InMemoryStateStore(fixtureState),
 		ASSET_STORE: new InMemoryAssetStore({
-			seasons: [fixtureSeason],
 			audio: [audio],
 		}),
+		STORY_STORE: new InMemoryStoryStore({ seasons: [fixtureSeason] }),
 	};
 }
 

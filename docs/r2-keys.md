@@ -2,7 +2,8 @@
 
 Single source of truth for every key pattern stored in the
 `typeling-prod-assets` R2 bucket and consumed by the Worker, publish script,
-and tests.
+and tests. Story text is not stored in R2 anymore; D1 is canonical for seasons
+and episodes.
 
 ## Bucket
 
@@ -17,16 +18,16 @@ that binding; use a `remote = true` R2 binding only for an intentional smoke
 test against the real bucket.
 
 The legacy Bun server keeps the disk fallback for local family testing:
-`TYPELING_SEASONS_DIR` and `TYPELING_AUDIO_DIR` still point at `seasons/` and
-`data/audio/` when no `ASSETS_BUCKET` binding is present.
+`TYPELING_SEASONS_DIR` points at `seasons/`, and `TYPELING_AUDIO_DIR` points at
+`data/audio/`.
 
 ---
 
-## Season JSON
+## Story text
 
-| R2 key pattern                   | Local source         | Content-Type |
-|----------------------------------|----------------------|--------------|
-| `seasons/{seasonSlug}.json`      | `seasons/{slug}.json`| `application/json` |
+Story text and season metadata live in D1 through the `STORY_DB` binding
+(`typeling-content`). Local `seasons/*.json` files remain seed fixtures and
+local Bun fallback data, but `publish-assets.ts` no longer uploads them to R2.
 
 ### Current slugs
 
@@ -35,11 +36,11 @@ The legacy Bun server keeps the disk fallback for local family testing:
 | `winni-s1` | Winni | `seasons/winni-s1.json` |
 | `zack-s1`  | Zack  | `seasons/zack-s1.json`  |
 
-Test slugs (`winni-s1-test`, `zack-s1-test`) are also uploaded if the
-JSON files exist under `seasons/`.
+Test slugs (`winni-s1-test`, `zack-s1-test`) remain local fixtures unless
+explicitly seeded for tests.
 
-The Worker resolves a season via `AssetStore.readSeason(seasonSlug)`,
-which reads `seasons/{seasonSlug}.json` from R2 (or disk in legacy Bun mode).
+The Worker resolves a season via `StoryStore.readSeason(seasonSlug)`, which
+reads D1 when `STORY_DB` is bound and disk JSON only in the legacy Bun fallback.
 
 ---
 
@@ -68,7 +69,7 @@ Schema: `WordTimingSidecar` (`src/lib/wordTimings.ts`). Contains:
 
 | Field               | Type       | Notes                                 |
 |---------------------|------------|---------------------------------------|
-| `seasonSlug`        | `string`   | Must match the season JSON slug       |
+| `seasonSlug`        | `string`   | Must match the D1 season slug         |
 | `episodeIdx`        | `number`   | Zero-indexed episode number           |
 | `audioPath`         | `string`   | Relative path to the WAV on disk      |
 | `sourceTextPath`    | `string`   | Relative path to the source text      |
@@ -117,7 +118,6 @@ S3-compatible API stores custom metadata as `x-amz-meta-*` headers.
 For `zack-s1` episode 0 (`baseName = zack-s1-e0`):
 
 ```
-seasons/zack-s1.json
 audio/zack-s1-e0.wav
 audio/zack-s1-e0.words.json
 audio/zack-s1-e0-source.txt
@@ -131,10 +131,10 @@ audio/zack-s1-e0.qwen-align.raw.txt
 
 ## Naming convention
 
-- **`{seasonSlug}`** — matches the `slug` field in the season JSON
+- **`{seasonSlug}`** — matches the `slug` field in D1
   (e.g. `winni-s1`, `zack-s1`). Format: `{childId}-s{seasonNumber}`.
 - **`{episodeIdx}`** — zero-indexed integer matching `episode.idx` in
-  the season JSON.
+  the D1 episode row.
 - **`{baseName}`** — `{seasonSlug}-e{episodeIdx}`.
 
 All key segments use `-` (hyphen) as the separator. No `/`-delimited
@@ -144,8 +144,8 @@ subdirectories under `audio/` — files are flat.
 
 | Issue | R2 keys it reads/writes                              |
 |-------|------------------------------------------------------|
-| #187  | Publishes all keys above (write via `publish-assets.ts`) |
-| #189  | Reads `seasons/{slug}.json` + `audio/{base}.words.json` |
+| #187  | Publishes audio keys above (write via `publish-assets.ts`) |
+| #189  | Reads `audio/{base}.words.json` |
 | #192  | Reads `audio/{baseName}.wav` with Range header       |
 
 ---

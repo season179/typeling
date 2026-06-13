@@ -15,6 +15,13 @@
 			"bucket_name": "typeling-prod-assets"
 		}
 	],
+	"d1_databases": [
+		{
+			"binding": "STORY_DB",
+			"database_name": "typeling-content",
+			"database_id": "a3df3c02-1dec-414a-8a90-507b55549a4c"
+		}
+	],
 	"durable_objects": {
 		"bindings": [
 			{

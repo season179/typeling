@@ -1,7 +1,7 @@
 import { relative as pathRelative } from "node:path";
 
 /**
- * Asset publisher — uploads seasons/ and data/audio/ to R2
+ * Asset publisher — uploads data/audio/ to R2
  * with content-hash idempotency.
  *
  * Required env vars (see scripts/publish-assets.ts):
@@ -23,7 +23,6 @@ export interface R2ObjectStore {
 
 export interface PublishOptions {
 	store: R2ObjectStore;
-	seasonsDir: string;
 	audioDir: string;
 	dryRun?: boolean;
 	onLog?: (msg: string) => void;
@@ -39,19 +38,8 @@ interface FileEntry {
 	key: string;
 }
 
-export async function discoverFiles(
-	seasonsDir: string,
-	audioDir: string,
-): Promise<FileEntry[]> {
+export async function discoverFiles(audioDir: string): Promise<FileEntry[]> {
 	const entries: FileEntry[] = [];
-
-	for await (const file of walkDir(seasonsDir)) {
-		if (!file.endsWith(".json")) continue;
-		entries.push({
-			localPath: file,
-			key: `seasons/${pathRelative(seasonsDir, file)}`,
-		});
-	}
 
 	for await (const file of walkDir(audioDir)) {
 		entries.push({
@@ -66,7 +54,7 @@ export async function discoverFiles(
 export async function publishAssets(
 	opts: PublishOptions,
 ): Promise<PublishResult> {
-	const entries = await discoverFiles(opts.seasonsDir, opts.audioDir);
+	const entries = await discoverFiles(opts.audioDir);
 	const uploaded: string[] = [];
 	const skipped: string[] = [];
 

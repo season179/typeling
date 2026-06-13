@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { rename } from "node:fs/promises";
 import { join } from "node:path";
 import { seasonSchema } from "../lib/schemas/season";
 import { type State, stateSchema } from "../lib/schemas/state";
@@ -16,6 +17,188 @@ export class SeasonFileNotFoundError extends Error {
 	constructor(seasonSlug: string) {
 		super(`Season file not found for slug: ${seasonSlug}`);
 		this.name = "SeasonFileNotFoundError";
+	}
+}
+
+interface D1ResultLike<T = Record<string, unknown>> {
+	results?: T[];
+	meta?: {
+		changes?: number;
+	};
+}
+
+interface D1PreparedStatementLike {
+	bind(...values: unknown[]): D1PreparedStatementLike;
+	first<T = Record<string, unknown>>(): Promise<T | null>;
+	all<T = Record<string, unknown>>(): Promise<D1ResultLike<T>>;
+	run<T = Record<string, unknown>>(): Promise<D1ResultLike<T>>;
+}
+
+export interface D1DatabaseLike {
+	prepare(query: string): D1PreparedStatementLike;
+}
+
+interface D1SeasonRow {
+	slug: string;
+	child_id: string;
+	theme: string;
+}
+
+interface D1EpisodeRow {
+	idx: number;
+	text: string;
+}
+
+export interface StoryStore {
+	readSeason(seasonSlug: string): Promise<Season>;
+	writeEpisodeText(
+		seasonSlug: string,
+		episodeIdx: number,
+		text: string,
+	): Promise<Season>;
+}
+
+export class InMemoryStoryStore implements StoryStore {
+	#seasons: Map<string, Season>;
+
+	constructor(input: { seasons: Season[] }) {
+		this.#seasons = new Map(
+			input.seasons.map((season) => {
+				const parsed = seasonSchema.parse(structuredClone(season));
+				return [parsed.slug, parsed];
+			}),
+		);
+	}
+
+	async readSeason(seasonSlug: string): Promise<Season> {
+		const season = this.#seasons.get(seasonSlug);
+		if (!season) {
+			throw new SeasonFileNotFoundError(seasonSlug);
+		}
+		return structuredClone(season);
+	}
+
+	async writeEpisodeText(
+		seasonSlug: string,
+		episodeIdx: number,
+		text: string,
+	): Promise<Season> {
+		const season = await this.readSeason(seasonSlug);
+		const episode = season.episodes[episodeIdx];
+		if (!episode) {
+			throw new SeasonFileNotFoundError(seasonSlug);
+		}
+
+		const nextSeason = seasonSchema.parse({
+			...season,
+			episodes: season.episodes.map((current) =>
+				current.idx === episodeIdx ? { ...current, text } : current,
+			),
+		});
+		this.#seasons.set(nextSeason.slug, nextSeason);
+		return structuredClone(nextSeason);
+	}
+}
+
+export class DiskStoryStore implements StoryStore {
+	#seasonsDir: string;
+
+	constructor(input: { seasonsDir: string }) {
+		this.#seasonsDir = input.seasonsDir;
+	}
+
+	async readSeason(seasonSlug: string): Promise<Season> {
+		const seasonPath = join(this.#seasonsDir, `${seasonSlug}.json`);
+		const seasonFile = Bun.file(seasonPath);
+		if (!(await seasonFile.exists())) {
+			throw new SeasonFileNotFoundError(seasonSlug);
+		}
+		return seasonSchema.parse(await seasonFile.json());
+	}
+
+	async writeEpisodeText(
+		seasonSlug: string,
+		episodeIdx: number,
+		text: string,
+	): Promise<Season> {
+		const season = await this.readSeason(seasonSlug);
+		const episode = season.episodes[episodeIdx];
+		if (!episode) {
+			throw new SeasonFileNotFoundError(seasonSlug);
+		}
+
+		const parsed = seasonSchema.parse({
+			...season,
+			episodes: season.episodes.map((current) =>
+				current.idx === episodeIdx ? { ...current, text } : current,
+			),
+		});
+		const seasonPath = join(this.#seasonsDir, `${parsed.slug}.json`);
+		const existing = Bun.file(seasonPath);
+		await Bun.write(`${seasonPath}.bak`, existing);
+		const tmpPath = `${seasonPath}.tmp`;
+		await Bun.write(tmpPath, `${JSON.stringify(parsed, null, 2)}\n`);
+		await rename(tmpPath, seasonPath);
+		return parsed;
+	}
+}
+
+export class D1StoryStore implements StoryStore {
+	#db: D1DatabaseLike;
+
+	constructor(db: D1DatabaseLike) {
+		this.#db = db;
+	}
+
+	async readSeason(seasonSlug: string): Promise<Season> {
+		const season = await this.#db
+			.prepare("SELECT slug, child_id, theme FROM seasons WHERE slug = ?")
+			.bind(seasonSlug)
+			.first<D1SeasonRow>();
+		if (!season) {
+			throw new SeasonFileNotFoundError(seasonSlug);
+		}
+
+		const episodes = await this.#db
+			.prepare(
+				"SELECT idx, text FROM episodes WHERE season_slug = ? ORDER BY idx ASC",
+			)
+			.bind(seasonSlug)
+			.all<D1EpisodeRow>();
+
+		return seasonSchema.parse({
+			slug: season.slug,
+			child_id: season.child_id,
+			theme: season.theme,
+			episodes: (episodes.results ?? []).map((episode) => ({
+				idx: episode.idx,
+				text: episode.text,
+			})),
+		});
+	}
+
+	async writeEpisodeText(
+		seasonSlug: string,
+		episodeIdx: number,
+		text: string,
+	): Promise<Season> {
+		const season = await this.readSeason(seasonSlug);
+		if (!season.episodes[episodeIdx]) {
+			throw new SeasonFileNotFoundError(seasonSlug);
+		}
+
+		await this.#db
+			.prepare(
+				`
+					UPDATE episodes
+					SET text = ?, text_hash = ?, updated_at = CURRENT_TIMESTAMP
+					WHERE season_slug = ? AND idx = ?
+				`,
+			)
+			.bind(text, sha256(text), seasonSlug, episodeIdx)
+			.run();
+
+		return this.readSeason(seasonSlug);
 	}
 }
 
@@ -85,7 +268,6 @@ export interface R2BucketLike {
 }
 
 export interface AssetStore {
-	readSeason(seasonSlug: string): Promise<Season>;
 	readEpisodeAudio(
 		seasonSlug: string,
 		episodeIdx: number,
@@ -100,30 +282,18 @@ export interface AssetStore {
 }
 
 export class InMemoryAssetStore implements AssetStore {
-	#seasons: Map<string, Season>;
 	#audio: Map<string, EpisodeAudioAsset>;
 
-	constructor(input: { seasons: Season[]; audio?: StoredEpisodeAudioAsset[] }) {
-		this.#seasons = new Map(
-			input.seasons.map((season) => {
-				const parsed = seasonSchema.parse(structuredClone(season));
-				return [parsed.slug, parsed];
-			}),
-		);
+	constructor(input: {
+		audio?: StoredEpisodeAudioAsset[];
+		seasons?: Season[];
+	}) {
 		this.#audio = new Map(
 			(input.audio ?? []).map((audio) => [
 				audioKey(audio.seasonSlug, audio.episodeIdx),
 				cloneAudioAsset(audio),
 			]),
 		);
-	}
-
-	async readSeason(seasonSlug: string): Promise<Season> {
-		const season = this.#seasons.get(seasonSlug);
-		if (!season) {
-			throw new SeasonFileNotFoundError(seasonSlug);
-		}
-		return structuredClone(season);
 	}
 
 	async readEpisodeAudio(
@@ -173,14 +343,6 @@ export class R2AssetStore implements AssetStore {
 
 	constructor(bucket: R2BucketLike) {
 		this.#bucket = bucket;
-	}
-
-	async readSeason(seasonSlug: string): Promise<Season> {
-		const object = await this.#bucket.get(seasonObjectKey(seasonSlug));
-		if (!object) {
-			throw new SeasonFileNotFoundError(seasonSlug);
-		}
-		return seasonSchema.parse(await object.json());
 	}
 
 	async readEpisodeAudio(
@@ -260,21 +422,10 @@ export class R2AssetStore implements AssetStore {
 }
 
 export class DiskAssetStore implements AssetStore {
-	#seasonsDir: string;
 	#audioDir: string;
 
-	constructor(input: { seasonsDir: string; audioDir: string }) {
-		this.#seasonsDir = input.seasonsDir;
+	constructor(input: { audioDir: string; seasonsDir?: string }) {
 		this.#audioDir = input.audioDir;
-	}
-
-	async readSeason(seasonSlug: string): Promise<Season> {
-		const seasonPath = join(this.#seasonsDir, `${seasonSlug}.json`);
-		const seasonFile = Bun.file(seasonPath);
-		if (!(await seasonFile.exists())) {
-			throw new SeasonFileNotFoundError(seasonSlug);
-		}
-		return seasonSchema.parse(await seasonFile.json());
 	}
 
 	async readEpisodeAudio(
@@ -340,10 +491,6 @@ function audioKey(seasonSlug: string, episodeIdx: number): string {
 
 function audioBaseName(seasonSlug: string, episodeIdx: number): string {
 	return `${seasonSlug}-e${episodeIdx}`;
-}
-
-function seasonObjectKey(seasonSlug: string): string {
-	return `seasons/${seasonSlug}.json`;
 }
 
 function sha256(input: string | Uint8Array): string {
@@ -651,5 +798,7 @@ export interface ServerBindings {
 	ASSET_STORE?: AssetStore;
 	ASSETS_BUCKET?: R2BucketLike;
 	APP_STATE_STORE?: StateStore;
+	STORY_DB?: D1DatabaseLike;
+	STORY_STORE?: StoryStore;
 	STATE_STORE?: DurableObjectNamespaceBinding;
 }
