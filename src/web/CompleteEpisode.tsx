@@ -1,13 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useParams } from "wouter";
 import { MAX_EPISODES } from "../lib/schemas/season";
-
-interface ProgressStory {
-	slug: string;
-	name: string;
-	theme: string;
-	total_episodes: number;
-}
+import { getProgress } from "./api";
 
 interface ChapterMapProps {
 	storySlug: string;
@@ -104,13 +98,7 @@ export default function CompleteEpisode() {
 				setLoading(true);
 				setError(null);
 
-				const progressRes = await fetch("/api/progress", {
-					signal: controller.signal,
-				});
-				if (!progressRes.ok) {
-					throw new Error(`HTTP ${progressRes.status}`);
-				}
-				const data = (await progressRes.json()) as { stories: ProgressStory[] };
+				const data = await getProgress(controller.signal);
 				if (controller.signal.aborted) return;
 
 				const story = data.stories.find((item) => item.slug === storySlug);

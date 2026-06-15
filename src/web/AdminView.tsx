@@ -1,4 +1,5 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { getAdminStories, putAdminEpisode } from "./api";
 
 type AdminAudioStatus =
 	| {
@@ -91,9 +92,7 @@ export default function AdminView() {
 			try {
 				setLoading(true);
 				setError(null);
-				const res = await fetch("/api/admin/stories", {
-					signal: controller.signal,
-				});
+				const res = await getAdminStories(controller.signal);
 				if (!res.ok) {
 					throw new Error(`HTTP ${res.status}`);
 				}
@@ -151,15 +150,10 @@ export default function AdminView() {
 			setSaving(true);
 			setError(null);
 			setSaveMessage(null);
-			const res = await fetch(
-				`/api/admin/seasons/${encodeURIComponent(
-					selectedStory.slug,
-				)}/episodes/${selectedEpisode.idx}`,
-				{
-					method: "PUT",
-					headers: { "content-type": "application/json" },
-					body: JSON.stringify({ text: draftText }),
-				},
+			const res = await putAdminEpisode(
+				selectedStory.slug,
+				selectedEpisode.idx,
+				draftText,
 			);
 			if (!res.ok) {
 				const body = (await res.json().catch(() => null)) as {

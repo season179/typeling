@@ -8,8 +8,8 @@ import { readState } from "../src/server/state";
 import type { Child } from "../src/lib/schemas/state";
 import { asciiNormalize } from "../src/lib/asciiNormalize";
 import { usToBritish } from "../src/lib/usToBritish";
-import { assertCharset, CharsetError } from "../src/lib/assertCharset";
-import { contentBlacklist } from "../src/lib/contentBlacklist";
+import { CharsetError } from "../src/lib/assertCharset";
+import { checkStoryText } from "../src/lib/storyTextPolicy";
 import { wordCountBudget } from "../src/lib/wordCountBudget";
 import { buildPrompt } from "./gen-season-prompt";
 
@@ -240,15 +240,24 @@ function validateSeason(raw: unknown, child: Child): Season {
 
 		text = asciiNormalize(text);
 		text = usToBritish(text);
-		assertCharset(text);
 
-		const hits = contentBlacklist(text);
-		if (hits.length > 0) {
-			throw new ContentBlacklistError(episode.idx, hits);
-		}
-
-		if (text.toLowerCase().includes(child.name.toLowerCase())) {
-			throw new PersonalNameError(episode.idx, child.name);
+		const violation = checkStoryText(text, {
+			forbiddenNames: [child.name],
+			nameMatch: "substring",
+		});
+		if (violation) {
+			switch (violation.kind) {
+				case "charset":
+					throw new CharsetError(violation.position, violation.char);
+				case "blacklist":
+					throw new ContentBlacklistError(episode.idx, violation.terms);
+				case "forbidden-name":
+					throw new PersonalNameError(episode.idx, child.name);
+				default: {
+					const _exhaustive: never = violation;
+					throw _exhaustive;
+				}
+			}
 		}
 
 		if (/\bthe child\b/i.test(text)) {

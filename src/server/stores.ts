@@ -17,13 +17,18 @@ import {
 	type WordTimingSidecar,
 	wordTimingSidecarSchema,
 } from "../lib/wordTimings";
+import { HttpError } from "./httpError";
 
 export type Season = ReturnType<typeof seasonSchema.parse>;
 type EpisodeAudioCode = "EpisodeAudioMissing" | "EpisodeAudioStale";
 
-export class SeasonFileNotFoundError extends Error {
+export class SeasonFileNotFoundError extends HttpError {
 	constructor(seasonSlug: string) {
-		super(`Season file not found for slug: ${seasonSlug}`);
+		super(
+			"StoryNotFound",
+			404,
+			`Season file not found for slug: ${seasonSlug}`,
+		);
 		this.name = "SeasonFileNotFoundError";
 	}
 }
@@ -283,16 +288,20 @@ export class D1StoryStore implements StoryStore {
 
 const DEFAULT_TARGET_WPM = 15;
 
-export class SessionIdConflictError extends Error {
+export class SessionIdConflictError extends HttpError {
 	constructor(sessionId: string) {
-		super(`Session id belongs to a different user: ${sessionId}`);
+		super(
+			"session_conflict",
+			409,
+			`Session id belongs to a different user: ${sessionId}`,
+		);
 		this.name = "SessionIdConflictError";
 	}
 }
 
-export class ProgressMismatchError extends Error {
+export class ProgressMismatchError extends HttpError {
 	constructor() {
-		super("episode_mismatch");
+		super("episode_mismatch", 409);
 		this.name = "ProgressMismatchError";
 	}
 }
@@ -763,13 +772,10 @@ function compareStorySummaries(a: StorySummary, b: StorySummary): number {
 	return a.name.localeCompare(b.name) || a.slug.localeCompare(b.slug);
 }
 
-export class EpisodeAudioError extends Error {
-	status: 404 | 409;
-
+export class EpisodeAudioError extends HttpError {
 	constructor(code: EpisodeAudioCode, status: 404 | 409) {
-		super(code);
+		super(code, status);
 		this.name = "EpisodeAudioError";
-		this.status = status;
 	}
 }
 

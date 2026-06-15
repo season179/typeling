@@ -1,16 +1,8 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import type { UserProfile } from "../lib/schemas/state";
+import { getProgress, type ProgressStory } from "./api";
 import { clearStaleDrafts } from "./episodeRunner/autosave";
-
-interface ProgressStory {
-	slug: string;
-	name: string;
-	theme: string;
-	total_episodes: number;
-	current_episode: number;
-	target_wpm: number;
-}
 
 export default function App() {
 	const [, navigate] = useLocation();
@@ -26,16 +18,7 @@ export default function App() {
 			try {
 				setLoading(true);
 				setError(null);
-				const progressRes = await fetch("/api/progress", {
-					signal: controller.signal,
-				});
-				if (!progressRes.ok) {
-					throw new Error(`HTTP ${progressRes.status}`);
-				}
-				const data = (await progressRes.json()) as {
-					user: UserProfile;
-					stories: ProgressStory[];
-				};
+				const data = await getProgress(controller.signal);
 				if (!controller.signal.aborted) {
 					setStories(data.stories);
 					setSignedInUser(data.user);

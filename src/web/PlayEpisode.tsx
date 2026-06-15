@@ -1,17 +1,15 @@
 import { useEffect, useState } from "react";
 import { useLocation, useParams } from "wouter";
-import type { UserProfile } from "../lib/schemas/state";
+import {
+	type EpisodeData,
+	getCurrentEpisode,
+	getEpisode,
+	getMe,
+	resetEpisode,
+} from "./api";
 import EpisodeRunner from "./EpisodeRunner";
 import { clearDraft } from "./episodeRunner/autosave";
 import StoryAudioPlayer from "./StoryAudioPlayer";
-
-interface EpisodeData {
-	text: string;
-	episode_idx: number;
-	current_episode: number;
-	season_slug: string;
-	total_episodes: number;
-}
 
 interface ChapterPickerProps {
 	storySlug: string;
@@ -28,10 +26,6 @@ interface StoryReaderProps {
 	text: string;
 	onTypeAgain: () => void;
 }
-
-type CurrentUserResponse =
-	| { authenticated: false }
-	| { authenticated: true; user: UserProfile };
 
 function themeForStory(storySlug: string): "winni" | "zack" {
 	return storySlug.toLowerCase().includes("zack") ||
@@ -165,11 +159,6 @@ export default function PlayEpisode() {
 	const [practiceMode, setPracticeMode] = useState(false);
 	const [draftOwnerId, setDraftOwnerId] = useState("local");
 
-	const loadPath =
-		episodeIdx === undefined
-			? `/api/stories/${storySlug}/current-episode`
-			: `/api/stories/${storySlug}/episodes/${episodeIdx}`;
-
 	useEffect(() => {
 		setPracticeMode(false);
 		if (!storySlug) {
@@ -183,21 +172,12 @@ export default function PlayEpisode() {
 			try {
 				setLoading(true);
 				setError(null);
-				const [episodeRes, meRes] = await Promise.all([
-					fetch(loadPath, {
-						signal: controller.signal,
-					}),
-					fetch("/api/me", {
-						signal: controller.signal,
-					}),
+				const [nextEpisode, currentUser] = await Promise.all([
+					episodeIdx === undefined
+						? getCurrentEpisode(storySlug, controller.signal)
+						: getEpisode(storySlug, episodeIdx, controller.signal),
+					getMe(controller.signal),
 				]);
-				if (!episodeRes.ok) {
-					throw new Error(`HTTP ${episodeRes.status}`);
-				}
-				const nextEpisode = await episodeRes.json();
-				const currentUser = meRes.ok
-					? ((await meRes.json()) as CurrentUserResponse)
-					: ({ authenticated: false } as const);
 				setEpisode("complete" in nextEpisode ? null : nextEpisode);
 				setDraftOwnerId(
 					currentUser.authenticated ? currentUser.user.email : "local",
@@ -215,7 +195,7 @@ export default function PlayEpisode() {
 
 		void load();
 		return () => controller.abort();
-	}, [storySlug, loadPath]);
+	}, [storySlug, episodeIdx]);
 
 	const handleReset = async () => {
 		if (!storySlug || !episode) return;
@@ -227,10 +207,7 @@ export default function PlayEpisode() {
 			return;
 		}
 
-		const res = await fetch(
-			`/api/stories/${storySlug}/episodes/${episode.episode_idx}/reset`,
-			{ method: "POST" },
-		);
+		const res = await resetEpisode(storySlug, episode.episode_idx);
 		if (!res.ok) {
 			setError(`Failed to reset chapter (${res.status})`);
 			return;

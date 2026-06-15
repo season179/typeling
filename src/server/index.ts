@@ -3,8 +3,6 @@ import { z } from "zod";
 import seedStateData from "../../data/state.seed.json";
 import winniSeasonData from "../../seasons/winni-s1.json";
 import zackSeasonData from "../../seasons/zack-s1.json";
-import { assertCharset, CharsetError } from "../lib/assertCharset";
-import { contentBlacklist } from "../lib/contentBlacklist";
 import { graduationStatus } from "../lib/graduation";
 import { rolling3Wpm } from "../lib/rolling3";
 import { MAX_EPISODES, seasonSchema } from "../lib/schemas/season";
@@ -15,6 +13,10 @@ import {
 	sessionSubmissionSchema,
 	type UserProfile,
 } from "../lib/schemas/state";
+import {
+	checkStoryText,
+	type StoryTextViolation,
+} from "../lib/storyTextPolicy";
 import { accessIdentityFromRequest, devSignedInUser } from "./accessIdentity";
 import {
 	DEFAULT_AUDIO_DIR,
@@ -22,6 +24,7 @@ import {
 	DEFAULT_SEASONS_DIR,
 	HOSTNAME,
 } from "./config";
+import { HttpError } from "./httpError";
 import type {
 	AssetStore,
 	ProgressStore,
@@ -38,10 +41,7 @@ import {
 	InMemoryAssetStore,
 	InMemoryProgressStore,
 	InMemoryStoryStore,
-	ProgressMismatchError,
 	R2AssetStore,
-	SeasonFileNotFoundError,
-	SessionIdConflictError,
 } from "./stores";
 
 const WILDCARD_HOSTNAME = "0.0.0.0";
@@ -106,31 +106,23 @@ type AdminAudioStatus =
 
 type EpisodeAccessCode = "InvalidEpisode" | "EpisodeNotFound" | "EpisodeLocked";
 
-class EpisodeAccessError extends Error {
-	status: 400 | 403 | 404;
-
+class EpisodeAccessError extends HttpError {
 	constructor(code: EpisodeAccessCode, status: 400 | 403 | 404) {
-		super(code);
+		super(code, status);
 		this.name = "EpisodeAccessError";
-		this.status = status;
 	}
 }
 
-class AdminAccessError extends Error {
-	status: 400 | 403 | 404 | 409 | 422;
-
+class AdminAccessError extends HttpError {
 	constructor(code: string, status: 400 | 403 | 404 | 409 | 422) {
-		super(code);
+		super(code, status);
 		this.name = "AdminAccessError";
-		this.status = status;
 	}
 }
 
-class AuthError extends Error {
-	status = 401 as const;
-
+class AuthError extends HttpError {
 	constructor() {
-		super("AuthenticationRequired");
+		super("AuthenticationRequired", 401);
 		this.name = "AuthError";
 	}
 }
@@ -138,6 +130,9 @@ class AuthError extends Error {
 export const app = new Hono<{ Bindings: ServerBindings }>();
 
 app.onError((error, c) => {
+	if (error instanceof HttpError) {
+		return c.json({ error: error.code }, error.status);
+	}
 	console.error(error);
 	return c.json({ error: error.name }, 500);
 });
@@ -302,35 +297,25 @@ function assertStoryWriteAllowed(env: ServerBindings): void {
 	assertLocalDiskAdmin(env);
 }
 
-function escapeRegExp(input: string): string {
-	return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function findRealChildName(text: string): string | null {
-	for (const name of realChildNames) {
-		if (!name) continue;
-		const pattern = new RegExp(`\\b${escapeRegExp(name)}\\b`, "i");
-		if (pattern.test(text)) return name;
+function adminStoryViolationCode(violation: StoryTextViolation): string {
+	switch (violation.kind) {
+		case "charset":
+			return "InvalidStoryCharset";
+		case "blacklist":
+			return "UnsafeStoryText";
+		case "forbidden-name":
+			return "RealChildNameInStory";
+		default: {
+			const _exhaustive: never = violation;
+			return _exhaustive;
+		}
 	}
-	return null;
 }
 
 function assertAdminStoryText(text: string): void {
-	try {
-		assertCharset(text);
-	} catch (error) {
-		if (error instanceof CharsetError) {
-			throw new AdminAccessError("InvalidStoryCharset", 422);
-		}
-		throw error;
-	}
-
-	if (contentBlacklist(text).length > 0) {
-		throw new AdminAccessError("UnsafeStoryText", 422);
-	}
-
-	if (findRealChildName(text)) {
-		throw new AdminAccessError("RealChildNameInStory", 422);
+	const violation = checkStoryText(text, { forbiddenNames: realChildNames });
+	if (violation) {
+		throw new AdminAccessError(adminStoryViolationCode(violation), 422);
 	}
 }
 
@@ -428,37 +413,16 @@ app.post("/api/sessions", async (c) => {
 		return c.json({ error: "InvalidSession" }, 400);
 	}
 
-	try {
-		const user = await requireUser(c.req.raw, c.env);
-		const season = await getStoryStore(c.env).readSeason(
-			parsed.data.season_slug,
-		);
-		if (!season.episodes[parsed.data.episode_idx]) {
-			throw new EpisodeAccessError("EpisodeNotFound", 404);
-		}
-		const session = await getProgressStore(c.env).createSession(
-			user.email,
-			parsed.data,
-		);
-		return c.json(session, 200);
-	} catch (error) {
-		if (error instanceof AuthError) {
-			return c.json({ error: error.message }, error.status);
-		}
-		if (error instanceof ProgressMismatchError) {
-			return c.json({ error: error.message }, 409);
-		}
-		if (error instanceof SessionIdConflictError) {
-			return c.json({ error: "session_conflict" }, 409);
-		}
-		if (error instanceof EpisodeAccessError) {
-			return c.json({ error: error.message }, error.status);
-		}
-		if (error instanceof SeasonFileNotFoundError) {
-			return c.json({ error: "StoryNotFound" }, 404);
-		}
-		throw error;
+	const user = await requireUser(c.req.raw, c.env);
+	const season = await getStoryStore(c.env).readSeason(parsed.data.season_slug);
+	if (!season.episodes[parsed.data.episode_idx]) {
+		throw new EpisodeAccessError("EpisodeNotFound", 404);
 	}
+	const session = await getProgressStore(c.env).createSession(
+		user.email,
+		parsed.data,
+	);
+	return c.json(session, 200);
 });
 
 app.get("/api/health", (c) => {
@@ -486,311 +450,149 @@ app.get("/api/stories", async (c) => {
 });
 
 app.get("/api/progress", async (c) => {
-	try {
-		const user = await requireUser(c.req.raw, c.env);
-		const [stories, progressRows, sessions] = await Promise.all([
-			getStoryStore(c.env).listStories(),
-			getProgressStore(c.env).listStoryProgress(user.email),
-			getProgressStore(c.env).listSessions(user.email),
-		]);
-		const progressByStory = new Map(
-			progressRows.map((progress) => [progress.season_slug, progress]),
-		);
-		const sessionsByStory = new Map<string, Session[]>();
-		for (const session of sessions) {
-			const storySessions = sessionsByStory.get(session.season_slug) ?? [];
-			storySessions.push(session);
-			sessionsByStory.set(session.season_slug, storySessions);
-		}
-
-		return c.json({
-			user,
-			stories: stories.map((story) => {
-				const storySessions = sessionsByStory.get(story.slug) ?? [];
-				const rolling3 = rolling3Wpm(storySessions, {
-					seasonSlug: story.slug,
-				});
-				return {
-					...story,
-					current_episode:
-						progressByStory.get(story.slug)?.current_episode ?? 0,
-					target_wpm: user.target_wpm,
-					rolling3,
-					status: graduationStatus(rolling3, user.target_wpm),
-					recent_sessions: storySessions.slice(0, 10),
-				};
-			}),
-		});
-	} catch (error) {
-		if (error instanceof AuthError) {
-			return c.json({ error: error.message }, error.status);
-		}
-		throw error;
+	const user = await requireUser(c.req.raw, c.env);
+	const [stories, progressRows, sessions] = await Promise.all([
+		getStoryStore(c.env).listStories(),
+		getProgressStore(c.env).listStoryProgress(user.email),
+		getProgressStore(c.env).listSessions(user.email),
+	]);
+	const progressByStory = new Map(
+		progressRows.map((progress) => [progress.season_slug, progress]),
+	);
+	const sessionsByStory = new Map<string, Session[]>();
+	for (const session of sessions) {
+		const storySessions = sessionsByStory.get(session.season_slug) ?? [];
+		storySessions.push(session);
+		sessionsByStory.set(session.season_slug, storySessions);
 	}
+
+	return c.json({
+		user,
+		stories: stories.map((story) => {
+			const storySessions = sessionsByStory.get(story.slug) ?? [];
+			const rolling3 = rolling3Wpm(storySessions, {
+				seasonSlug: story.slug,
+			});
+			return {
+				...story,
+				current_episode: progressByStory.get(story.slug)?.current_episode ?? 0,
+				target_wpm: user.target_wpm,
+				rolling3,
+				status: graduationStatus(rolling3, user.target_wpm),
+				recent_sessions: storySessions.slice(0, 10),
+			};
+		}),
+	});
 });
 
 app.get("/api/admin/stories", async (c) => {
-	try {
-		assertLocalAdminRequest(c.req.raw);
-		const stories = await getStoryStore(c.env).listStories();
-		const seasons = await Promise.all(
-			stories.map(async (story) => loadAdminSeason(story.slug, c.env)),
-		);
+	assertLocalAdminRequest(c.req.raw);
+	const stories = await getStoryStore(c.env).listStories();
+	const seasons = await Promise.all(
+		stories.map(async (story) => loadAdminSeason(story.slug, c.env)),
+	);
 
-		return c.json({
-			admin: {
-				access: "local-only",
-			},
-			stories: seasons,
-		});
-	} catch (error) {
-		if (error instanceof AdminAccessError) {
-			return c.json({ error: error.message }, error.status);
-		}
-		throw error;
-	}
+	return c.json({
+		admin: {
+			access: "local-only",
+		},
+		stories: seasons,
+	});
 });
 
 app.put("/api/admin/seasons/:slug/episodes/:episodeIdx", async (c) => {
-	try {
-		assertLocalAdminRequest(c.req.raw);
-		assertStoryWriteAllowed(c.env);
+	assertLocalAdminRequest(c.req.raw);
+	assertStoryWriteAllowed(c.env);
 
-		const body = await c.req.json().catch(() => null);
-		const parsed = adminEpisodeUpdateSchema.safeParse(body);
-		if (!parsed.success) {
-			return c.json({ error: "InvalidAdminEpisodeUpdate" }, 400);
-		}
-
-		const slug = c.req.param("slug");
-		const episodeIdx = parseEpisodeIdx(c.req.param("episodeIdx"));
-		const storyStore = getStoryStore(c.env);
-		const season = await storyStore.readSeason(slug);
-		const episode = season.episodes[episodeIdx];
-		if (!episode) {
-			throw new AdminAccessError("EpisodeNotFound", 404);
-		}
-
-		assertAdminStoryText(parsed.data.text);
-
-		const savedSeason = await storyStore.writeEpisodeText(
-			slug,
-			episodeIdx,
-			parsed.data.text,
-		);
-		const savedEpisode = savedSeason.episodes[episodeIdx];
-		if (!savedEpisode) {
-			throw new AdminAccessError("EpisodeNotFound", 404);
-		}
-
-		return c.json({
-			episode: {
-				...savedEpisode,
-				char_count: savedEpisode.text.length,
-				word_count: savedEpisode.text.split(/\s+/).filter(Boolean).length,
-				audio: await loadAdminAudioStatus(
-					getAssetStore(c.env),
-					savedSeason,
-					episodeIdx,
-					savedEpisode.text,
-				),
-			},
-			season_slug: savedSeason.slug,
-		});
-	} catch (error) {
-		if (error instanceof AdminAccessError) {
-			return c.json({ error: error.message }, error.status);
-		}
-		if (error instanceof EpisodeAccessError) {
-			return c.json({ error: error.message }, error.status);
-		}
-		throw error;
+	const body = await c.req.json().catch(() => null);
+	const parsed = adminEpisodeUpdateSchema.safeParse(body);
+	if (!parsed.success) {
+		return c.json({ error: "InvalidAdminEpisodeUpdate" }, 400);
 	}
+
+	const slug = c.req.param("slug");
+	const episodeIdx = parseEpisodeIdx(c.req.param("episodeIdx"));
+	const storyStore = getStoryStore(c.env);
+	const season = await storyStore.readSeason(slug);
+	const episode = season.episodes[episodeIdx];
+	if (!episode) {
+		throw new AdminAccessError("EpisodeNotFound", 404);
+	}
+
+	assertAdminStoryText(parsed.data.text);
+
+	const savedSeason = await storyStore.writeEpisodeText(
+		slug,
+		episodeIdx,
+		parsed.data.text,
+	);
+	const savedEpisode = savedSeason.episodes[episodeIdx];
+	if (!savedEpisode) {
+		throw new AdminAccessError("EpisodeNotFound", 404);
+	}
+
+	return c.json({
+		episode: {
+			...savedEpisode,
+			char_count: savedEpisode.text.length,
+			word_count: savedEpisode.text.split(/\s+/).filter(Boolean).length,
+			audio: await loadAdminAudioStatus(
+				getAssetStore(c.env),
+				savedSeason,
+				episodeIdx,
+				savedEpisode.text,
+			),
+		},
+		season_slug: savedSeason.slug,
+	});
 });
 
 app.get(
 	"/api/admin/seasons/:slug/episodes/:episodeIdx/audio/file",
 	async (c) => {
-		try {
-			assertLocalAdminRequest(c.req.raw);
+		assertLocalAdminRequest(c.req.raw);
 
-			const slug = c.req.param("slug");
-			const episodeIdx = parseEpisodeIdx(c.req.param("episodeIdx"));
-			const assetStore = getAssetStore(c.env);
-			const season = await getStoryStore(c.env).readSeason(slug);
-			const episode = season.episodes[episodeIdx];
-			if (!episode) {
-				throw new AdminAccessError("EpisodeNotFound", 404);
-			}
-
-			const audio = await assetStore.readEpisodeAudioFile(
-				season.slug,
-				episodeIdx,
-				episode.text,
-				c.req.raw.headers,
-			);
-			if (!audio) {
-				return c.json({ error: "EpisodeAudioMissing" }, 404);
-			}
-
-			return new Response(audio.body, {
-				status: audio.status,
-				headers: audioFileHeaders(audio),
-			});
-		} catch (error) {
-			if (error instanceof AdminAccessError) {
-				return c.json({ error: error.message }, error.status);
-			}
-			if (error instanceof EpisodeAccessError) {
-				return c.json({ error: error.message }, error.status);
-			}
-			if (error instanceof EpisodeAudioError) {
-				return c.json({ error: error.message }, error.status);
-			}
-			throw error;
+		const slug = c.req.param("slug");
+		const episodeIdx = parseEpisodeIdx(c.req.param("episodeIdx"));
+		const assetStore = getAssetStore(c.env);
+		const season = await getStoryStore(c.env).readSeason(slug);
+		const episode = season.episodes[episodeIdx];
+		if (!episode) {
+			throw new AdminAccessError("EpisodeNotFound", 404);
 		}
+
+		const audio = await assetStore.readEpisodeAudioFile(
+			season.slug,
+			episodeIdx,
+			episode.text,
+			c.req.raw.headers,
+		);
+		if (!audio) {
+			return c.json({ error: "EpisodeAudioMissing" }, 404);
+		}
+
+		return new Response(audio.body, {
+			status: audio.status,
+			headers: audioFileHeaders(audio),
+		});
 	},
 );
 
 app.get(
 	"/api/admin/seasons/:slug/episodes/:episodeIdx/audio/captions.vtt",
 	async (c) => {
-		try {
-			assertLocalAdminRequest(c.req.raw);
+		assertLocalAdminRequest(c.req.raw);
 
-			const slug = c.req.param("slug");
-			const episodeIdx = parseEpisodeIdx(c.req.param("episodeIdx"));
-			const assetStore = getAssetStore(c.env);
-			const season = await getStoryStore(c.env).readSeason(slug);
-			const episode = season.episodes[episodeIdx];
-			if (!episode) {
-				throw new AdminAccessError("EpisodeNotFound", 404);
-			}
-
-			const audio = await assetStore.readEpisodeAudio(
-				season.slug,
-				episodeIdx,
-				episode.text,
-			);
-			if (!audio) {
-				return c.json({ error: "EpisodeAudioMissing" }, 404);
-			}
-
-			return new Response(
-				buildEpisodeCaptions(episode.text, audio.sidecar.durationSeconds),
-				{
-					headers: {
-						"content-type": "text/vtt; charset=utf-8",
-					},
-				},
-			);
-		} catch (error) {
-			if (error instanceof AdminAccessError) {
-				return c.json({ error: error.message }, error.status);
-			}
-			if (error instanceof EpisodeAccessError) {
-				return c.json({ error: error.message }, error.status);
-			}
-			if (error instanceof EpisodeAudioError) {
-				return c.json({ error: error.message }, error.status);
-			}
-			throw error;
-		}
-	},
-);
-
-app.get("/api/stories/:storySlug/current-episode", async (c) => {
-	try {
-		const user = await requireUser(c.req.raw, c.env);
-		const season = await getStoryStore(c.env).readSeason(
-			c.req.param("storySlug"),
-		);
-		const progress = await getProgressStore(c.env).ensureStoryProgress(
-			user.email,
-			season.slug,
-		);
-
-		if (progress.current_episode >= season.episodes.length) {
-			return c.json({
-				complete: true,
-				current_episode: progress.current_episode,
-				season_slug: season.slug,
-				story_name: season.name,
-				total_episodes: season.episodes.length,
-			});
-		}
-
-		const episode = season.episodes[progress.current_episode];
+		const slug = c.req.param("slug");
+		const episodeIdx = parseEpisodeIdx(c.req.param("episodeIdx"));
+		const assetStore = getAssetStore(c.env);
+		const season = await getStoryStore(c.env).readSeason(slug);
+		const episode = season.episodes[episodeIdx];
 		if (!episode) {
-			return c.json({
-				complete: true,
-				current_episode: progress.current_episode,
-				season_slug: season.slug,
-				story_name: season.name,
-				total_episodes: season.episodes.length,
-			});
+			throw new AdminAccessError("EpisodeNotFound", 404);
 		}
 
-		return c.json({
-			text: episode.text,
-			episode_idx: progress.current_episode,
-			current_episode: progress.current_episode,
-			season_slug: season.slug,
-			story_name: season.name,
-			total_episodes: season.episodes.length,
-		});
-	} catch (error) {
-		if (error instanceof AuthError) {
-			return c.json({ error: error.message }, error.status);
-		}
-		if (error instanceof SeasonFileNotFoundError) {
-			return c.json({ error: "StoryNotFound" }, 404);
-		}
-		throw error;
-	}
-});
-
-app.get("/api/stories/:storySlug/episodes/:episodeIdx", async (c) => {
-	try {
-		const { progress, season, episodeIdx, episode } = await loadOpenEpisode(
-			c.req.param("storySlug"),
-			c.req.param("episodeIdx"),
-			c.req.raw,
-			c.env,
-		);
-
-		return c.json({
-			text: episode.text,
-			episode_idx: episodeIdx,
-			current_episode: progress.current_episode,
-			season_slug: season.slug,
-			story_name: season.name,
-			total_episodes: season.episodes.length,
-		});
-	} catch (error) {
-		if (error instanceof AuthError) {
-			return c.json({ error: error.message }, error.status);
-		}
-		if (error instanceof EpisodeAccessError) {
-			return c.json({ error: error.message }, error.status);
-		}
-		if (error instanceof SeasonFileNotFoundError) {
-			return c.json({ error: "StoryNotFound" }, 404);
-		}
-		throw error;
-	}
-});
-
-app.get("/api/stories/:storySlug/episodes/:episodeIdx/audio", async (c) => {
-	try {
-		const storySlug = c.req.param("storySlug");
-		const { season, episodeIdx, episode } = await loadOpenEpisode(
-			storySlug,
-			c.req.param("episodeIdx"),
-			c.req.raw,
-			c.env,
-		);
-		const audio = await getAssetStore(c.env).readEpisodeAudio(
+		const audio = await assetStore.readEpisodeAudio(
 			season.slug,
 			episodeIdx,
 			episode.text,
@@ -799,71 +601,127 @@ app.get("/api/stories/:storySlug/episodes/:episodeIdx/audio", async (c) => {
 			return c.json({ error: "EpisodeAudioMissing" }, 404);
 		}
 
+		return new Response(
+			buildEpisodeCaptions(episode.text, audio.sidecar.durationSeconds),
+			{
+				headers: {
+					"content-type": "text/vtt; charset=utf-8",
+				},
+			},
+		);
+	},
+);
+
+app.get("/api/stories/:storySlug/current-episode", async (c) => {
+	const user = await requireUser(c.req.raw, c.env);
+	const season = await getStoryStore(c.env).readSeason(
+		c.req.param("storySlug"),
+	);
+	const progress = await getProgressStore(c.env).ensureStoryProgress(
+		user.email,
+		season.slug,
+	);
+
+	if (progress.current_episode >= season.episodes.length) {
 		return c.json({
+			complete: true,
+			current_episode: progress.current_episode,
 			season_slug: season.slug,
-			episode_idx: episodeIdx,
-			audio_url: `/api/stories/${encodeURIComponent(
-				storySlug,
-			)}/episodes/${episodeIdx}/audio/file`,
-			duration_seconds: audio.sidecar.durationSeconds,
-			words: audio.sidecar.words,
+			story_name: season.name,
+			total_episodes: season.episodes.length,
 		});
-	} catch (error) {
-		if (error instanceof AuthError) {
-			return c.json({ error: error.message }, error.status);
-		}
-		if (error instanceof EpisodeAccessError) {
-			return c.json({ error: error.message }, error.status);
-		}
-		if (error instanceof EpisodeAudioError) {
-			return c.json({ error: error.message }, error.status);
-		}
-		if (error instanceof SeasonFileNotFoundError) {
-			return c.json({ error: "StoryNotFound" }, 404);
-		}
-		throw error;
 	}
+
+	const episode = season.episodes[progress.current_episode];
+	if (!episode) {
+		return c.json({
+			complete: true,
+			current_episode: progress.current_episode,
+			season_slug: season.slug,
+			story_name: season.name,
+			total_episodes: season.episodes.length,
+		});
+	}
+
+	return c.json({
+		text: episode.text,
+		episode_idx: progress.current_episode,
+		current_episode: progress.current_episode,
+		season_slug: season.slug,
+		story_name: season.name,
+		total_episodes: season.episodes.length,
+	});
+});
+
+app.get("/api/stories/:storySlug/episodes/:episodeIdx", async (c) => {
+	const { progress, season, episodeIdx, episode } = await loadOpenEpisode(
+		c.req.param("storySlug"),
+		c.req.param("episodeIdx"),
+		c.req.raw,
+		c.env,
+	);
+
+	return c.json({
+		text: episode.text,
+		episode_idx: episodeIdx,
+		current_episode: progress.current_episode,
+		season_slug: season.slug,
+		story_name: season.name,
+		total_episodes: season.episodes.length,
+	});
+});
+
+app.get("/api/stories/:storySlug/episodes/:episodeIdx/audio", async (c) => {
+	const storySlug = c.req.param("storySlug");
+	const { season, episodeIdx, episode } = await loadOpenEpisode(
+		storySlug,
+		c.req.param("episodeIdx"),
+		c.req.raw,
+		c.env,
+	);
+	const audio = await getAssetStore(c.env).readEpisodeAudio(
+		season.slug,
+		episodeIdx,
+		episode.text,
+	);
+	if (!audio) {
+		return c.json({ error: "EpisodeAudioMissing" }, 404);
+	}
+
+	return c.json({
+		season_slug: season.slug,
+		episode_idx: episodeIdx,
+		audio_url: `/api/stories/${encodeURIComponent(
+			storySlug,
+		)}/episodes/${episodeIdx}/audio/file`,
+		duration_seconds: audio.sidecar.durationSeconds,
+		words: audio.sidecar.words,
+	});
 });
 
 app.get(
 	"/api/stories/:storySlug/episodes/:episodeIdx/audio/file",
 	async (c) => {
-		try {
-			const { season, episodeIdx, episode } = await loadOpenEpisode(
-				c.req.param("storySlug"),
-				c.req.param("episodeIdx"),
-				c.req.raw,
-				c.env,
-			);
-			const audio = await getAssetStore(c.env).readEpisodeAudioFile(
-				season.slug,
-				episodeIdx,
-				episode.text,
-				c.req.raw.headers,
-			);
-			if (!audio) {
-				return c.json({ error: "EpisodeAudioMissing" }, 404);
-			}
-
-			return new Response(audio.body, {
-				status: audio.status,
-				headers: audioFileHeaders(audio),
-			});
-		} catch (error) {
-			if (error instanceof AuthError) {
-				return c.json({ error: error.message }, error.status);
-			}
-			if (error instanceof EpisodeAccessError) {
-				return c.json({ error: error.message }, error.status);
-			}
-			if (error instanceof EpisodeAudioError) {
-				return c.json({ error: error.message }, error.status);
-			}
-			if (error instanceof SeasonFileNotFoundError) {
-				return c.json({ error: "StoryNotFound" }, 404);
-			}
-			throw error;
+		const { season, episodeIdx, episode } = await loadOpenEpisode(
+			c.req.param("storySlug"),
+			c.req.param("episodeIdx"),
+			c.req.raw,
+			c.env,
+		);
+		const audio = await getAssetStore(c.env).readEpisodeAudioFile(
+			season.slug,
+			episodeIdx,
+			episode.text,
+			c.req.raw.headers,
+		);
+		if (!audio) {
+			return c.json({ error: "EpisodeAudioMissing" }, 404);
 		}
+
+		return new Response(audio.body, {
+			status: audio.status,
+			headers: audioFileHeaders(audio),
+		});
 	},
 );
 
@@ -888,37 +746,21 @@ function audioFileHeaders(audio: {
 }
 
 app.post("/api/stories/:storySlug/episodes/:episodeIdx/reset", async (c) => {
-	try {
-		const user = await requireUser(c.req.raw, c.env);
-		const storySlug = c.req.param("storySlug");
-		const episodeIdx = parseEpisodeIdx(c.req.param("episodeIdx"));
-		const season = await getStoryStore(c.env).readSeason(storySlug);
-		const progress = await getProgressStore(c.env).ensureStoryProgress(
-			user.email,
-			season.slug,
-		);
-		assertEpisodeIsOpen(episodeIdx, progress.current_episode, MAX_EPISODES);
-		const nextProgress = await getProgressStore(c.env).resetStoryProgress(
-			user.email,
-			season.slug,
-			episodeIdx,
-		);
-		return c.json({ current_episode: nextProgress.current_episode });
-	} catch (error) {
-		if (error instanceof AuthError) {
-			return c.json({ error: error.message }, error.status);
-		}
-		if (error instanceof EpisodeAccessError) {
-			return c.json({ error: error.message }, error.status);
-		}
-		if (error instanceof ProgressMismatchError) {
-			return c.json({ error: error.message }, 409);
-		}
-		if (error instanceof SeasonFileNotFoundError) {
-			return c.json({ error: "StoryNotFound" }, 404);
-		}
-		throw error;
-	}
+	const user = await requireUser(c.req.raw, c.env);
+	const storySlug = c.req.param("storySlug");
+	const episodeIdx = parseEpisodeIdx(c.req.param("episodeIdx"));
+	const season = await getStoryStore(c.env).readSeason(storySlug);
+	const progress = await getProgressStore(c.env).ensureStoryProgress(
+		user.email,
+		season.slug,
+	);
+	assertEpisodeIsOpen(episodeIdx, progress.current_episode, MAX_EPISODES);
+	const nextProgress = await getProgressStore(c.env).resetStoryProgress(
+		user.email,
+		season.slug,
+		episodeIdx,
+	);
+	return c.json({ current_episode: nextProgress.current_episode });
 });
 
 function readPort(): number {

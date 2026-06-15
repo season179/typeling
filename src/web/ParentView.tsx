@@ -1,23 +1,6 @@
 import { useEffect, useState } from "react";
 import type { GraduationStatus } from "../lib/graduation";
-import type { Session, UserProfile } from "../lib/schemas/state";
-
-interface ProgressStory {
-	slug: string;
-	name: string;
-	theme: string;
-	total_episodes: number;
-	current_episode: number;
-	target_wpm: number;
-	rolling3: number | null;
-	status: GraduationStatus;
-	recent_sessions: Session[];
-}
-
-interface ProgressResponse {
-	user: UserProfile;
-	stories: ProgressStory[];
-}
+import { getProgress, type ProgressResponse } from "./api";
 
 const STATUS_MAP: Record<
 	GraduationStatus,
@@ -68,13 +51,7 @@ export default function ParentView() {
 				setLoading(true);
 				setError(null);
 
-				const res = await fetch("/api/progress", {
-					signal: controller.signal,
-				});
-				if (!res.ok) {
-					throw new Error(`HTTP ${res.status}`);
-				}
-				const nextData = (await res.json()) as ProgressResponse;
+				const nextData = await getProgress(controller.signal);
 				if (!controller.signal.aborted) {
 					setData(nextData);
 				}

@@ -10,6 +10,7 @@ import {
 } from "react";
 import { findActiveWordIndex } from "../lib/audioPlayback";
 import { tokenizeStoryText } from "../lib/storyWordTokens";
+import { getEpisodeAudio } from "./api";
 
 interface AudioWord {
 	index: number;
@@ -119,9 +120,10 @@ export default function StoryAudioPlayer({
 			setActiveWordIndex(null);
 
 			try {
-				const res = await fetch(
-					`/api/stories/${storySlug}/episodes/${episodeIdx}/audio`,
-					{ signal: controller.signal },
+				const res = await getEpisodeAudio(
+					storySlug,
+					episodeIdx,
+					controller.signal,
 				);
 				if (!res.ok) {
 					setAudioState("unavailable");

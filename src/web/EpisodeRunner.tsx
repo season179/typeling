@@ -9,6 +9,7 @@ import {
 import { useLocation } from "wouter";
 import { sentenceBoundaries } from "../lib/sentenceBoundaries";
 import { wpmFromCharsAndMs } from "../lib/wpm";
+import { postSession } from "./api";
 import { clearDraft, loadDraft, saveDraft } from "./episodeRunner/autosave";
 import { episodeRunnerReducer as cursorReducer } from "./episodeRunner/reducer";
 import { episodeRunnerReducer as sessionReducer } from "./episodeRunnerReducer";
@@ -241,11 +242,7 @@ export default function EpisodeRunner({
 			finished_at: new Date().toISOString(),
 		};
 
-		void fetch("/api/sessions", {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify(body),
-		})
+		void postSession(body)
 			.then((res) => {
 				if (res.ok) {
 					clearDraft(draftOwnerId, seasonSlug, episodeIdx);
