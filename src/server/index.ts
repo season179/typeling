@@ -1,4 +1,3 @@
-import { join } from "node:path";
 import { Hono } from "hono";
 import { z } from "zod";
 import seedStateData from "../../data/state.seed.json";
@@ -6,76 +5,51 @@ import winniSeasonData from "../../seasons/winni-s1.json";
 import zackSeasonData from "../../seasons/zack-s1.json";
 import { assertCharset, CharsetError } from "../lib/assertCharset";
 import { contentBlacklist } from "../lib/contentBlacklist";
+import { graduationStatus } from "../lib/graduation";
+import { rolling3Wpm } from "../lib/rolling3";
 import { MAX_EPISODES, seasonSchema } from "../lib/schemas/season";
-import { type State, sessionSchema, stateSchema } from "../lib/schemas/state";
 import {
-	accessIdentityFromRequest,
-	currentUserResponse,
-} from "./accessIdentity";
+	type Session,
+	type SignedInUser,
+	type StoryProgress,
+	sessionSubmissionSchema,
+	type UserProfile,
+} from "../lib/schemas/state";
+import { accessIdentityFromRequest, devSignedInUser } from "./accessIdentity";
 import {
 	DEFAULT_AUDIO_DIR,
 	DEFAULT_PORT,
 	DEFAULT_SEASONS_DIR,
-	DEFAULT_STATE_PATH,
 	HOSTNAME,
 } from "./config";
-import { ensureStateFile, type MutateFn } from "./state";
 import type {
 	AssetStore,
+	ProgressStore,
 	Season,
 	ServerBindings,
-	StateStore as StateStoreBackend,
 	StoryStore,
 } from "./stores";
 import {
+	D1ProgressStore,
 	D1StoryStore,
 	DiskAssetStore,
-	DiskStateStore,
 	DiskStoryStore,
 	EpisodeAudioError,
 	InMemoryAssetStore,
-	InMemoryStateStore,
+	InMemoryProgressStore,
 	InMemoryStoryStore,
+	ProgressMismatchError,
 	R2AssetStore,
 	SeasonFileNotFoundError,
+	SessionIdConflictError,
 } from "./stores";
 
 const WILDCARD_HOSTNAME = "0.0.0.0";
-const STATE_STORE_OBJECT_NAME = "typeling";
-const STATE_STORE_ROW_ID = "state";
 const LOCAL_ADMIN_HOSTNAMES = new Set(["127.0.0.1", "localhost", "::1"]);
 
 const adminEpisodeUpdateSchema = z.object({
 	text: z.string().min(1),
 });
-
-const childStorySelectionSchema = z.object({
-	story_slug: z.string().min(1),
-});
-
-interface DurableObjectContext {
-	storage: {
-		sql: SqlStorage;
-		transactionSync<T>(callback: () => T): T;
-	};
-	blockConcurrencyWhile(callback: () => Promise<void> | void): void;
-}
-
-interface SqlStorage {
-	exec<T = Record<string, unknown>>(
-		query: string,
-		...bindings: unknown[]
-	): SqlStorageCursor<T>;
-}
-
-interface SqlStorageCursor<T> {
-	toArray(): T[];
-	one(): T;
-}
-
-interface StoredStateRow {
-	json: string;
-}
 
 function isBunRuntime(): boolean {
 	return typeof Bun !== "undefined";
@@ -86,10 +60,6 @@ function bunEnv(name: string, fallback: string): string {
 		return fallback;
 	}
 	return Bun.env[name] ?? fallback;
-}
-
-function statePath(): string {
-	return bunEnv("TYPELING_STATE_PATH", DEFAULT_STATE_PATH);
 }
 
 function seasonsDir(): string {
@@ -107,21 +77,20 @@ function stripClientSessionIdentity(body: unknown): unknown {
 
 	const copy = { ...(body as Record<string, unknown>) };
 	delete copy.signed_in_user;
+	delete copy.child_id;
+	delete copy.email;
 	return copy;
 }
 
-const bundledState = stateSchema.parse(seedStateData);
+const realChildNames = Object.values(seedStateData.children).map((child) =>
+	child.name.trim(),
+);
 const bundledSeasons: Season[] = [winniSeasonData, zackSeasonData].map(
 	(season) => seasonSchema.parse(season),
 );
 
-type MismatchCode = "child_not_found" | "season_mismatch" | "episode_mismatch";
-type Child = State["children"][string];
-type ChildSeasonResult =
-	| { child: Child; season: Season }
-	| { error: "ChildNotFound"; status: 404 };
 type OpenEpisode = {
-	child: Child;
+	progress: StoryProgress;
 	season: Season;
 	episodeIdx: number;
 	episode: Season["episodes"][number];
@@ -135,18 +104,7 @@ type AdminAudioStatus =
 	| { status: "missing" }
 	| { status: "stale"; error: string };
 
-class SessionMismatchError extends Error {
-	constructor(code: MismatchCode) {
-		super(code);
-		this.name = "SessionMismatchError";
-	}
-}
-
-type EpisodeAccessCode =
-	| "ChildNotFound"
-	| "InvalidEpisode"
-	| "EpisodeNotFound"
-	| "EpisodeLocked";
+type EpisodeAccessCode = "InvalidEpisode" | "EpisodeNotFound" | "EpisodeLocked";
 
 class EpisodeAccessError extends Error {
 	status: 400 | 403 | 404;
@@ -168,27 +126,21 @@ class AdminAccessError extends Error {
 	}
 }
 
+class AuthError extends Error {
+	status = 401 as const;
+
+	constructor() {
+		super("AuthenticationRequired");
+		this.name = "AuthError";
+	}
+}
+
 export const app = new Hono<{ Bindings: ServerBindings }>();
 
 app.onError((error, c) => {
 	console.error(error);
 	return c.json({ error: error.name }, 500);
 });
-
-async function loadChildSeason(
-	childId: string,
-	env: ServerBindings = {},
-): Promise<ChildSeasonResult> {
-	const state = await getStateStore(env).readState();
-	const child = state.children[childId];
-	if (!child) {
-		return { error: "ChildNotFound" as const, status: 404 as const };
-	}
-
-	const season = await getStoryStore(env).readSeason(child.active_season);
-
-	return { child, season };
-}
 
 function parseEpisodeIdx(raw: string): number {
 	const episodeIdx = Number.parseInt(raw, 10);
@@ -212,20 +164,21 @@ function assertEpisodeIsOpen(
 }
 
 async function loadOpenEpisode(
-	childId: string,
+	storySlug: string,
 	rawEpisodeIdx: string,
+	request: Request,
 	env: ServerBindings = {},
 ): Promise<OpenEpisode> {
-	const result = await loadChildSeason(childId, env);
-	if ("error" in result) {
-		throw new EpisodeAccessError("ChildNotFound", 404);
-	}
-
 	const episodeIdx = parseEpisodeIdx(rawEpisodeIdx);
-	const { child, season } = result;
+	const user = await requireUser(request, env);
+	const season = await getStoryStore(env).readSeason(storySlug);
+	const progress = await getProgressStore(env).ensureStoryProgress(
+		user.email,
+		season.slug,
+	);
 	assertEpisodeIsOpen(
 		episodeIdx,
-		child.current_episode,
+		progress.current_episode,
 		season.episodes.length,
 	);
 
@@ -234,48 +187,26 @@ async function loadOpenEpisode(
 		throw new EpisodeAccessError("EpisodeNotFound", 404);
 	}
 
-	return { child, season, episodeIdx, episode };
+	return { progress, season, episodeIdx, episode };
 }
 
-const localStateStores = new Map<string, DiskStateStore>();
-let workerStateStore: InMemoryStateStore | undefined;
+let workerProgressStore: InMemoryProgressStore | undefined;
 let workerAssetStore: InMemoryAssetStore | undefined;
 let workerStoryStore: InMemoryStoryStore | undefined;
 
-function getDefaultStateStore(): StateStoreBackend {
-	if (!isBunRuntime()) {
-		workerStateStore ??= new InMemoryStateStore(bundledState);
-		return workerStateStore;
-	}
-
-	const path = statePath();
-	let store = localStateStores.get(path);
-	if (!store) {
-		store = new DiskStateStore(path);
-		localStateStores.set(path, store);
-	}
-	return store;
+function getDefaultProgressStore(): ProgressStore {
+	workerProgressStore ??= new InMemoryProgressStore();
+	return workerProgressStore;
 }
 
-function getStateStore(env: ServerBindings): StateStoreBackend {
-	return env.APP_STATE_STORE ?? getDefaultStateStore();
-}
-
-function hasBoundStateStore(env: ServerBindings): boolean {
-	return env.APP_STATE_STORE === undefined && env.STATE_STORE !== undefined;
-}
-
-function fetchFromBoundStateStore(
-	request: Request,
-	env: ServerBindings,
-): Response | Promise<Response> {
-	const namespace = env.STATE_STORE;
-	if (!namespace) {
-		throw new Error("STATE_STORE binding is missing");
+function getProgressStore(env: ServerBindings): ProgressStore {
+	if (env.PROGRESS_STORE) {
+		return env.PROGRESS_STORE;
 	}
-
-	const id = namespace.idFromName(STATE_STORE_OBJECT_NAME);
-	return namespace.get(id).fetch(request);
+	if (env.STORY_DB) {
+		return new D1ProgressStore(env.STORY_DB);
+	}
+	return getDefaultProgressStore();
 }
 
 function getDefaultAssetStore(): AssetStore {
@@ -320,6 +251,24 @@ function getStoryStore(env: ServerBindings): StoryStore {
 	return getDefaultStoryStore();
 }
 
+function currentIdentityFromRequest(request: Request): SignedInUser | null {
+	const accessIdentity = accessIdentityFromRequest(request);
+	if (accessIdentity) return accessIdentity;
+	if (isLocalAdminRequest(request)) return devSignedInUser;
+	return null;
+}
+
+async function requireUser(
+	request: Request,
+	env: ServerBindings,
+): Promise<UserProfile> {
+	const identity = currentIdentityFromRequest(request);
+	if (!identity) {
+		throw new AuthError();
+	}
+	return getProgressStore(env).upsertUser(identity);
+}
+
 function isLocalAdminHostname(hostname: string | null | undefined): boolean {
 	if (!hostname) return false;
 	const normalized = hostname.toLowerCase();
@@ -357,9 +306,8 @@ function escapeRegExp(input: string): string {
 	return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function findRealChildName(text: string, state: State): string | null {
-	for (const child of Object.values(state.children)) {
-		const name = child.name.trim();
+function findRealChildName(text: string): string | null {
+	for (const name of realChildNames) {
 		if (!name) continue;
 		const pattern = new RegExp(`\\b${escapeRegExp(name)}\\b`, "i");
 		if (pattern.test(text)) return name;
@@ -367,7 +315,7 @@ function findRealChildName(text: string, state: State): string | null {
 	return null;
 }
 
-function assertAdminStoryText(text: string, state: State): void {
+function assertAdminStoryText(text: string): void {
 	try {
 		assertCharset(text);
 	} catch (error) {
@@ -381,7 +329,7 @@ function assertAdminStoryText(text: string, state: State): void {
 		throw new AdminAccessError("UnsafeStoryText", 422);
 	}
 
-	if (findRealChildName(text, state)) {
+	if (findRealChildName(text)) {
 		throw new AdminAccessError("RealChildNameInStory", 422);
 	}
 }
@@ -415,7 +363,7 @@ async function loadAdminAudioStatus(
 }
 
 async function loadAdminSeason(
-	child: Child,
+	seasonSlug: string,
 	env: ServerBindings,
 ): Promise<
 	Season & {
@@ -429,7 +377,7 @@ async function loadAdminSeason(
 	}
 > {
 	const assetStore = getAssetStore(env);
-	const season = await getStoryStore(env).readSeason(child.active_season);
+	const season = await getStoryStore(env).readSeason(seasonSlug);
 	const episodes = await Promise.all(
 		season.episodes.map(async (episode) => ({
 			...episode,
@@ -472,54 +420,42 @@ function buildEpisodeCaptions(
 }
 
 app.post("/api/sessions", async (c) => {
-	const stateStore = getStateStore(c.env);
-	const signedInUser = accessIdentityFromRequest(c.req.raw);
-
 	const body = await c.req.json().catch(() => null);
-	const parsed = sessionSchema.safeParse(stripClientSessionIdentity(body));
+	const parsed = sessionSubmissionSchema.safeParse(
+		stripClientSessionIdentity(body),
+	);
 	if (!parsed.success) {
 		return c.json({ error: "InvalidSession" }, 400);
 	}
-	const sessionData = signedInUser
-		? { ...parsed.data, signed_in_user: signedInUser }
-		: parsed.data;
 
 	try {
-		const nextState = await stateStore.mutateState((current) => {
-			if (current.sessions.some((s) => s.id === sessionData.id)) return current;
-
-			const child = current.children[sessionData.child_id];
-			if (!child) {
-				throw new SessionMismatchError("child_not_found");
-			}
-			if (sessionData.season_slug !== child.active_season) {
-				throw new SessionMismatchError("season_mismatch");
-			}
-			if (sessionData.episode_idx > child.current_episode) {
-				throw new SessionMismatchError("episode_mismatch");
-			}
-
-			return {
-				...current,
-				children: {
-					...current.children,
-					[sessionData.child_id]: {
-						...child,
-						current_episode:
-							sessionData.episode_idx === child.current_episode
-								? sessionData.episode_idx + 1
-								: child.current_episode,
-					},
-				},
-				sessions: [...current.sessions, sessionData],
-			};
-		});
-
-		const session = nextState.sessions.find((s) => s.id === sessionData.id);
+		const user = await requireUser(c.req.raw, c.env);
+		const season = await getStoryStore(c.env).readSeason(
+			parsed.data.season_slug,
+		);
+		if (!season.episodes[parsed.data.episode_idx]) {
+			throw new EpisodeAccessError("EpisodeNotFound", 404);
+		}
+		const session = await getProgressStore(c.env).createSession(
+			user.email,
+			parsed.data,
+		);
 		return c.json(session, 200);
 	} catch (error) {
-		if (error instanceof SessionMismatchError) {
+		if (error instanceof AuthError) {
+			return c.json({ error: error.message }, error.status);
+		}
+		if (error instanceof ProgressMismatchError) {
 			return c.json({ error: error.message }, 409);
+		}
+		if (error instanceof SessionIdConflictError) {
+			return c.json({ error: "session_conflict" }, 409);
+		}
+		if (error instanceof EpisodeAccessError) {
+			return c.json({ error: error.message }, error.status);
+		}
+		if (error instanceof SeasonFileNotFoundError) {
+			return c.json({ error: "StoryNotFound" }, 404);
 		}
 		throw error;
 	}
@@ -529,32 +465,83 @@ app.get("/api/health", (c) => {
 	return c.json({ ok: true });
 });
 
-app.get("/api/me", (c) => {
-	return c.json(currentUserResponse(c.req.raw));
+app.get("/api/me", async (c) => {
+	try {
+		const identity = currentIdentityFromRequest(c.req.raw);
+		if (!identity) {
+			return c.json({ authenticated: false });
+		}
+		const user = await getProgressStore(c.env).upsertUser(identity);
+		return c.json({ authenticated: true, user });
+	} catch (error) {
+		if (error instanceof AuthError) {
+			return c.json({ authenticated: false });
+		}
+		throw error;
+	}
 });
 
 app.get("/api/stories", async (c) => {
 	return c.json(await getStoryStore(c.env).listStories());
 });
 
-app.get("/api/admin/children", async (c) => {
+app.get("/api/progress", async (c) => {
+	try {
+		const user = await requireUser(c.req.raw, c.env);
+		const [stories, progressRows, sessions] = await Promise.all([
+			getStoryStore(c.env).listStories(),
+			getProgressStore(c.env).listStoryProgress(user.email),
+			getProgressStore(c.env).listSessions(user.email),
+		]);
+		const progressByStory = new Map(
+			progressRows.map((progress) => [progress.season_slug, progress]),
+		);
+		const sessionsByStory = new Map<string, Session[]>();
+		for (const session of sessions) {
+			const storySessions = sessionsByStory.get(session.season_slug) ?? [];
+			storySessions.push(session);
+			sessionsByStory.set(session.season_slug, storySessions);
+		}
+
+		return c.json({
+			user,
+			stories: stories.map((story) => {
+				const storySessions = sessionsByStory.get(story.slug) ?? [];
+				const rolling3 = rolling3Wpm(storySessions, {
+					seasonSlug: story.slug,
+				});
+				return {
+					...story,
+					current_episode:
+						progressByStory.get(story.slug)?.current_episode ?? 0,
+					target_wpm: user.target_wpm,
+					rolling3,
+					status: graduationStatus(rolling3, user.target_wpm),
+					recent_sessions: storySessions.slice(0, 10),
+				};
+			}),
+		});
+	} catch (error) {
+		if (error instanceof AuthError) {
+			return c.json({ error: error.message }, error.status);
+		}
+		throw error;
+	}
+});
+
+app.get("/api/admin/stories", async (c) => {
 	try {
 		assertLocalAdminRequest(c.req.raw);
-
-		const state = await getStateStore(c.env).readState();
-		const children = await Promise.all(
-			Object.entries(state.children).map(async ([id, child]) => ({
-				id,
-				...child,
-				season: await loadAdminSeason(child, c.env),
-			})),
+		const stories = await getStoryStore(c.env).listStories();
+		const seasons = await Promise.all(
+			stories.map(async (story) => loadAdminSeason(story.slug, c.env)),
 		);
 
 		return c.json({
 			admin: {
 				access: "local-only",
 			},
-			children,
+			stories: seasons,
 		});
 	} catch (error) {
 		if (error instanceof AdminAccessError) {
@@ -569,7 +556,6 @@ app.put("/api/admin/seasons/:slug/episodes/:episodeIdx", async (c) => {
 		assertLocalAdminRequest(c.req.raw);
 		assertStoryWriteAllowed(c.env);
 
-		const state = await getStateStore(c.env).readState();
 		const body = await c.req.json().catch(() => null);
 		const parsed = adminEpisodeUpdateSchema.safeParse(body);
 		if (!parsed.success) {
@@ -585,7 +571,7 @@ app.put("/api/admin/seasons/:slug/episodes/:episodeIdx", async (c) => {
 			throw new AdminAccessError("EpisodeNotFound", 404);
 		}
 
-		assertAdminStoryText(parsed.data.text, state);
+		assertAdminStoryText(parsed.data.text);
 
 		const savedSeason = await storyStore.writeEpisodeText(
 			slug,
@@ -713,170 +699,95 @@ app.get(
 	},
 );
 
-app.get("/api/children", async (c) => {
-	const state = await getStateStore(c.env).readState();
-	return c.json(state.children);
-});
-
-app.get("/api/children/:id/sessions", async (c) => {
-	const childId = c.req.param("id");
-	const state = await getStateStore(c.env).readState();
-	const child = state.children[childId];
-	if (!child) {
-		return c.json({ error: "ChildNotFound" }, 404);
-	}
-
-	const childSessions = state.sessions
-		.filter((s) => s.child_id === childId)
-		.sort((a, b) => b.finished_at.localeCompare(a.finished_at));
-
-	return c.json(childSessions);
-});
-
-app.put("/api/children/:id/story", async (c) => {
-	const childId = c.req.param("id");
-	const body = await c.req.json().catch(() => null);
-	const parsed = childStorySelectionSchema.safeParse(body);
-	if (!parsed.success) {
-		return c.json({ error: "InvalidStorySelection" }, 400);
-	}
-
-	const storyStore = getStoryStore(c.env);
-	let season: Season;
+app.get("/api/stories/:storySlug/current-episode", async (c) => {
 	try {
-		season = await storyStore.readSeason(parsed.data.story_slug);
+		const user = await requireUser(c.req.raw, c.env);
+		const season = await getStoryStore(c.env).readSeason(
+			c.req.param("storySlug"),
+		);
+		const progress = await getProgressStore(c.env).ensureStoryProgress(
+			user.email,
+			season.slug,
+		);
+
+		if (progress.current_episode >= season.episodes.length) {
+			return c.json({
+				complete: true,
+				current_episode: progress.current_episode,
+				season_slug: season.slug,
+				story_name: season.name,
+				total_episodes: season.episodes.length,
+			});
+		}
+
+		const episode = season.episodes[progress.current_episode];
+		if (!episode) {
+			return c.json({
+				complete: true,
+				current_episode: progress.current_episode,
+				season_slug: season.slug,
+				story_name: season.name,
+				total_episodes: season.episodes.length,
+			});
+		}
+
+		return c.json({
+			text: episode.text,
+			episode_idx: progress.current_episode,
+			current_episode: progress.current_episode,
+			season_slug: season.slug,
+			story_name: season.name,
+			total_episodes: season.episodes.length,
+		});
 	} catch (error) {
+		if (error instanceof AuthError) {
+			return c.json({ error: error.message }, error.status);
+		}
 		if (error instanceof SeasonFileNotFoundError) {
 			return c.json({ error: "StoryNotFound" }, 404);
 		}
 		throw error;
 	}
+});
 
+app.get("/api/stories/:storySlug/episodes/:episodeIdx", async (c) => {
 	try {
-		const nextState = await getStateStore(c.env).mutateState((current) => {
-			const child = current.children[childId];
-			if (!child) {
-				throw new EpisodeAccessError("ChildNotFound", 404);
-			}
-			if (child.active_season === season.slug) {
-				return current;
-			}
-
-			return {
-				...current,
-				children: {
-					...current.children,
-					[childId]: {
-						...child,
-						active_season: season.slug,
-						current_episode: 0,
-						current_session_id: null,
-					},
-				},
-			};
-		});
-		const child = nextState.children[childId];
-		return c.json({
-			child: child ? { id: childId, ...child } : null,
-			story: {
-				slug: season.slug,
-				name: season.name,
-				theme: season.theme,
-				total_episodes: season.episodes.length,
-			},
-		});
-	} catch (error) {
-		if (error instanceof EpisodeAccessError) {
-			return c.json({ error: error.message }, error.status);
-		}
-		throw error;
-	}
-});
-
-app.get("/api/children/:id/season", async (c) => {
-	const result = await loadChildSeason(c.req.param("id"), c.env);
-	if ("error" in result) {
-		return c.json({ error: result.error }, result.status);
-	}
-
-	return c.json({
-		slug: result.season.slug,
-		name: result.season.name,
-		theme: result.season.theme,
-		total_episodes: result.season.episodes.length,
-		current_episode: result.child.current_episode,
-	});
-});
-
-app.get("/api/children/:id/current-episode", async (c) => {
-	const result = await loadChildSeason(c.req.param("id"), c.env);
-	if ("error" in result) {
-		return c.json({ error: result.error }, result.status);
-	}
-
-	const { child, season } = result;
-
-	if (child.current_episode >= season.episodes.length) {
-		return c.json({
-			complete: true,
-			current_episode: child.current_episode,
-			season_slug: season.slug,
-			story_name: season.name,
-			total_episodes: season.episodes.length,
-		});
-	}
-
-	const episode = season.episodes[child.current_episode];
-	if (!episode) {
-		return c.json({
-			complete: true,
-			current_episode: child.current_episode,
-			season_slug: season.slug,
-			story_name: season.name,
-			total_episodes: season.episodes.length,
-		});
-	}
-
-	return c.json({
-		text: episode.text,
-		episode_idx: child.current_episode,
-		current_episode: child.current_episode,
-		season_slug: season.slug,
-		story_name: season.name,
-		total_episodes: season.episodes.length,
-	});
-});
-
-app.get("/api/children/:id/episodes/:episodeIdx", async (c) => {
-	try {
-		const { child, season, episodeIdx, episode } = await loadOpenEpisode(
-			c.req.param("id"),
+		const { progress, season, episodeIdx, episode } = await loadOpenEpisode(
+			c.req.param("storySlug"),
 			c.req.param("episodeIdx"),
+			c.req.raw,
 			c.env,
 		);
 
 		return c.json({
 			text: episode.text,
 			episode_idx: episodeIdx,
-			current_episode: child.current_episode,
+			current_episode: progress.current_episode,
 			season_slug: season.slug,
 			story_name: season.name,
 			total_episodes: season.episodes.length,
 		});
 	} catch (error) {
+		if (error instanceof AuthError) {
+			return c.json({ error: error.message }, error.status);
+		}
 		if (error instanceof EpisodeAccessError) {
 			return c.json({ error: error.message }, error.status);
+		}
+		if (error instanceof SeasonFileNotFoundError) {
+			return c.json({ error: "StoryNotFound" }, 404);
 		}
 		throw error;
 	}
 });
 
-app.get("/api/children/:id/episodes/:episodeIdx/audio", async (c) => {
+app.get("/api/stories/:storySlug/episodes/:episodeIdx/audio", async (c) => {
 	try {
-		const childId = c.req.param("id");
+		const storySlug = c.req.param("storySlug");
 		const { season, episodeIdx, episode } = await loadOpenEpisode(
-			childId,
+			storySlug,
 			c.req.param("episodeIdx"),
+			c.req.raw,
 			c.env,
 		);
 		const audio = await getAssetStore(c.env).readEpisodeAudio(
@@ -891,54 +802,70 @@ app.get("/api/children/:id/episodes/:episodeIdx/audio", async (c) => {
 		return c.json({
 			season_slug: season.slug,
 			episode_idx: episodeIdx,
-			audio_url: `/api/children/${encodeURIComponent(
-				childId,
+			audio_url: `/api/stories/${encodeURIComponent(
+				storySlug,
 			)}/episodes/${episodeIdx}/audio/file`,
 			duration_seconds: audio.sidecar.durationSeconds,
 			words: audio.sidecar.words,
 		});
 	} catch (error) {
+		if (error instanceof AuthError) {
+			return c.json({ error: error.message }, error.status);
+		}
 		if (error instanceof EpisodeAccessError) {
 			return c.json({ error: error.message }, error.status);
 		}
 		if (error instanceof EpisodeAudioError) {
 			return c.json({ error: error.message }, error.status);
 		}
-		throw error;
-	}
-});
-
-app.get("/api/children/:id/episodes/:episodeIdx/audio/file", async (c) => {
-	try {
-		const { season, episodeIdx, episode } = await loadOpenEpisode(
-			c.req.param("id"),
-			c.req.param("episodeIdx"),
-			c.env,
-		);
-		const audio = await getAssetStore(c.env).readEpisodeAudioFile(
-			season.slug,
-			episodeIdx,
-			episode.text,
-			c.req.raw.headers,
-		);
-		if (!audio) {
-			return c.json({ error: "EpisodeAudioMissing" }, 404);
-		}
-
-		return new Response(audio.body, {
-			status: audio.status,
-			headers: audioFileHeaders(audio),
-		});
-	} catch (error) {
-		if (error instanceof EpisodeAccessError) {
-			return c.json({ error: error.message }, error.status);
-		}
-		if (error instanceof EpisodeAudioError) {
-			return c.json({ error: error.message }, error.status);
+		if (error instanceof SeasonFileNotFoundError) {
+			return c.json({ error: "StoryNotFound" }, 404);
 		}
 		throw error;
 	}
 });
+
+app.get(
+	"/api/stories/:storySlug/episodes/:episodeIdx/audio/file",
+	async (c) => {
+		try {
+			const { season, episodeIdx, episode } = await loadOpenEpisode(
+				c.req.param("storySlug"),
+				c.req.param("episodeIdx"),
+				c.req.raw,
+				c.env,
+			);
+			const audio = await getAssetStore(c.env).readEpisodeAudioFile(
+				season.slug,
+				episodeIdx,
+				episode.text,
+				c.req.raw.headers,
+			);
+			if (!audio) {
+				return c.json({ error: "EpisodeAudioMissing" }, 404);
+			}
+
+			return new Response(audio.body, {
+				status: audio.status,
+				headers: audioFileHeaders(audio),
+			});
+		} catch (error) {
+			if (error instanceof AuthError) {
+				return c.json({ error: error.message }, error.status);
+			}
+			if (error instanceof EpisodeAccessError) {
+				return c.json({ error: error.message }, error.status);
+			}
+			if (error instanceof EpisodeAudioError) {
+				return c.json({ error: error.message }, error.status);
+			}
+			if (error instanceof SeasonFileNotFoundError) {
+				return c.json({ error: "StoryNotFound" }, 404);
+			}
+			throw error;
+		}
+	},
+);
 
 function audioFileHeaders(audio: {
 	contentLength?: number;
@@ -960,53 +887,35 @@ function audioFileHeaders(audio: {
 	return headers;
 }
 
-app.post("/api/children/:id/episodes/:episodeIdx/reset", async (c) => {
-	const stateStore = getStateStore(c.env);
-
+app.post("/api/stories/:storySlug/episodes/:episodeIdx/reset", async (c) => {
 	try {
-		const childId = c.req.param("id");
+		const user = await requireUser(c.req.raw, c.env);
+		const storySlug = c.req.param("storySlug");
 		const episodeIdx = parseEpisodeIdx(c.req.param("episodeIdx"));
-
-		const nextState = await stateStore.mutateState((current) => {
-			const child = current.children[childId];
-			if (!child) {
-				throw new EpisodeAccessError("ChildNotFound", 404);
-			}
-			assertEpisodeIsOpen(episodeIdx, child.current_episode, MAX_EPISODES);
-
-			const nextSessions = current.sessions.filter(
-				(s) =>
-					s.child_id !== childId ||
-					s.season_slug !== child.active_season ||
-					s.episode_idx < episodeIdx,
-			);
-			if (
-				child.current_episode === episodeIdx &&
-				child.current_session_id === null &&
-				nextSessions.length === current.sessions.length
-			) {
-				return current;
-			}
-
-			return {
-				...current,
-				children: {
-					...current.children,
-					[childId]: {
-						...child,
-						current_episode: episodeIdx,
-						current_session_id: null,
-					},
-				},
-				sessions: nextSessions,
-			};
-		});
-
-		const child = nextState.children[childId];
-		return c.json({ current_episode: child?.current_episode ?? episodeIdx });
+		const season = await getStoryStore(c.env).readSeason(storySlug);
+		const progress = await getProgressStore(c.env).ensureStoryProgress(
+			user.email,
+			season.slug,
+		);
+		assertEpisodeIsOpen(episodeIdx, progress.current_episode, MAX_EPISODES);
+		const nextProgress = await getProgressStore(c.env).resetStoryProgress(
+			user.email,
+			season.slug,
+			episodeIdx,
+		);
+		return c.json({ current_episode: nextProgress.current_episode });
 	} catch (error) {
+		if (error instanceof AuthError) {
+			return c.json({ error: error.message }, error.status);
+		}
 		if (error instanceof EpisodeAccessError) {
 			return c.json({ error: error.message }, error.status);
+		}
+		if (error instanceof ProgressMismatchError) {
+			return c.json({ error: error.message }, 409);
+		}
+		if (error instanceof SeasonFileNotFoundError) {
+			return c.json({ error: "StoryNotFound" }, 404);
 		}
 		throw error;
 	}
@@ -1036,11 +945,10 @@ function isServerBindings(value: unknown): value is ServerBindings {
 	return (
 		typeof value === "object" &&
 		value !== null &&
-		("APP_STATE_STORE" in value ||
-			"ASSET_STORE" in value ||
+		("ASSET_STORE" in value ||
 			"STORY_DB" in value ||
 			"STORY_STORE" in value ||
-			"STATE_STORE" in value ||
+			"PROGRESS_STORE" in value ||
 			"ASSETS_BUCKET" in value)
 	);
 }
@@ -1059,96 +967,10 @@ export function fetch(request: Request, envOrServer?: unknown) {
 	}
 
 	const env = isServerBindings(envOrServer) ? envOrServer : {};
-	if (hasBoundStateStore(env)) {
-		return fetchFromBoundStateStore(request, env);
-	}
 	return app.fetch(request, env);
 }
 
-export class StateStore implements StateStoreBackend {
-	#ctx: DurableObjectContext;
-	#env: ServerBindings;
-
-	constructor(ctx: DurableObjectContext, env: ServerBindings = {}) {
-		this.#ctx = ctx;
-		this.#env = env;
-		this.#ctx.blockConcurrencyWhile(() => {
-			this.#initializeStorage();
-		});
-	}
-
-	async readState(): Promise<State> {
-		return this.#readStoredState();
-	}
-
-	async mutateState(fn: MutateFn): Promise<State> {
-		return this.#ctx.storage.transactionSync(() => {
-			const current = this.#readStoredState();
-			const next = fn(current);
-			const parsed = stateSchema.parse(structuredClone(next));
-			if (next !== current) {
-				this.#writeState(parsed);
-			}
-			return structuredClone(parsed);
-		});
-	}
-
-	fetch(request: Request): Response | Promise<Response> {
-		return app.fetch(request, {
-			...this.#env,
-			APP_STATE_STORE: this,
-		});
-	}
-
-	#initializeStorage(): void {
-		this.#ctx.storage.sql.exec(`
-			CREATE TABLE IF NOT EXISTS app_state (
-				id TEXT PRIMARY KEY,
-				json TEXT NOT NULL
-			)
-		`);
-
-		const rows = this.#ctx.storage.sql
-			.exec<StoredStateRow>(
-				"SELECT json FROM app_state WHERE id = ?",
-				STATE_STORE_ROW_ID,
-			)
-			.toArray();
-		if (rows.length === 0) {
-			this.#writeState(bundledState);
-		}
-	}
-
-	#readStoredState(): State {
-		const row = this.#ctx.storage.sql
-			.exec<StoredStateRow>(
-				"SELECT json FROM app_state WHERE id = ?",
-				STATE_STORE_ROW_ID,
-			)
-			.one();
-		return stateSchema.parse(JSON.parse(row.json));
-	}
-
-	#writeState(state: State): void {
-		this.#ctx.storage.sql.exec(
-			`
-				INSERT INTO app_state (id, json)
-				VALUES (?, ?)
-				ON CONFLICT(id) DO UPDATE SET json = excluded.json
-			`,
-			STATE_STORE_ROW_ID,
-			JSON.stringify(stateSchema.parse(structuredClone(state))),
-		);
-	}
-}
-
 if (import.meta.main) {
-	const seedPath = join(import.meta.dir, "..", "..", "data", "state.seed.json");
-	const seeded = await ensureStateFile(statePath(), seedPath);
-	if (seeded) {
-		console.log(`Seeded state from ${seedPath}`);
-	}
-
 	const port = readPort();
 
 	Bun.serve({

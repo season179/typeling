@@ -12,13 +12,14 @@ const window = new GlobalWindow() as unknown as Window & typeof globalThis;
 
 const defaultProps = {
 	episodeText: "Hello world.",
-	childId: "test-child",
+	storySlug: "test-story",
+	draftOwnerId: "test@example.com",
 	seasonSlug: "test-season",
 	episodeIdx: 0,
 } as const;
 
 function renderWithRouter(ui: React.ReactElement) {
-	const { hook } = memoryLocation({ path: "/play/test-child" });
+	const { hook } = memoryLocation({ path: "/play/test-story" });
 	return {
 		...render(<Router hook={hook}>{ui}</Router>),
 	};
@@ -227,15 +228,19 @@ describe("EpisodeRunner", () => {
 			return Promise.resolve(new Response("{}", { status: 200 }));
 		}) as typeof fetch;
 
-		const { hook, history } = memoryLocation({ path: "/play/winni", record: true });
+		const { hook, history } = memoryLocation({
+			path: "/play/winni-story",
+			record: true,
+		});
 
 		try {
 			const { getByTestId } = render(
 				<Router hook={hook}>
-					<Route path="/play/:childId">
+					<Route path="/play/:storySlug">
 						<EpisodeRunner
 							episodeText="ab"
-							childId="winni"
+							storySlug="winni-story"
+							draftOwnerId="winni@example.com"
 							seasonSlug="winni-s1"
 							episodeIdx={0}
 						/>
@@ -270,7 +275,6 @@ describe("EpisodeRunner", () => {
 
 			expect(fetchBody).toMatchObject({
 				id: expect.any(String) as string,
-				child_id: "winni",
 				season_slug: "winni-s1",
 				episode_idx: 0,
 				wpm: expect.any(Number) as number,
@@ -283,7 +287,7 @@ describe("EpisodeRunner", () => {
 			// Navigation should have happened
 			await waitFor(() => {
 				expect(history[history.length - 1]).toBe(
-					"/play/winni/complete/0",
+					"/play/winni-story/complete/0",
 				);
 			});
 		} finally {
@@ -296,15 +300,19 @@ describe("EpisodeRunner", () => {
 		globalThis.fetch = (() =>
 			Promise.resolve(new Response("{}", { status: 400 }))) as unknown as typeof fetch;
 
-		const { hook, history } = memoryLocation({ path: "/play/winni", record: true });
+		const { hook, history } = memoryLocation({
+			path: "/play/winni-story",
+			record: true,
+		});
 
 		try {
 			const { getByTestId } = render(
 				<Router hook={hook}>
-					<Route path="/play/:childId">
+					<Route path="/play/:storySlug">
 						<EpisodeRunner
 							episodeText="a"
-							childId="winni"
+							storySlug="winni-story"
+							draftOwnerId="winni@example.com"
 							seasonSlug="winni-s1"
 							episodeIdx={0}
 						/>
@@ -330,7 +338,7 @@ describe("EpisodeRunner", () => {
 
 			// Navigation should NOT have happened
 			expect(history.length).toBe(1);
-			expect(history[0]).toBe("/play/winni");
+			expect(history[0]).toBe("/play/winni-story");
 		} finally {
 			globalThis.fetch = originalFetch;
 		}
@@ -344,15 +352,16 @@ describe("EpisodeRunner", () => {
 			return Promise.resolve(new Response("{}", { status: 200 }));
 		}) as typeof fetch;
 
-		const { hook } = memoryLocation({ path: "/play/winni" });
+		const { hook } = memoryLocation({ path: "/play/winni-story" });
 
 		try {
 			const { getByTestId } = render(
 				<Router hook={hook}>
-					<Route path="/play/:childId">
+					<Route path="/play/:storySlug">
 						<EpisodeRunner
 							episodeText="a"
-							childId="winni"
+							storySlug="winni-story"
+							draftOwnerId="winni@example.com"
 							seasonSlug="winni-s1"
 							episodeIdx={0}
 						/>
@@ -437,12 +446,17 @@ describe("EpisodeRunner", () => {
 	});
 
 	it("restores cursorIdx from localStorage draft on mount", async () => {
-		saveDraft(defaultProps.childId, defaultProps.seasonSlug, defaultProps.episodeIdx, {
-			sessionId: "draft-session-uuid",
-			cursorIdx: 6,
-			activeMs: 5000,
-			lastKeystrokeAt: 1715300000000,
-		});
+		saveDraft(
+			defaultProps.draftOwnerId,
+			defaultProps.seasonSlug,
+			defaultProps.episodeIdx,
+			{
+				sessionId: "draft-session-uuid",
+				cursorIdx: 6,
+				activeMs: 5000,
+				lastKeystrokeAt: 1715300000000,
+			},
+		);
 
 		const { getByTestId } = renderWithRouter(
 			<EpisodeRunner {...defaultProps} episodeText="Hello world." />,
@@ -454,12 +468,17 @@ describe("EpisodeRunner", () => {
 	});
 
 	it("restores activeMs from localStorage draft on mount", async () => {
-		saveDraft(defaultProps.childId, defaultProps.seasonSlug, defaultProps.episodeIdx, {
-			sessionId: "draft-session-uuid",
-			cursorIdx: 3,
-			activeMs: 9999,
-			lastKeystrokeAt: 1715300000000,
-		});
+		saveDraft(
+			defaultProps.draftOwnerId,
+			defaultProps.seasonSlug,
+			defaultProps.episodeIdx,
+			{
+				sessionId: "draft-session-uuid",
+				cursorIdx: 3,
+				activeMs: 9999,
+				lastKeystrokeAt: 1715300000000,
+			},
+		);
 
 		const { getByTestId } = renderWithRouter(
 			<EpisodeRunner {...defaultProps} episodeText="Hello world." />,
@@ -471,12 +490,17 @@ describe("EpisodeRunner", () => {
 	});
 
 	it("restores sessionId from localStorage draft on mount", async () => {
-		saveDraft(defaultProps.childId, defaultProps.seasonSlug, defaultProps.episodeIdx, {
-			sessionId: "existing-session-id",
-			cursorIdx: 0,
-			activeMs: 0,
-			lastKeystrokeAt: null,
-		});
+		saveDraft(
+			defaultProps.draftOwnerId,
+			defaultProps.seasonSlug,
+			defaultProps.episodeIdx,
+			{
+				sessionId: "existing-session-id",
+				cursorIdx: 0,
+				activeMs: 0,
+				lastKeystrokeAt: null,
+			},
+		);
 
 		const { getByTestId } = renderWithRouter(
 			<EpisodeRunner {...defaultProps} episodeText="Hello world." />,
@@ -488,7 +512,11 @@ describe("EpisodeRunner", () => {
 	});
 
 	it("starts fresh when no draft exists", async () => {
-		clearDraft(defaultProps.childId, defaultProps.seasonSlug, defaultProps.episodeIdx);
+		clearDraft(
+			defaultProps.draftOwnerId,
+			defaultProps.seasonSlug,
+			defaultProps.episodeIdx,
+		);
 
 		const { getByTestId } = renderWithRouter(
 			<EpisodeRunner {...defaultProps} episodeText="Hello world." />,

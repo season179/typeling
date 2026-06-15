@@ -21,19 +21,5 @@
 			"database_name": "typeling-content",
 			"database_id": "a3df3c02-1dec-414a-8a90-507b55549a4c"
 		}
-	],
-	"durable_objects": {
-		"bindings": [
-			{
-				"name": "STATE_STORE",
-				"class_name": "StateStore"
-			}
-		]
-	},
-	"migrations": [
-		{
-			"tag": "v1",
-			"new_sqlite_classes": ["StateStore"]
-		}
 	]
 }

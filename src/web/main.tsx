@@ -20,13 +20,13 @@ createRoot(rootElement).render(
 			<Route path="/" component={App} />
 			<Route path="/admin" component={AdminView} />
 			<Route path="/parent" component={ParentView} />
-			<Route path="/play/:childId" component={PlayEpisode} />
+			<Route path="/play/:storySlug" component={PlayEpisode} />
 			<Route
-				path="/play/:childId/episode/:episodeIdx"
+				path="/play/:storySlug/episode/:episodeIdx"
 				component={PlayEpisode}
 			/>
 			<Route
-				path="/play/:childId/complete/:episodeIdx"
+				path="/play/:storySlug/complete/:episodeIdx"
 				component={CompleteEpisode}
 			/>
 		</Router>

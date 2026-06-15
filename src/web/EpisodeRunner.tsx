@@ -15,14 +15,18 @@ import { episodeRunnerReducer as sessionReducer } from "./episodeRunnerReducer";
 
 interface EpisodeRunnerProps {
 	episodeText: string;
-	childId: string;
+	storySlug: string;
+	draftOwnerId: string;
 	seasonSlug: string;
 	episodeIdx: number;
 	totalEpisodes?: number;
 }
 
-function themeForChild(childId: string): "winni" | "zack" {
-	return childId.toLowerCase().includes("zack") ? "zack" : "winni";
+function themeForStory(storySlug: string): "winni" | "zack" {
+	return storySlug.toLowerCase().includes("zack") ||
+		storySlug.toLowerCase().includes("science")
+		? "zack"
+		: "winni";
 }
 
 function progressForCursor(cursorIdx: number, textLength: number) {
@@ -63,7 +67,8 @@ function cursorLetterClass(isFlashing: boolean) {
 
 export default function EpisodeRunner({
 	episodeText,
-	childId,
+	storySlug,
+	draftOwnerId,
 	seasonSlug,
 	episodeIdx,
 	totalEpisodes = 14,
@@ -94,7 +99,7 @@ export default function EpisodeRunner({
 	const [now, setNow] = useState(Date.now());
 
 	useEffect(() => {
-		const draft = loadDraft(childId, seasonSlug, episodeIdx);
+		const draft = loadDraft(draftOwnerId, seasonSlug, episodeIdx);
 		if (draft) {
 			sessionDispatch({ type: "INIT", sessionId: draft.sessionId });
 			cursorDispatch({
@@ -108,7 +113,7 @@ export default function EpisodeRunner({
 		} else {
 			sessionDispatch({ type: "INIT", sessionId: crypto.randomUUID() });
 		}
-	}, [childId, seasonSlug, episodeIdx]);
+	}, [draftOwnerId, seasonSlug, episodeIdx]);
 
 	// Tick now for flash expiry
 	useEffect(() => {
@@ -198,7 +203,7 @@ export default function EpisodeRunner({
 	useEffect(() => {
 		if (session.sessionId === null) return;
 		try {
-			saveDraft(childId, seasonSlug, episodeIdx, {
+			saveDraft(draftOwnerId, seasonSlug, episodeIdx, {
 				sessionId: session.sessionId,
 				cursorIdx: cursor.cursorIdx,
 				activeMs: cursor.activeMs,
@@ -212,7 +217,7 @@ export default function EpisodeRunner({
 		cursor.cursorIdx,
 		cursor.activeMs,
 		cursor.lastKeystrokeAt,
-		childId,
+		draftOwnerId,
 		seasonSlug,
 		episodeIdx,
 	]);
@@ -225,7 +230,6 @@ export default function EpisodeRunner({
 
 		const body = {
 			id: session.sessionId,
-			child_id: childId,
 			season_slug: seasonSlug,
 			episode_idx: episodeIdx,
 			wpm: wpmFromCharsAndMs(cursor.cursorIdx, cursor.activeMs),
@@ -244,10 +248,10 @@ export default function EpisodeRunner({
 		})
 			.then((res) => {
 				if (res.ok) {
-					clearDraft(childId, seasonSlug, episodeIdx);
+					clearDraft(draftOwnerId, seasonSlug, episodeIdx);
 					// Brief pause so the child can see the full story before navigating
 					navTimerRef.current = setTimeout(() => {
-						navigate(`/play/${childId}/complete/${episodeIdx}`);
+						navigate(`/play/${storySlug}/complete/${episodeIdx}`);
 					}, 600);
 				} else {
 					setError(`Failed to save session (${res.status})`);
@@ -260,7 +264,8 @@ export default function EpisodeRunner({
 		cursor.cursorIdx,
 		episodeText.length,
 		session.sessionId,
-		childId,
+		storySlug,
+		draftOwnerId,
 		seasonSlug,
 		episodeIdx,
 		cursor.activeMs,
@@ -290,7 +295,7 @@ export default function EpisodeRunner({
 		episodeText.length,
 	);
 	const chapterPercent = chapterProgress(episodeIdx, totalEpisodes);
-	const theme = themeForChild(childId);
+	const theme = themeForStory(storySlug);
 
 	// Sentence-relative cursor position for the current sentence
 	const sentenceStart = currentSentence?.start ?? 0;

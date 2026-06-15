@@ -4,10 +4,15 @@ import { extractAlignmentStoryWords } from "../../src/lib/storyWordTokens";
 import { pcmToWavBuffer } from "../../src/lib/wav";
 import { fetch } from "../../src/server/index";
 import {
+	D1ProgressStore,
 	D1StoryStore,
 	InMemoryAssetStore,
-	InMemoryStateStore,
+	InMemoryProgressStore,
 	InMemoryStoryStore,
+	ProgressMismatchError,
+	SessionIdConflictError,
+	type EpisodeAudioAsset,
+	type ProgressStore,
 } from "../../src/server/stores";
 import { fakeD1StoryDatabase } from "../lib/fakeD1Story";
 
@@ -21,18 +26,15 @@ const fixtureSeason = {
 	})),
 };
 
-const fixtureState = {
-	children: {
-		winni: {
-			name: "Winni",
-			theme: "rainbow-unicorn",
-			target_wpm: 15,
-			active_season: "winni-s1-test",
-			current_episode: 0,
-			current_session_id: null,
-		},
-	},
-	sessions: [],
+const secondSeason = {
+	...fixtureSeason,
+	slug: "robot-story-test",
+	name: "Robot Story Test",
+	theme: "blue robot",
+	episodes: fixtureSeason.episodes.map((episode) => ({
+		...episode,
+		text: `Robot ${episode.text}`,
+	})),
 };
 
 const d1OnlySeason = {
@@ -44,20 +46,15 @@ const d1OnlySeason = {
 	})),
 };
 
-const d1OnlyState = {
-	...fixtureState,
-	children: {
-		winni: {
-			...fixtureState.children.winni,
-			active_season: "d1-only-season",
-			current_episode: 1,
-		},
-	},
+const user = {
+	email: "Season@Example.COM",
+	display_name: "Season Saw",
+	name: "Season Saw",
+	access_subject: "access-user-1",
 };
 
 const validSessionBody = {
 	id: "test-session-1",
-	child_id: "winni",
 	season_slug: "winni-s1-test",
 	episode_idx: 0,
 	wpm: 12,
@@ -72,7 +69,10 @@ const sha256 = (input: string | Uint8Array) =>
 
 const testAudioBytes = pcmToWavBuffer(new Uint8Array(24000 * 2 * 2));
 
-const audioForEpisode = (episodeIdx: number) => {
+const audioForEpisode = (episodeIdx: number): EpisodeAudioAsset & {
+	seasonSlug: string;
+	episodeIdx: number;
+} => {
 	const text = fixtureSeason.episodes[episodeIdx]?.text ?? "";
 	const words = extractAlignmentStoryWords(text).map((word, index) => ({
 		index: word.wordIndex,
@@ -101,192 +101,13 @@ const audioForEpisode = (episodeIdx: number) => {
 	};
 };
 
-const postSession = (body: unknown, stateStore: InMemoryStateStore) =>
-	fetch(
-		new Request("http://127.0.0.1:3001/api/sessions", {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify(body),
-		}),
-		{ APP_STATE_STORE: stateStore },
-	);
+const makeSession = (overrides: Partial<typeof validSessionBody> = {}) => ({
+	...validSessionBody,
+	...overrides,
+});
 
-const getSeason = (
-	childId: string,
-	stateStore: InMemoryStateStore,
-	storyStore: InMemoryStoryStore,
-) =>
-	fetch(new Request(`http://127.0.0.1:3001/api/children/${childId}/season`), {
-		APP_STATE_STORE: stateStore,
-		STORY_STORE: storyStore,
-	});
-
-const getEpisodeAudio = (
-	childId: string,
-	episodeIdx: number,
-	stateStore: InMemoryStateStore,
-	assetStore: InMemoryAssetStore,
-) =>
-	fetch(
-		new Request(
-			`http://127.0.0.1:3001/api/children/${childId}/episodes/${episodeIdx}/audio`,
-		),
-		{
-			APP_STATE_STORE: stateStore,
-			ASSET_STORE: assetStore,
-			STORY_STORE: new InMemoryStoryStore({ seasons: [fixtureSeason] }),
-		},
-	);
-
-const getEpisodeAudioFile = (
-	childId: string,
-	episodeIdx: number,
-	stateStore: InMemoryStateStore,
-	assetStore: InMemoryAssetStore,
-) =>
-	fetch(
-		new Request(
-			`http://127.0.0.1:3001/api/children/${childId}/episodes/${episodeIdx}/audio/file`,
-		),
-		{
-			APP_STATE_STORE: stateStore,
-			ASSET_STORE: assetStore,
-			STORY_STORE: new InMemoryStoryStore({ seasons: [fixtureSeason] }),
-		},
-	);
-
-function r2JsonObject(body: unknown) {
-	return {
-		async json<T>(): Promise<T> {
-			return structuredClone(body) as T;
-		},
-		async arrayBuffer(): Promise<ArrayBuffer> {
-			return new TextEncoder().encode(JSON.stringify(body)).buffer;
-		},
-	};
-}
-
-function r2BytesObject(body: Uint8Array, contentType = "audio/wav") {
-	const bodyBuffer = body.buffer.slice(
-		body.byteOffset,
-		body.byteOffset + body.byteLength,
-	) as ArrayBuffer;
-
-	return {
-		httpMetadata: { contentType },
-		customMetadata: { sha256: sha256(body) },
-		range: undefined as
-			| { offset: number; length?: number }
-			| { suffix: number }
-			| undefined,
-		size: body.byteLength,
-		async json<T>(): Promise<T> {
-			return JSON.parse(new TextDecoder().decode(body)) as T;
-		},
-		async arrayBuffer(): Promise<ArrayBuffer> {
-			return bodyBuffer.slice(0);
-		},
-		body: new Blob([bodyBuffer]).stream(),
-	};
-}
-
-type FakeR2JsonObject = ReturnType<typeof r2JsonObject>;
-type FakeR2BytesObject = ReturnType<typeof r2BytesObject>;
-type FakeR2Object = FakeR2JsonObject | FakeR2BytesObject;
-type EpisodeAudioFixture = ReturnType<typeof audioForEpisode>;
-
-function isFakeR2BytesObject(
-	object: FakeR2Object,
-): object is FakeR2BytesObject {
-	return "body" in object;
-}
-
-function unlockedEpisodeStateStore(): InMemoryStateStore {
-	return new InMemoryStateStore({
-		...fixtureState,
-		children: {
-			winni: {
-				...fixtureState.children.winni,
-				current_episode: 2,
-			},
-		},
-	});
-}
-
-function fakeR2AudioBucket(
-	audio: EpisodeAudioFixture,
-	options: { audioObject?: FakeR2BytesObject; sidecar?: unknown } = {},
-) {
-	return fakeR2Bucket({
-		"audio/winni-s1-test-e0.wav":
-			options.audioObject ?? r2BytesObject(audio.audioBytes),
-		"audio/winni-s1-test-e0.words.json": r2JsonObject(
-			options.sidecar ?? audio.sidecar,
-		),
-	});
-}
-
-function fakeR2Bucket(objects: Record<string, FakeR2Object>) {
-	return {
-		requests: [] as { key: string; options?: unknown }[],
-		get requestedKeys(): string[] {
-			return this.requests.map((request) => request.key);
-		},
-		async get(key: string, options?: { range?: Headers; onlyIf?: Headers }) {
-			this.requests.push({ key, options });
-			const object = objects[key] ?? null;
-			const rangeHeader = options?.range?.get("range");
-			if (!object || !rangeHeader || !isFakeR2BytesObject(object)) {
-				return object;
-			}
-
-			const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader);
-			if (!match) {
-				return object;
-			}
-
-			const start = match[1]!;
-			const stop = match[2]!;
-			if (start === "" && stop === "") {
-				return object;
-			}
-
-			const suffixLength = start === "" ? Number.parseInt(stop, 10) : null;
-			const offset =
-				suffixLength === null
-					? Number.parseInt(start, 10)
-					: object.size - suffixLength;
-			const end =
-				suffixLength !== null || stop === ""
-					? object.size - 1
-					: Number.parseInt(stop, 10);
-			const length = end - offset + 1;
-			const bytes = new Uint8Array(await object.arrayBuffer());
-			const ranged = r2BytesObject(
-				bytes.slice(offset, offset + length),
-				object.httpMetadata.contentType,
-			);
-			ranged.customMetadata = object.customMetadata;
-			ranged.range =
-				suffixLength === null
-					? rangeForFakeR2Offset(offset, stop, length)
-					: { suffix: suffixLength };
-			ranged.size = object.size;
-			return ranged;
-		},
-	};
-}
-
-function rangeForFakeR2Offset(
-	offset: number,
-	stop: string,
-	length: number,
-): { offset: number; length?: number } {
-	if (stop === "") {
-		return { offset };
-	}
-
-	return { offset, length };
+async function seedUser(store: ProgressStore, email = user.email) {
+	return store.upsertUser({ ...user, email });
 }
 
 describe("D1StoryStore", () => {
@@ -354,423 +175,324 @@ describe("D1StoryStore", () => {
 	});
 });
 
-describe("server stores", () => {
-	it("mutates POST /api/sessions through an injected in-memory StateStore", async () => {
-		const stateStore = new InMemoryStateStore(fixtureState);
+describe.each([
+	["InMemoryProgressStore", () => new InMemoryProgressStore()],
+	[
+		"D1ProgressStore",
+		() => new D1ProgressStore(fakeD1StoryDatabase([fixtureSeason])),
+	],
+])("%s", (_name, makeStore) => {
+	it("upserts users by normalized email with the default target", async () => {
+		const store = makeStore();
 
-		const res = await postSession(validSessionBody, stateStore);
+		const saved = await store.upsertUser(user);
+		const updated = await store.upsertUser({
+			...user,
+			email: " season@example.com ",
+			display_name: "Season Updated",
+			name: undefined,
+		});
 
-		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual(validSessionBody);
-
-		const state = await stateStore.readState();
-		expect(state.sessions).toEqual([validSessionBody]);
-		expect(state.children.winni?.current_episode).toBe(1);
+		expect(saved).toEqual({
+			email: "season@example.com",
+			display_name: "Season Saw",
+			name: "Season Saw",
+			access_subject: "access-user-1",
+			target_wpm: 15,
+		});
+		expect(updated).toMatchObject({
+			email: "season@example.com",
+			display_name: "Season Updated",
+			target_wpm: 15,
+		});
 	});
 
-	it("serves season metadata through injected StateStore and StoryStore", async () => {
-		const stateStore = new InMemoryStateStore({
-			...fixtureState,
-			children: {
-				winni: {
-					...fixtureState.children.winni,
-					current_episode: 2,
-				},
+	it("creates independent per-story progress rows", async () => {
+		const store = makeStore();
+		await seedUser(store);
+
+		await store.ensureStoryProgress(user.email, fixtureSeason.slug);
+		await store.ensureStoryProgress(user.email, secondSeason.slug);
+
+		expect(await store.listStoryProgress(user.email)).toEqual([
+			{
+				email: "season@example.com",
+				season_slug: fixtureSeason.slug,
+				current_episode: 0,
 			},
-		});
-		const storyStore = new InMemoryStoryStore({ seasons: [fixtureSeason] });
-
-		const res = await getSeason("winni", stateStore, storyStore);
-
-		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual({
-			slug: "winni-s1-test",
-			name: "Test Rainbow Story",
-			theme: "pink unicorn",
-			total_episodes: 14,
-			current_episode: 2,
-		});
+			{
+				email: "season@example.com",
+				season_slug: secondSeason.slug,
+				current_episode: 0,
+			},
+		]);
 	});
 
-	it("serves independent story summaries through injected StoryStore", async () => {
-		const storyStore = new InMemoryStoryStore({ seasons: [fixtureSeason] });
+	it("inserts sessions idempotently by id and advances current_episode once", async () => {
+		const store = makeStore();
+		await seedUser(store);
 
-		const res = await fetch(new Request("http://127.0.0.1:3001/api/stories"), {
+		const first = await store.createSession(user.email, makeSession());
+		const replay = await store.createSession(user.email, makeSession());
+		const [progress] = await store.listStoryProgress(user.email);
+
+		expect(first).toEqual(replay);
+		expect(progress).toMatchObject({
+			season_slug: fixtureSeason.slug,
+			current_episode: 1,
+		});
+		expect(await store.listSessions(user.email, fixtureSeason.slug)).toHaveLength(
+			1,
+		);
+	});
+
+	it("rejects duplicate session ids across emails", async () => {
+		const store = makeStore();
+		await seedUser(store, "first@example.com");
+		await seedUser(store, "second@example.com");
+		await store.createSession("first@example.com", makeSession());
+
+		await expect(
+			store.createSession("second@example.com", makeSession()),
+		).rejects.toThrow(SessionIdConflictError);
+	});
+
+	it("rejects future locked episodes", async () => {
+		const store = makeStore();
+		await seedUser(store);
+
+		await expect(
+			store.createSession(user.email, makeSession({ episode_idx: 1 })),
+		).rejects.toThrow(ProgressMismatchError);
+	});
+
+	it("accepts replay sessions without moving progress backward", async () => {
+		const store = makeStore();
+		await seedUser(store);
+
+		await store.createSession(user.email, makeSession({ id: "episode-0" }));
+		await store.createSession(
+			user.email,
+			makeSession({
+				id: "episode-0-replay",
+				episode_idx: 0,
+				finished_at: "2026-05-10T00:02:00.000Z",
+			}),
+		);
+
+		const [progress] = await store.listStoryProgress(user.email);
+		expect(progress?.current_episode).toBe(1);
+		expect(
+			(await store.listSessions(user.email, fixtureSeason.slug)).map(
+				(session) => session.id,
+			),
+		).toEqual(["episode-0-replay", "episode-0"]);
+	});
+
+	it("rewinds progress and removes reset chapter plus later sessions", async () => {
+		const store = makeStore();
+		await seedUser(store);
+
+		await store.createSession(user.email, makeSession({ id: "episode-0" }));
+		await store.createSession(
+			user.email,
+			makeSession({
+				id: "episode-1",
+				episode_idx: 1,
+				finished_at: "2026-05-10T00:02:00.000Z",
+			}),
+		);
+
+		const progress = await store.resetStoryProgress(
+			user.email,
+			fixtureSeason.slug,
+			1,
+		);
+
+		expect(progress.current_episode).toBe(1);
+		expect(
+			(await store.listSessions(user.email, fixtureSeason.slug)).map(
+				(session) => session.id,
+			),
+		).toEqual(["episode-0"]);
+	});
+});
+
+describe("email/story API routes", () => {
+	it("returns progress for all stories and uses the local dev fallback email", async () => {
+		const progressStore = new InMemoryProgressStore();
+		const storyStore = new InMemoryStoryStore({
+			seasons: [fixtureSeason, secondSeason],
+		});
+
+		const res = await fetch(new Request("http://127.0.0.1:3001/api/progress"), {
+			PROGRESS_STORE: progressStore,
 			STORY_STORE: storyStore,
 		});
 
 		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual([
-			{
-				slug: "winni-s1-test",
-				name: "Test Rainbow Story",
-				theme: "pink unicorn",
-				total_episodes: 14,
+		expect(await res.json()).toMatchObject({
+			user: {
+				email: "dev@typeling.localhost",
+				target_wpm: 15,
 			},
-		]);
+			stories: [
+				{
+					slug: secondSeason.slug,
+					current_episode: 0,
+					target_wpm: 15,
+				},
+				{
+					slug: fixtureSeason.slug,
+					current_episode: 0,
+					target_wpm: 15,
+				},
+			],
+		});
 	});
 
-	it("lets a child select a different story and resets that story progress", async () => {
-		const nextSeason = {
-			...fixtureSeason,
-			slug: "robot-story-test",
-			name: "Robot Story Test",
-			theme: "blue robot",
-		};
-		const stateStore = new InMemoryStateStore({
-			...fixtureState,
-			children: {
-				winni: {
-					...fixtureState.children.winni,
-					current_episode: 5,
-					current_session_id: "session-in-progress",
-				},
-			},
-		});
+	it("serves current episode, rejects locked future episodes, then advances after a session", async () => {
+		const progressStore = new InMemoryProgressStore();
+		const storyStore = new InMemoryStoryStore({ seasons: [fixtureSeason] });
+		const env = { PROGRESS_STORE: progressStore, STORY_STORE: storyStore };
 
-		const res = await fetch(
-			new Request("http://127.0.0.1:3001/api/children/winni/story", {
-				method: "PUT",
+		const current = await fetch(
+			new Request(
+				`http://127.0.0.1:3001/api/stories/${fixtureSeason.slug}/current-episode`,
+			),
+			env,
+		);
+		const locked = await fetch(
+			new Request(
+				`http://127.0.0.1:3001/api/stories/${fixtureSeason.slug}/episodes/1`,
+			),
+			env,
+		);
+		const session = await fetch(
+			new Request("http://127.0.0.1:3001/api/sessions", {
+				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ story_slug: "robot-story-test" }),
+				body: JSON.stringify(makeSession()),
 			}),
-			{
-				APP_STATE_STORE: stateStore,
-				STORY_STORE: new InMemoryStoryStore({
-					seasons: [fixtureSeason, nextSeason],
-				}),
-			},
+			env,
+		);
+		const unlocked = await fetch(
+			new Request(
+				`http://127.0.0.1:3001/api/stories/${fixtureSeason.slug}/episodes/1`,
+			),
+			env,
 		);
 
-		expect(res.status).toBe(200);
-		expect(await res.json()).toMatchObject({
-			child: {
-				id: "winni",
-				active_season: "robot-story-test",
-				current_episode: 0,
-				current_session_id: null,
-			},
-			story: {
-				slug: "robot-story-test",
-				name: "Robot Story Test",
-			},
+		expect(current.status).toBe(200);
+		expect(await current.json()).toMatchObject({
+			text: "Episode 1 text for testing.",
+			episode_idx: 0,
+			season_slug: fixtureSeason.slug,
 		});
-		const state = await stateStore.readState();
-		expect(state.children.winni?.active_season).toBe("robot-story-test");
-		expect(state.children.winni?.current_episode).toBe(0);
+		expect(locked.status).toBe(403);
+		expect(await locked.json()).toEqual({ error: "EpisodeLocked" });
+		expect(session.status).toBe(200);
+		expect(await session.json()).toMatchObject({
+			id: "test-session-1",
+			email: "dev@typeling.localhost",
+			season_slug: fixtureSeason.slug,
+		});
+		expect(unlocked.status).toBe(200);
+		expect(await unlocked.json()).toMatchObject({
+			text: "Episode 2 text for testing.",
+			episode_idx: 1,
+			current_episode: 1,
+		});
 	});
 
-	it("serves episode audio metadata through an injected AssetStore", async () => {
-		const stateStore = new InMemoryStateStore({
-			...fixtureState,
-			children: {
-				winni: {
-					...fixtureState.children.winni,
-					current_episode: 2,
-				},
-			},
+	it("serves episode audio metadata and bytes through story routes", async () => {
+		const progressStore = new InMemoryProgressStore();
+		await progressStore.upsertUser({
+			email: "dev@typeling.localhost",
+			display_name: "Typeling Dev",
 		});
-		const assetStore = new InMemoryAssetStore({
-			audio: [audioForEpisode(0)],
-		});
+		await progressStore.createSession(
+			"dev@typeling.localhost",
+			makeSession({ id: "open-chapter-one" }),
+		);
+		const env = {
+			PROGRESS_STORE: progressStore,
+			STORY_STORE: new InMemoryStoryStore({ seasons: [fixtureSeason] }),
+			ASSET_STORE: new InMemoryAssetStore({
+				audio: [audioForEpisode(0)],
+			}),
+		};
 
-		const res = await getEpisodeAudio("winni", 0, stateStore, assetStore);
+		const metadata = await fetch(
+			new Request(
+				`http://127.0.0.1:3001/api/stories/${fixtureSeason.slug}/episodes/0/audio`,
+			),
+			env,
+		);
+		const audio = await fetch(
+			new Request(
+				`http://127.0.0.1:3001/api/stories/${fixtureSeason.slug}/episodes/0/audio/file`,
+			),
+			env,
+		);
 
-		expect(res.status).toBe(200);
-		const body = await res.json();
-		expect(body).toMatchObject({
-			season_slug: "winni-s1-test",
+		expect(metadata.status).toBe(200);
+		const metadataBody = await metadata.json();
+		expect(metadataBody).toMatchObject({
+			season_slug: fixtureSeason.slug,
 			episode_idx: 0,
-			audio_url: "/api/children/winni/episodes/0/audio/file",
+			audio_url: `/api/stories/${fixtureSeason.slug}/episodes/0/audio/file`,
 			duration_seconds: 2,
 		});
-		expect(body.words.map((word: { text: string }) => word.text)).toEqual([
-			"Episode",
-			"1",
-			"text",
-			"for",
-			"testing.",
-		]);
-	});
-
-	it("serves episode audio bytes through an injected AssetStore", async () => {
-		const stateStore = new InMemoryStateStore({
-			...fixtureState,
-			children: {
-				winni: {
-					...fixtureState.children.winni,
-					current_episode: 2,
-				},
-			},
-		});
-		const assetStore = new InMemoryAssetStore({
-			audio: [audioForEpisode(0)],
-		});
-
-		const res = await getEpisodeAudioFile("winni", 0, stateStore, assetStore);
-
-		expect(res.status).toBe(200);
-		expect(res.headers.get("content-type")).toBe("audio/wav");
-		expect(new Uint8Array(await res.arrayBuffer()).slice(0, 4)).toEqual(
+		expect(metadataBody.words.map((word: { text: string }) => word.text)).toEqual(
+			["Episode", "1", "text", "for", "testing."],
+		);
+		expect(audio.status).toBe(200);
+		expect(audio.headers.get("content-type")).toBe("audio/wav");
+		expect(new Uint8Array(await audio.arrayBuffer()).slice(0, 4)).toEqual(
 			new Uint8Array([82, 73, 70, 70]),
 		);
 	});
 
-	it("serves D1-only season and episode routes from the story DB binding", async () => {
-		const stateStore = new InMemoryStateStore(d1OnlyState);
+	it("uses the STORY_DB binding for both story content and progress", async () => {
 		const storyDb = fakeD1StoryDatabase([d1OnlySeason]);
+		const env = { STORY_DB: storyDb };
 
-		const seasonRes = await fetch(
-			new Request("http://127.0.0.1:3001/api/children/winni/season"),
-			{
-				APP_STATE_STORE: stateStore,
-				STORY_DB: storyDb,
-			},
+		const first = await fetch(
+			new Request(
+				`http://127.0.0.1:3001/api/stories/${d1OnlySeason.slug}/current-episode`,
+			),
+			env,
 		);
-		const currentEpisodeRes = await fetch(
-			new Request("http://127.0.0.1:3001/api/children/winni/current-episode"),
-			{
-				APP_STATE_STORE: stateStore,
-				STORY_DB: storyDb,
-			},
+		const session = await fetch(
+			new Request("http://127.0.0.1:3001/api/sessions", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					...validSessionBody,
+					season_slug: d1OnlySeason.slug,
+				}),
+			}),
+			env,
 		);
-		const episodeRes = await fetch(
-			new Request("http://127.0.0.1:3001/api/children/winni/episodes/0"),
-			{
-				APP_STATE_STORE: stateStore,
-				STORY_DB: storyDb,
-			},
+		const next = await fetch(
+			new Request(
+				`http://127.0.0.1:3001/api/stories/${d1OnlySeason.slug}/current-episode`,
+			),
+			env,
 		);
 
-		expect(seasonRes.status).toBe(200);
-		expect(await seasonRes.json()).toEqual({
-			slug: "d1-only-season",
-			name: "Test Rainbow Story",
-			theme: "pink unicorn",
-			total_episodes: 14,
-			current_episode: 1,
-		});
-		expect(currentEpisodeRes.status).toBe(200);
-		expect(await currentEpisodeRes.json()).toMatchObject({
-			text: "D1 Episode 2 text for testing.",
-			episode_idx: 1,
-			season_slug: "d1-only-season",
-		});
-		expect(episodeRes.status).toBe(200);
-		expect(await episodeRes.json()).toMatchObject({
+		expect(first.status).toBe(200);
+		expect(await first.json()).toMatchObject({
 			text: "D1 Episode 1 text for testing.",
 			episode_idx: 0,
-			season_slug: "d1-only-season",
 		});
-	});
-
-	it("serves episode audio metadata from the R2 bucket binding", async () => {
-		const stateStore = unlockedEpisodeStateStore();
-		const audio = audioForEpisode(0);
-		const bucket = fakeR2AudioBucket(audio);
-
-		const res = await fetch(
-			new Request("http://127.0.0.1:3001/api/children/winni/episodes/0/audio"),
-			{
-				APP_STATE_STORE: stateStore,
-				ASSETS_BUCKET: bucket,
-				STORY_DB: fakeD1StoryDatabase([fixtureSeason]),
-			},
-		);
-
-		expect(res.status).toBe(200);
-		const body = await res.json();
-		expect(body).toMatchObject({
-			season_slug: "winni-s1-test",
-			episode_idx: 0,
-			audio_url: "/api/children/winni/episodes/0/audio/file",
-			duration_seconds: 2,
+		expect(session.status).toBe(200);
+		expect(next.status).toBe(200);
+		expect(await next.json()).toMatchObject({
+			text: "D1 Episode 2 text for testing.",
+			episode_idx: 1,
+			current_episode: 1,
 		});
-		expect(bucket.requestedKeys).toEqual([
-			"audio/winni-s1-test-e0.wav",
-			"audio/winni-s1-test-e0.words.json",
-		]);
-	});
-
-	it("serves ranged episode audio bytes from the R2 bucket binding", async () => {
-		const stateStore = unlockedEpisodeStateStore();
-		const audio = audioForEpisode(0);
-		const bucket = fakeR2AudioBucket(audio);
-		const request = new Request(
-			"http://127.0.0.1:3001/api/children/winni/episodes/0/audio/file",
-			{ headers: { range: "bytes=12-31" } },
-		);
-
-		const res = await fetch(request, {
-			APP_STATE_STORE: stateStore,
-			ASSETS_BUCKET: bucket,
-			STORY_DB: fakeD1StoryDatabase([fixtureSeason]),
-		});
-
-		expect(res.status).toBe(206);
-		expect(res.headers.get("content-type")).toBe("audio/wav");
-		expect(res.headers.get("content-range")).toBe(
-			`bytes 12-31/${audio.audioBytes.byteLength}`,
-		);
-		expect(Array.from(new Uint8Array(await res.arrayBuffer()))).toEqual(
-			Array.from(audio.audioBytes.slice(12, 32)),
-		);
-
-		const audioRequests = bucket.requests.filter(
-			(read) => read.key === "audio/winni-s1-test-e0.wav",
-		);
-		expect(audioRequests.at(-1)?.options).toMatchObject({
-			range: request.headers,
-			onlyIf: request.headers,
-		});
-	});
-
-	it("serves open-ended ranged episode audio bytes from the R2 bucket binding", async () => {
-		const stateStore = unlockedEpisodeStateStore();
-		const audio = audioForEpisode(0);
-		const bucket = fakeR2AudioBucket(audio);
-		const request = new Request(
-			"http://127.0.0.1:3001/api/children/winni/episodes/0/audio/file",
-			{ headers: { range: "bytes=12-" } },
-		);
-
-		const res = await fetch(request, {
-			APP_STATE_STORE: stateStore,
-			ASSETS_BUCKET: bucket,
-			STORY_DB: fakeD1StoryDatabase([fixtureSeason]),
-		});
-
-		expect(res.status).toBe(206);
-		expect(res.headers.get("content-range")).toBe(
-			`bytes 12-${audio.audioBytes.byteLength - 1}/${audio.audioBytes.byteLength}`,
-		);
-		expect(Array.from(new Uint8Array(await res.arrayBuffer()))).toEqual(
-			Array.from(audio.audioBytes.slice(12)),
-		);
-	});
-
-	it("serves suffix ranged episode audio bytes from the R2 bucket binding", async () => {
-		const stateStore = unlockedEpisodeStateStore();
-		const audio = audioForEpisode(0);
-		const bucket = fakeR2AudioBucket(audio);
-		const suffixLength = 16;
-		const request = new Request(
-			"http://127.0.0.1:3001/api/children/winni/episodes/0/audio/file",
-			{ headers: { range: `bytes=-${suffixLength}` } },
-		);
-
-		const res = await fetch(request, {
-			APP_STATE_STORE: stateStore,
-			ASSETS_BUCKET: bucket,
-			STORY_DB: fakeD1StoryDatabase([fixtureSeason]),
-		});
-
-		const firstByte = audio.audioBytes.byteLength - suffixLength;
-		expect(res.status).toBe(206);
-		expect(res.headers.get("content-range")).toBe(
-			`bytes ${firstByte}-${audio.audioBytes.byteLength - 1}/${audio.audioBytes.byteLength}`,
-		);
-		expect(Array.from(new Uint8Array(await res.arrayBuffer()))).toEqual(
-			Array.from(audio.audioBytes.slice(-suffixLength)),
-		);
-	});
-
-	it("serves full episode audio bytes from the R2 bucket binding", async () => {
-		const stateStore = unlockedEpisodeStateStore();
-		const audio = audioForEpisode(0);
-		const audioObject = r2BytesObject(audio.audioBytes);
-		audioObject.range = { offset: 0, length: audio.audioBytes.byteLength };
-		const bucket = fakeR2AudioBucket(audio, {
-			audioObject,
-		});
-		const request = new Request(
-			"http://127.0.0.1:3001/api/children/winni/episodes/0/audio/file",
-		);
-
-		const res = await fetch(request, {
-			APP_STATE_STORE: stateStore,
-			ASSETS_BUCKET: bucket,
-			STORY_DB: fakeD1StoryDatabase([fixtureSeason]),
-		});
-
-		expect(res.status).toBe(200);
-		expect(res.headers.get("content-type")).toBe("audio/wav");
-		expect(res.headers.get("content-length")).toBe(
-			String(audio.audioBytes.byteLength),
-		);
-		expect(res.headers.get("content-range")).toBeNull();
-		expect(Array.from(new Uint8Array(await res.arrayBuffer()))).toEqual(
-			Array.from(audio.audioBytes),
-		);
-	});
-
-	it("returns EpisodeAudioStale when R2 audio file metadata conflicts with the sidecar", async () => {
-		const stateStore = new InMemoryStateStore(fixtureState);
-		const audio = audioForEpisode(0);
-		const staleSidecar = { ...audio.sidecar, audioHash: "0".repeat(64) };
-		const bucket = fakeR2AudioBucket(audio, {
-			sidecar: staleSidecar,
-		});
-
-		const res = await fetch(
-			new Request(
-				"http://127.0.0.1:3001/api/children/winni/episodes/0/audio/file",
-			),
-			{
-				APP_STATE_STORE: stateStore,
-				ASSETS_BUCKET: bucket,
-				STORY_DB: fakeD1StoryDatabase([fixtureSeason]),
-			},
-		);
-
-		expect(res.status).toBe(409);
-		expect(await res.json()).toEqual({ error: "EpisodeAudioStale" });
-	});
-
-	it("returns EpisodeAudioStale when D1 story text changed after audio generation", async () => {
-		const stateStore = new InMemoryStateStore(fixtureState);
-		const audio = audioForEpisode(0);
-		const bucket = fakeR2AudioBucket(audio);
-		const changedSeason = {
-			...fixtureSeason,
-			episodes: fixtureSeason.episodes.map((episode) =>
-				episode.idx === 0
-					? { ...episode, text: "A newer D1 story sentence appears." }
-					: episode,
-			),
-		};
-
-		const res = await fetch(
-			new Request("http://127.0.0.1:3001/api/children/winni/episodes/0/audio"),
-			{
-				APP_STATE_STORE: stateStore,
-				ASSETS_BUCKET: bucket,
-				STORY_DB: fakeD1StoryDatabase([changedSeason]),
-			},
-		);
-
-		expect(res.status).toBe(409);
-		expect(await res.json()).toEqual({ error: "EpisodeAudioStale" });
-	});
-
-	it("returns EpisodeAudioStale when R2 sidecar integrity fails", async () => {
-		const stateStore = new InMemoryStateStore(fixtureState);
-		const audio = audioForEpisode(0);
-		const staleSidecar = { ...audio.sidecar, audioHash: "0".repeat(64) };
-		const bucket = fakeR2AudioBucket(audio, {
-			sidecar: staleSidecar,
-		});
-
-		const res = await fetch(
-			new Request("http://127.0.0.1:3001/api/children/winni/episodes/0/audio"),
-			{
-				APP_STATE_STORE: stateStore,
-				ASSETS_BUCKET: bucket,
-				STORY_DB: fakeD1StoryDatabase([fixtureSeason]),
-			},
-		);
-
-		expect(res.status).toBe(409);
-		expect(await res.json()).toEqual({ error: "EpisodeAudioStale" });
 	});
 });

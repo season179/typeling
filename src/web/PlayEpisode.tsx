@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useParams } from "wouter";
+import type { UserProfile } from "../lib/schemas/state";
 import EpisodeRunner from "./EpisodeRunner";
 import { clearDraft } from "./episodeRunner/autosave";
 import StoryAudioPlayer from "./StoryAudioPlayer";
@@ -13,7 +14,7 @@ interface EpisodeData {
 }
 
 interface ChapterPickerProps {
-	childId: string;
+	storySlug: string;
 	episodeIdx: number;
 	currentEpisode: number;
 	totalEpisodes: number;
@@ -21,15 +22,22 @@ interface ChapterPickerProps {
 }
 
 interface StoryReaderProps {
-	childId: string;
+	storySlug: string;
 	episodeIdx: number;
 	totalEpisodes: number;
 	text: string;
 	onTypeAgain: () => void;
 }
 
-function themeForChild(childId: string): "winni" | "zack" {
-	return childId.toLowerCase().includes("zack") ? "zack" : "winni";
+type CurrentUserResponse =
+	| { authenticated: false }
+	| { authenticated: true; user: UserProfile };
+
+function themeForStory(storySlug: string): "winni" | "zack" {
+	return storySlug.toLowerCase().includes("zack") ||
+		storySlug.toLowerCase().includes("science")
+		? "zack"
+		: "winni";
 }
 
 function chapterStatus(
@@ -54,7 +62,7 @@ function chapterButtonClass(isSelected: boolean, isLocked: boolean) {
 }
 
 function ChapterPicker({
-	childId,
+	storySlug,
 	episodeIdx,
 	currentEpisode,
 	totalEpisodes,
@@ -63,7 +71,7 @@ function ChapterPicker({
 	const [_, navigate] = useLocation();
 
 	const latestOpen = Math.min(currentEpisode, totalEpisodes - 1);
-	const theme = themeForChild(childId);
+	const theme = themeForStory(storySlug);
 
 	return (
 		<div
@@ -84,7 +92,7 @@ function ChapterPicker({
 							data-episode-idx={i}
 							data-status={chapterStatus(i, latestOpen)}
 							className={chapterButtonClass(isSelected, isLocked)}
-							onClick={() => navigate(`/play/${childId}/episode/${i}`)}
+							onClick={() => navigate(`/play/${storySlug}/episode/${i}`)}
 						>
 							{i + 1}
 						</button>
@@ -104,13 +112,13 @@ function ChapterPicker({
 }
 
 function StoryReader({
-	childId,
+	storySlug,
 	episodeIdx,
 	totalEpisodes,
 	text,
 	onTypeAgain,
 }: StoryReaderProps) {
-	const theme = themeForChild(childId);
+	const theme = themeForStory(storySlug);
 
 	return (
 		<section
@@ -134,7 +142,7 @@ function StoryReader({
 					</span>
 				</div>
 				<StoryAudioPlayer
-					childId={childId}
+					storySlug={storySlug}
 					episodeIdx={episodeIdx}
 					text={text}
 					onTypeAgain={onTypeAgain}
@@ -145,8 +153,8 @@ function StoryReader({
 }
 
 export default function PlayEpisode() {
-	const { childId, episodeIdx } = useParams<{
-		childId: string;
+	const { storySlug, episodeIdx } = useParams<{
+		storySlug: string;
 		episodeIdx?: string;
 	}>();
 	const [_, navigate] = useLocation();
@@ -155,17 +163,18 @@ export default function PlayEpisode() {
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 	const [practiceMode, setPracticeMode] = useState(false);
+	const [draftOwnerId, setDraftOwnerId] = useState("local");
 
 	const loadPath =
 		episodeIdx === undefined
-			? `/api/children/${childId}/current-episode`
-			: `/api/children/${childId}/episodes/${episodeIdx}`;
+			? `/api/stories/${storySlug}/current-episode`
+			: `/api/stories/${storySlug}/episodes/${episodeIdx}`;
 
 	useEffect(() => {
 		setPracticeMode(false);
-		if (!childId) {
+		if (!storySlug) {
 			setLoading(false);
-			setError("Missing child id");
+			setError("Missing story");
 			return;
 		}
 		const controller = new AbortController();
@@ -174,14 +183,25 @@ export default function PlayEpisode() {
 			try {
 				setLoading(true);
 				setError(null);
-				const episodeRes = await fetch(loadPath, {
-					signal: controller.signal,
-				});
+				const [episodeRes, meRes] = await Promise.all([
+					fetch(loadPath, {
+						signal: controller.signal,
+					}),
+					fetch("/api/me", {
+						signal: controller.signal,
+					}),
+				]);
 				if (!episodeRes.ok) {
 					throw new Error(`HTTP ${episodeRes.status}`);
 				}
 				const nextEpisode = await episodeRes.json();
+				const currentUser = meRes.ok
+					? ((await meRes.json()) as CurrentUserResponse)
+					: ({ authenticated: false } as const);
 				setEpisode("complete" in nextEpisode ? null : nextEpisode);
+				setDraftOwnerId(
+					currentUser.authenticated ? currentUser.user.email : "local",
+				);
 			} catch (err) {
 				if (!controller.signal.aborted) {
 					setError(err instanceof Error ? err.message : "Failed to load");
@@ -195,10 +215,10 @@ export default function PlayEpisode() {
 
 		void load();
 		return () => controller.abort();
-	}, [childId, loadPath]);
+	}, [storySlug, loadPath]);
 
 	const handleReset = async () => {
-		if (!childId || !episode) return;
+		if (!storySlug || !episode) return;
 		if (
 			!window.confirm(
 				`Reset chapter ${episode.episode_idx + 1}? This removes this chapter and later chapter progress.`,
@@ -208,20 +228,20 @@ export default function PlayEpisode() {
 		}
 
 		const res = await fetch(
-			`/api/children/${childId}/episodes/${episode.episode_idx}/reset`,
+			`/api/stories/${storySlug}/episodes/${episode.episode_idx}/reset`,
 			{ method: "POST" },
 		);
 		if (!res.ok) {
 			setError(`Failed to reset chapter (${res.status})`);
 			return;
 		}
-		clearDraft(childId, episode.season_slug, episode.episode_idx);
+		clearDraft(draftOwnerId, episode.season_slug, episode.episode_idx);
 		setEpisode((current) =>
 			current && current.current_episode !== episode.episode_idx
 				? { ...current, current_episode: episode.episode_idx }
 				: current,
 		);
-		navigate(`/play/${childId}/episode/${episode.episode_idx}`);
+		navigate(`/play/${storySlug}/episode/${episode.episode_idx}`);
 	};
 
 	if (loading) {
@@ -249,7 +269,7 @@ export default function PlayEpisode() {
 	return (
 		<main className="flex min-h-screen items-center justify-center">
 			<ChapterPicker
-				childId={childId}
+				storySlug={storySlug}
 				episodeIdx={episode.episode_idx}
 				currentEpisode={episode.current_episode}
 				totalEpisodes={episode.total_episodes}
@@ -257,7 +277,7 @@ export default function PlayEpisode() {
 			/>
 			{isFinishedChapter && !practiceMode ? (
 				<StoryReader
-					childId={childId}
+					storySlug={storySlug}
 					episodeIdx={episode.episode_idx}
 					totalEpisodes={episode.total_episodes}
 					text={episode.text}
@@ -266,7 +286,8 @@ export default function PlayEpisode() {
 			) : (
 				<EpisodeRunner
 					episodeText={episode.text}
-					childId={childId}
+					storySlug={storySlug}
+					draftOwnerId={draftOwnerId}
 					seasonSlug={episode.season_slug}
 					episodeIdx={episode.episode_idx}
 					totalEpisodes={episode.total_episodes}

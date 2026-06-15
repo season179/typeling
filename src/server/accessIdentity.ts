@@ -1,12 +1,24 @@
 import { type SignedInUser, signedInUserSchema } from "../lib/schemas/state";
 
 const ACCESS_JWT_HEADER = "cf-access-jwt-assertion";
+const DEV_USER_EMAIL = "dev@typeling.localhost";
 
 type JsonRecord = Record<string, unknown>;
 
 export type CurrentUserResponse =
 	| { authenticated: false }
 	| { authenticated: true; user: SignedInUser };
+
+export const devSignedInUser = signedInUserSchema.parse({
+	email: DEV_USER_EMAIL,
+	name: "Typeling Dev",
+	display_name: "Typeling Dev",
+	access_subject: "local-dev",
+});
+
+export function normalizeEmail(email: string): string {
+	return email.trim().toLowerCase();
+}
 
 export function accessIdentityFromRequest(
 	request: Request,
@@ -24,7 +36,7 @@ export function accessIdentityFromRequest(
 	const name = displayNameFromClaims(claims);
 	const accessSubject = stringClaim(claims, "sub");
 	const parsed = signedInUserSchema.safeParse({
-		email,
+		email: normalizeEmail(email),
 		...(name ? { name } : {}),
 		display_name: name ?? email,
 		...(accessSubject ? { access_subject: accessSubject } : {}),

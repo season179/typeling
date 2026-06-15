@@ -24,22 +24,13 @@ interface AdminSeason {
 	episodes: AdminEpisode[];
 }
 
-interface AdminChild {
-	id: string;
-	name: string;
-	theme: string;
-	target_wpm: number;
-	active_season: string;
-	current_episode: number;
-	current_session_id: string | null;
-	season: AdminSeason;
-}
+type AdminStory = AdminSeason;
 
 interface AdminResponse {
 	admin: {
 		access: "local-only";
 	};
-	children: AdminChild[];
+	stories: AdminStory[];
 }
 
 interface AdminEpisodeUpdateResponse {
@@ -83,7 +74,9 @@ function episodeButtonClass(isSelected: boolean, audio: AdminAudioStatus) {
 
 export default function AdminView() {
 	const [data, setData] = useState<AdminResponse | null>(null);
-	const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
+	const [selectedStorySlug, setSelectedStorySlug] = useState<string | null>(
+		null,
+	);
 	const [selectedEpisodeIdx, setSelectedEpisodeIdx] = useState(0);
 	const [draftText, setDraftText] = useState("");
 	const [loading, setLoading] = useState(true);
@@ -98,7 +91,7 @@ export default function AdminView() {
 			try {
 				setLoading(true);
 				setError(null);
-				const res = await fetch("/api/admin/children", {
+				const res = await fetch("/api/admin/stories", {
 					signal: controller.signal,
 				});
 				if (!res.ok) {
@@ -107,8 +100,8 @@ export default function AdminView() {
 				const nextData: AdminResponse = await res.json();
 				if (!controller.signal.aborted) {
 					setData(nextData);
-					setSelectedChildId(
-						(current) => current ?? nextData.children[0]?.id ?? null,
+					setSelectedStorySlug(
+						(current) => current ?? nextData.stories[0]?.slug ?? null,
 					);
 				}
 			} catch (err) {
@@ -126,20 +119,20 @@ export default function AdminView() {
 		return () => controller.abort();
 	}, []);
 
-	const selectedChild = useMemo(() => {
+	const selectedStory = useMemo(() => {
 		if (!data) return null;
 		return (
-			data.children.find((child) => child.id === selectedChildId) ??
-			data.children[0] ??
+			data.stories.find((story) => story.slug === selectedStorySlug) ??
+			data.stories[0] ??
 			null
 		);
-	}, [data, selectedChildId]);
+	}, [data, selectedStorySlug]);
 
 	const selectedEpisode =
-		selectedChild?.season.episodes.find(
+		selectedStory?.episodes.find(
 			(episode) => episode.idx === selectedEpisodeIdx,
 		) ??
-		selectedChild?.season.episodes[0] ??
+		selectedStory?.episodes[0] ??
 		null;
 
 	useEffect(() => {
@@ -152,7 +145,7 @@ export default function AdminView() {
 	}, [selectedEpisode]);
 
 	const saveEpisode = async () => {
-		if (!selectedChild || !selectedEpisode) return;
+		if (!selectedStory || !selectedEpisode) return;
 
 		try {
 			setSaving(true);
@@ -160,7 +153,7 @@ export default function AdminView() {
 			setSaveMessage(null);
 			const res = await fetch(
 				`/api/admin/seasons/${encodeURIComponent(
-					selectedChild.active_season,
+					selectedStory.slug,
 				)}/episodes/${selectedEpisode.idx}`,
 				{
 					method: "PUT",
@@ -180,18 +173,13 @@ export default function AdminView() {
 				if (!current) return current;
 				return {
 					...current,
-					children: current.children.map((child) => {
-						if (child.id !== selectedChild.id) return child;
+					stories: current.stories.map((story) => {
+						if (story.slug !== selectedStory.slug) return story;
 						return {
-							...child,
-							season: {
-								...child.season,
-								episodes: child.season.episodes.map((episode) =>
-									episode.idx === updated.episode.idx
-										? updated.episode
-										: episode,
-								),
-							},
+							...story,
+							episodes: story.episodes.map((episode) =>
+								episode.idx === updated.episode.idx ? updated.episode : episode,
+							),
 						};
 					}),
 				};
@@ -219,11 +207,11 @@ export default function AdminView() {
 		);
 	}
 
-	if (!data || data.children.length === 0) {
+	if (!data || data.stories.length === 0) {
 		return (
 			<main className="min-h-screen bg-stone-50 p-8">
 				<div className="mx-auto max-w-5xl rounded-lg border border-stone-200 bg-white p-6 text-sm text-stone-500">
-					No children configured yet.
+					No stories configured yet.
 				</div>
 			</main>
 		);
@@ -233,15 +221,15 @@ export default function AdminView() {
 	const isDirty =
 		selectedEpisode !== null && draftText !== selectedEpisode.text;
 	const audioUrl =
-		selectedChild && selectedEpisode && selectedEpisode.audio.status === "ready"
+		selectedStory && selectedEpisode && selectedEpisode.audio.status === "ready"
 			? `/api/admin/seasons/${encodeURIComponent(
-					selectedChild.active_season,
+					selectedStory.slug,
 				)}/episodes/${selectedEpisode.idx}/audio/file`
 			: null;
 	const captionUrl =
-		selectedChild && selectedEpisode && selectedEpisode.audio.status === "ready"
+		selectedStory && selectedEpisode && selectedEpisode.audio.status === "ready"
 			? `/api/admin/seasons/${encodeURIComponent(
-					selectedChild.active_season,
+					selectedStory.slug,
 				)}/episodes/${selectedEpisode.idx}/audio/captions.vtt`
 			: "";
 
@@ -257,66 +245,55 @@ export default function AdminView() {
 					</header>
 
 					<div className="rounded-lg border border-stone-200 bg-white p-2">
-						{data.children.map((child) => (
+						{data.stories.map((story) => (
 							<button
-								key={child.id}
+								key={story.slug}
 								type="button"
 								className={`block w-full rounded-md px-3 py-2 text-left text-sm font-semibold transition-colors ${
-									child.id === selectedChild?.id
+									story.slug === selectedStory?.slug
 										? "bg-stone-900 text-white"
 										: "text-stone-700 hover:bg-stone-100"
 								}`}
 								onClick={() => {
-									setSelectedChildId(child.id);
-									setSelectedEpisodeIdx(child.current_episode);
+									setSelectedStorySlug(story.slug);
+									setSelectedEpisodeIdx(0);
 								}}
 							>
-								<span className="block">{child.name}</span>
+								<span className="block">{story.name}</span>
 								<span
 									className={`block text-xs ${
-										child.id === selectedChild?.id
+										story.slug === selectedStory?.slug
 											? "text-stone-300"
 											: "text-stone-400"
 									}`}
 								>
-									{child.active_season}
+									{story.slug}
 								</span>
 							</button>
 						))}
 					</div>
 
-					{selectedChild && (
+					{selectedStory && (
 						<section className="rounded-lg border border-stone-200 bg-white p-4 text-sm">
 							<dl className="space-y-3">
 								<div>
 									<dt className="text-xs font-semibold uppercase tracking-normal text-stone-400">
 										Story
 									</dt>
-									<dd className="mt-1 text-stone-700">
-										{selectedChild.season.name}
-									</dd>
+									<dd className="mt-1 text-stone-700">{selectedStory.name}</dd>
 								</div>
 								<div>
 									<dt className="text-xs font-semibold uppercase tracking-normal text-stone-400">
 										Theme
 									</dt>
-									<dd className="mt-1 text-stone-700">{selectedChild.theme}</dd>
+									<dd className="mt-1 text-stone-700">{selectedStory.theme}</dd>
 								</div>
 								<div>
 									<dt className="text-xs font-semibold uppercase tracking-normal text-stone-400">
-										Target
+										Chapters
 									</dt>
 									<dd className="mt-1 text-stone-700">
-										{selectedChild.target_wpm} WPM
-									</dd>
-								</div>
-								<div>
-									<dt className="text-xs font-semibold uppercase tracking-normal text-stone-400">
-										Progress
-									</dt>
-									<dd className="mt-1 text-stone-700">
-										Chapter {selectedChild.current_episode + 1} of{" "}
-										{selectedChild.season.episodes.length}
+										{selectedStory.episodes.length}
 									</dd>
 								</div>
 							</dl>
@@ -330,7 +307,7 @@ export default function AdminView() {
 							Episodes
 						</h2>
 						<div className="space-y-2">
-							{selectedChild?.season.episodes.map((episode) => (
+							{selectedStory?.episodes.map((episode) => (
 								<button
 									key={episode.idx}
 									type="button"
@@ -355,17 +332,16 @@ export default function AdminView() {
 						</div>
 					</div>
 
-					{selectedChild && selectedEpisode && (
+					{selectedStory && selectedEpisode && (
 						<div className="space-y-5">
 							<section className="rounded-lg border border-stone-200 bg-white p-5">
 								<div className="flex flex-wrap items-start justify-between gap-3">
 									<div>
 										<h2 className="font-serif text-2xl font-bold tracking-tight">
-											{selectedChild.season.name} chapter{" "}
-											{selectedEpisode.idx + 1}
+											{selectedStory.name} chapter {selectedEpisode.idx + 1}
 										</h2>
 										<p className="mt-1 text-sm text-stone-500">
-											{selectedChild.active_season}
+											{selectedStory.slug}
 										</p>
 									</div>
 									<div className="flex items-center gap-2 text-xs font-semibold">

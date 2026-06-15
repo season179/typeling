@@ -1,36 +1,21 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import type { SignedInUser } from "../lib/schemas/state";
+import type { UserProfile } from "../lib/schemas/state";
 import { clearStaleDrafts } from "./episodeRunner/autosave";
 
-interface ChildSummary {
-	name: string;
-	theme: string;
-	active_season: string;
-	current_episode?: number;
-	current_session_id?: string | null;
-	target_wpm?: number;
-}
-
-interface StorySummary {
+interface ProgressStory {
 	slug: string;
 	name: string;
 	theme: string;
 	total_episodes: number;
+	current_episode: number;
+	target_wpm: number;
 }
-
-type CurrentUserResponse =
-	| { authenticated: false }
-	| { authenticated: true; user: SignedInUser };
 
 export default function App() {
 	const [, navigate] = useLocation();
-	const [children, setChildren] = useState<Record<string, ChildSummary>>({});
-	const [stories, setStories] = useState<StorySummary[]>([]);
-	const [selectedStories, setSelectedStories] = useState<
-		Record<string, string>
-	>({});
-	const [signedInUser, setSignedInUser] = useState<SignedInUser | null>(null);
+	const [stories, setStories] = useState<ProgressStory[]>([]);
+	const [signedInUser, setSignedInUser] = useState<UserProfile | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
@@ -41,40 +26,23 @@ export default function App() {
 			try {
 				setLoading(true);
 				setError(null);
-				const [childrenRes, storiesRes, meRes] = await Promise.all([
-					fetch("/api/children", {
-						signal: controller.signal,
-					}),
-					fetch("/api/stories", {
-						signal: controller.signal,
-					}),
-					fetch("/api/me", {
-						signal: controller.signal,
-					}),
-				]);
-				if (!childrenRes.ok) {
-					throw new Error(`HTTP ${childrenRes.status}`);
+				const progressRes = await fetch("/api/progress", {
+					signal: controller.signal,
+				});
+				if (!progressRes.ok) {
+					throw new Error(`HTTP ${progressRes.status}`);
 				}
-				if (!storiesRes.ok) {
-					throw new Error(`HTTP ${storiesRes.status}`);
-				}
-				const data = await childrenRes.json();
-				const nextStories = (await storiesRes.json()) as StorySummary[];
-				const currentUser = meRes.ok
-					? ((await meRes.json()) as CurrentUserResponse)
-					: ({ authenticated: false } as const);
+				const data = (await progressRes.json()) as {
+					user: UserProfile;
+					stories: ProgressStory[];
+				};
 				if (!controller.signal.aborted) {
-					setChildren(data);
-					setStories(nextStories);
-					setSignedInUser(currentUser.authenticated ? currentUser.user : null);
-					setSelectedStories(
-						Object.fromEntries(
-							Object.entries(data as Record<string, ChildSummary>).map(
-								([id, child]) => [id, child.active_season],
-							),
-						),
+					setStories(data.stories);
+					setSignedInUser(data.user);
+					clearStaleDrafts(
+						data.user.email,
+						data.stories.map((story) => story.slug),
 					);
-					clearStaleDrafts(data);
 				}
 			} catch (err) {
 				if (!controller.signal.aborted) {
@@ -107,53 +75,16 @@ export default function App() {
 		);
 	}
 
-	const childEntries = Object.entries(children);
-
-	if (childEntries.length === 0) {
+	if (stories.length === 0) {
 		return (
 			<main className="typeling-game flex min-h-screen items-center justify-center theme-winni">
-				<p className="text-lg text-gray-500">No children configured yet.</p>
+				<p className="text-lg text-gray-500">No stories available yet.</p>
 			</main>
 		);
 	}
 
-	const handleStart = async (childId: string) => {
-		const child = children[childId];
-		if (!child) return;
-		const storySlug = selectedStories[childId] ?? child.active_season;
-		if (storySlug !== child.active_season) {
-			const res = await fetch(
-				`/api/children/${encodeURIComponent(childId)}/story`,
-				{
-					method: "PUT",
-					headers: { "content-type": "application/json" },
-					body: JSON.stringify({ story_slug: storySlug }),
-				},
-			);
-			if (!res.ok) {
-				setError(`HTTP ${res.status}`);
-				return;
-			}
-			const data = (await res.json()) as {
-				child?: ChildSummary & { id: string };
-			};
-			if (data.child) {
-				const updatedChild = data.child;
-				setChildren((current) => ({
-					...current,
-					[childId]: {
-						name: updatedChild.name,
-						theme: updatedChild.theme,
-						active_season: updatedChild.active_season,
-						current_episode: updatedChild.current_episode,
-						current_session_id: updatedChild.current_session_id,
-						target_wpm: updatedChild.target_wpm,
-					},
-				}));
-				clearStaleDrafts({ ...children, [childId]: updatedChild });
-			}
-		}
-		navigate(`/play/${childId}`);
+	const handleStart = (storySlug: string) => {
+		navigate(`/play/${storySlug}`);
 	};
 
 	return (
@@ -177,48 +108,32 @@ export default function App() {
 				)}
 			</header>
 			<div className="child-select flex flex-wrap justify-center gap-4">
-				{childEntries.map(([id, child]) => {
-					const selectedStorySlug = selectedStories[id] ?? child.active_season;
+				{stories.map((story) => {
+					const isZack =
+						story.slug.toLowerCase().includes("zack") ||
+						story.theme.toLowerCase().includes("science") ||
+						story.theme.toLowerCase().includes("robot");
 					return (
 						<div
-							key={id}
+							key={story.slug}
 							className={`child-card rounded-lg border-2 border-gray-200 p-6 text-left transition-all hover:border-blue-400 hover:shadow-md ${
-								id.toLowerCase().includes("zack") ? "zack-card" : "winni-card"
+								isZack ? "zack-card" : "winni-card"
 							}`}
 						>
 							<span className="child-token" aria-hidden="true" />
-							<span className="block text-xl font-semibold">{child.name}</span>
-							<label className="mt-4 block text-xs font-bold uppercase tracking-normal text-gray-500">
-								Story
-								<select
-									className="mt-2 block w-full rounded-md border border-stone-200 bg-white px-3 py-2 text-sm font-semibold normal-case text-stone-700 shadow-sm"
-									value={selectedStorySlug}
-									aria-label={`${child.name} story`}
-									onChange={(event) => {
-										const storySlug = event.currentTarget.value;
-										setSelectedStories((current) => ({
-											...current,
-											[id]: storySlug,
-										}));
-									}}
-								>
-									{stories.length === 0 ? (
-										<option value={selectedStorySlug}>
-											No stories available
-										</option>
-									) : (
-										stories.map((story) => (
-											<option key={story.slug} value={story.slug}>
-												{story.name}
-											</option>
-										))
-									)}
-								</select>
-							</label>
+							<span className="block text-xl font-semibold">{story.name}</span>
+							<span className="mt-2 block text-sm text-stone-500">
+								Chapter{" "}
+								{Math.min(story.current_episode + 1, story.total_episodes)} of{" "}
+								{story.total_episodes}
+							</span>
+							<span className="mt-1 block text-xs font-semibold uppercase tracking-normal text-stone-400">
+								Target {story.target_wpm} WPM
+							</span>
 							<button
 								type="button"
 								className="mt-4 rounded-md bg-stone-900 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-stone-700"
-								onClick={() => void handleStart(id)}
+								onClick={() => handleStart(story.slug)}
 							>
 								Start
 							</button>

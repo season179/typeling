@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { clearStaleDrafts, listDraftsForChild, saveDraft } from "./autosave";
+import { clearStaleDrafts, listDraftsForOwner, saveDraft } from "./autosave";
 
 function makeLocalStorage(): Storage {
 	const store = new Map<string, string>();
@@ -39,37 +39,37 @@ const draft = {
 	lastKeystrokeAt: 1000,
 };
 
-describe("listDraftsForChild", () => {
-	test("returns correct entries for a child", () => {
-		saveDraft("alice", "season-1", 0, draft);
-		saveDraft("alice", "season-1", 1, draft);
+describe("listDraftsForOwner", () => {
+	test("returns correct entries for an owner", () => {
+		saveDraft("alice@example.com", "season-1", 0, draft);
+		saveDraft("alice@example.com", "season-1", 1, draft);
 
-		const result = listDraftsForChild("alice");
+		const result = listDraftsForOwner("alice@example.com");
 		expect(result).toHaveLength(2);
 		expect(result).toContainEqual({
-			childId: "alice",
+			ownerId: "alice@example.com",
 			seasonSlug: "season-1",
 			episodeIdx: 0,
 		});
 		expect(result).toContainEqual({
-			childId: "alice",
+			ownerId: "alice@example.com",
 			seasonSlug: "season-1",
 			episodeIdx: 1,
 		});
 	});
 
 	test("returns empty array when no drafts exist", () => {
-		expect(listDraftsForChild("alice")).toEqual([]);
+		expect(listDraftsForOwner("alice@example.com")).toEqual([]);
 	});
 
-	test("ignores drafts for other children", () => {
-		saveDraft("alice", "season-1", 0, draft);
-		saveDraft("bob", "season-2", 0, draft);
+	test("ignores drafts for other owners", () => {
+		saveDraft("alice@example.com", "season-1", 0, draft);
+		saveDraft("bob@example.com", "season-2", 0, draft);
 
-		const result = listDraftsForChild("alice");
+		const result = listDraftsForOwner("alice@example.com");
 		expect(result).toHaveLength(1);
 		expect(result[0]).toEqual({
-			childId: "alice",
+			ownerId: "alice@example.com",
 			seasonSlug: "season-1",
 			episodeIdx: 0,
 		});
@@ -77,59 +77,56 @@ describe("listDraftsForChild", () => {
 });
 
 describe("clearStaleDrafts", () => {
-	test("clears draft whose season differs from active_season", () => {
-		saveDraft("alice", "old-season", 0, draft);
+	test("clears draft whose story is no longer available", () => {
+		saveDraft("alice@example.com", "old-season", 0, draft);
 
-		clearStaleDrafts({ alice: { active_season: "new-season" } });
+		clearStaleDrafts("alice@example.com", ["new-season"]);
 
-		expect(listDraftsForChild("alice")).toEqual([]);
+		expect(listDraftsForOwner("alice@example.com")).toEqual([]);
 	});
 
-	test("keeps draft whose season matches active_season", () => {
-		saveDraft("alice", "season-1", 0, draft);
+	test("keeps draft whose story is still available", () => {
+		saveDraft("alice@example.com", "season-1", 0, draft);
 
-		clearStaleDrafts({ alice: { active_season: "season-1" } });
+		clearStaleDrafts("alice@example.com", ["season-1"]);
 
-		expect(listDraftsForChild("alice")).toHaveLength(1);
-		expect(listDraftsForChild("alice")[0]).toEqual({
-			childId: "alice",
+		expect(listDraftsForOwner("alice@example.com")).toHaveLength(1);
+		expect(listDraftsForOwner("alice@example.com")[0]).toEqual({
+			ownerId: "alice@example.com",
 			seasonSlug: "season-1",
 			episodeIdx: 0,
 		});
 	});
 
-	test("handles child with no drafts", () => {
-		clearStaleDrafts({ alice: { active_season: "season-1" } });
-		expect(listDraftsForChild("alice")).toEqual([]);
+	test("handles owner with no drafts", () => {
+		clearStaleDrafts("alice@example.com", ["season-1"]);
+		expect(listDraftsForOwner("alice@example.com")).toEqual([]);
 	});
 
-	test("handles empty children record", () => {
-		saveDraft("alice", "season-1", 0, draft);
+	test("keeps drafts for other owners", () => {
+		saveDraft("alice@example.com", "season-1", 0, draft);
 
-		clearStaleDrafts({});
+		clearStaleDrafts("bob@example.com", []);
 
-		expect(listDraftsForChild("alice")).toHaveLength(1);
+		expect(listDraftsForOwner("alice@example.com")).toHaveLength(1);
 	});
 
 	test("clears only stale drafts, keeps valid ones", () => {
-		saveDraft("alice", "old-season", 0, draft);
-		saveDraft("alice", "current-season", 1, draft);
-		saveDraft("bob", "bob-season", 0, draft);
+		saveDraft("alice@example.com", "old-season", 0, draft);
+		saveDraft("alice@example.com", "current-season", 1, draft);
+		saveDraft("bob@example.com", "bob-season", 0, draft);
 
-		clearStaleDrafts({
-			alice: { active_season: "current-season" },
-			bob: { active_season: "bob-season" },
-		});
+		clearStaleDrafts("alice@example.com", ["current-season"]);
 
-		const aliceDrafts = listDraftsForChild("alice");
+		const aliceDrafts = listDraftsForOwner("alice@example.com");
 		expect(aliceDrafts).toHaveLength(1);
 		expect(aliceDrafts[0]).toEqual({
-			childId: "alice",
+			ownerId: "alice@example.com",
 			seasonSlug: "current-season",
 			episodeIdx: 1,
 		});
 
-		const bobDrafts = listDraftsForChild("bob");
+		const bobDrafts = listDraftsForOwner("bob@example.com");
 		expect(bobDrafts).toHaveLength(1);
 	});
 });

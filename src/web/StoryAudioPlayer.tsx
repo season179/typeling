@@ -25,7 +25,7 @@ interface EpisodeAudioPayload {
 }
 
 interface StoryAudioPlayerProps {
-	childId: string;
+	storySlug: string;
 	episodeIdx: number;
 	text: string;
 	onTypeAgain: () => void;
@@ -95,7 +95,7 @@ function readStoryButtonLabel(
 }
 
 export default function StoryAudioPlayer({
-	childId,
+	storySlug,
 	episodeIdx,
 	text,
 	onTypeAgain,
@@ -120,7 +120,7 @@ export default function StoryAudioPlayer({
 
 			try {
 				const res = await fetch(
-					`/api/children/${childId}/episodes/${episodeIdx}/audio`,
+					`/api/stories/${storySlug}/episodes/${episodeIdx}/audio`,
 					{ signal: controller.signal },
 				);
 				if (!res.ok) {
@@ -145,7 +145,7 @@ export default function StoryAudioPlayer({
 
 		void loadAudio();
 		return () => controller.abort();
-	}, [childId, episodeIdx]);
+	}, [storySlug, episodeIdx]);
 
 	const syncActiveWord = useCallback(() => {
 		const audio = audioRef.current;

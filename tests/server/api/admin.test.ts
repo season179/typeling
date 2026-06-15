@@ -6,11 +6,10 @@ import { join } from "node:path";
 import { extractAlignmentStoryWords } from "../../../src/lib/storyWordTokens";
 import { pcmToWavBuffer } from "../../../src/lib/wav";
 import { fetch } from "../../../src/server/index.ts";
-import { InMemoryStateStore } from "../../../src/server/stores";
 import { fakeD1StoryDatabase } from "../../lib/fakeD1Story";
 
 const fixtureSeason = {
-	slug: "winni-s1-test",
+	slug: "winni-s1-admin",
 	name: "Test Rainbow Story",
 	theme: "rainbow-unicorn",
 	episodes: Array.from({ length: 14 }, (_, i) => ({
@@ -20,20 +19,6 @@ const fixtureSeason = {
 				? "Luma saw a rainbow path in the sunny garden."
 				: `Episode ${i + 1} text for testing.`,
 	})),
-};
-
-const fixtureState = {
-	children: {
-		winni: {
-			name: "Winni",
-			theme: "rainbow-unicorn",
-			target_wpm: 15,
-			active_season: "winni-s1-test",
-			current_episode: 0,
-			current_session_id: null,
-		},
-	},
-	sessions: [],
 };
 
 let workDir: string;
@@ -79,9 +64,6 @@ afterEach(async () => {
 	await rm(workDir, { recursive: true, force: true });
 });
 
-const writeState = () =>
-	writeFile(stateFile, JSON.stringify(fixtureState), "utf8");
-
 const writeSeason = (season: unknown = fixtureSeason) =>
 	writeFile(
 		join(seasonsDir, `${fixtureSeason.slug}.json`),
@@ -89,13 +71,13 @@ const writeSeason = (season: unknown = fixtureSeason) =>
 		"utf8",
 	);
 
-const getAdminChildren = (url = "http://127.0.0.1:3001/api/admin/children") =>
+const getAdminStories = (url = "http://127.0.0.1:3001/api/admin/stories") =>
 	fetch(new Request(url));
 
 const updateEpisode = (text: string) =>
 	fetch(
 		new Request(
-			"http://127.0.0.1:3001/api/admin/seasons/winni-s1-test/episodes/0",
+			"http://127.0.0.1:3001/api/admin/seasons/winni-s1-admin/episodes/0",
 			{
 				method: "PUT",
 				headers: { "content-type": "application/json" },
@@ -107,14 +89,14 @@ const updateEpisode = (text: string) =>
 const getAdminAudioFile = () =>
 	fetch(
 		new Request(
-			"http://127.0.0.1:3001/api/admin/seasons/winni-s1-test/episodes/0/audio/file",
+			"http://127.0.0.1:3001/api/admin/seasons/winni-s1-admin/episodes/0/audio/file",
 		),
 	);
 
 const getAdminCaptions = () =>
 	fetch(
 		new Request(
-			"http://127.0.0.1:3001/api/admin/seasons/winni-s1-test/episodes/0/audio/captions.vtt",
+			"http://127.0.0.1:3001/api/admin/seasons/winni-s1-admin/episodes/0/audio/captions.vtt",
 		),
 	);
 
@@ -158,28 +140,27 @@ const writeAudioArtifacts = async (
 };
 
 describe("admin API", () => {
-	it("returns children, seasons, and audio status for local requests", async () => {
-		await writeState();
+	it("returns stories and audio status for local requests", async () => {
 		await writeSeason();
 		await writeAudioArtifacts();
 
-		const res = await getAdminChildren();
+		const res = await getAdminStories();
 
 		expect(res.status).toBe(200);
 		const body = await res.json();
 		expect(body.admin.access).toBe("local-only");
-		expect(body.children[0].id).toBe("winni");
-		expect(body.children[0].season.episodes[0]).toMatchObject({
+		expect(body.stories[0].slug).toBe("winni-s1-admin");
+		expect(body.stories[0].episodes[0]).toMatchObject({
 			idx: 0,
 			word_count: 9,
 			audio: { status: "ready", duration_seconds: 2, words: 9 },
 		});
-		expect(body.children[0].season.episodes[1].audio.status).toBe("missing");
+		expect(body.stories[0].episodes[1].audio.status).toBe("missing");
 	});
 
 	it("rejects admin requests from non-local hostnames", async () => {
-		const res = await getAdminChildren(
-			"https://typeling.example.com/api/admin/children",
+		const res = await getAdminStories(
+			"https://typeling.example.com/api/admin/stories",
 		);
 
 		expect(res.status).toBe(403);
@@ -187,7 +168,6 @@ describe("admin API", () => {
 	});
 
 	it("updates a season episode on disk", async () => {
-		await writeState();
 		await writeSeason();
 		const nextText = "Luma found a small brass key beside the rainbow gate.";
 
@@ -213,7 +193,7 @@ describe("admin API", () => {
 
 		const res = await fetch(
 			new Request(
-				"http://127.0.0.1:3001/api/admin/seasons/winni-s1-test/episodes/0",
+				"http://127.0.0.1:3001/api/admin/seasons/winni-s1-admin/episodes/0",
 				{
 					method: "PUT",
 					headers: { "content-type": "application/json" },
@@ -221,7 +201,6 @@ describe("admin API", () => {
 				},
 			),
 			{
-				APP_STATE_STORE: new InMemoryStateStore(fixtureState),
 				STORY_DB: storyDb,
 			},
 		);
@@ -235,7 +214,6 @@ describe("admin API", () => {
 	});
 
 	it("rejects story text with real child names before writing", async () => {
-		await writeState();
 		await writeSeason();
 
 		const res = await updateEpisode("Winni found a rainbow gate.");
@@ -249,7 +227,6 @@ describe("admin API", () => {
 	});
 
 	it("serves admin audio without using child chapter locks", async () => {
-		await writeState();
 		await writeSeason();
 		await writeAudioArtifacts();
 
@@ -263,7 +240,6 @@ describe("admin API", () => {
 	});
 
 	it("serves admin captions from the story text and audio duration", async () => {
-		await writeState();
 		await writeSeason();
 		await writeAudioArtifacts();
 

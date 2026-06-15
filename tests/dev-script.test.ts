@@ -2,26 +2,31 @@ import { describe, expect, it } from "bun:test";
 import viteConfig from "../vite.config";
 
 describe("dev scripts", () => {
-	it("runs Hono and Vite as separate Portless apps", async () => {
+	it("runs local Cloudflare dev after applying local D1 migrations", async () => {
 		const packageJson = await Bun.file("package.json").json();
-		expect(packageJson.scripts.dev).toContain("bun run dev:proxy &&");
+		expect(packageJson.scripts.dev).toContain("bun run db:migrate:local &&");
 		expect(packageJson.scripts["dev:proxy"]).toBe(
 			"portless proxy start --https",
 		);
-		expect(packageJson.scripts.dev).toContain("portless typeling-api");
-		expect(packageJson.scripts.dev).toContain("portless typeling vite");
-		expect(packageJson.scripts.dev).toContain(
-			"SERVER_URL=https://typeling-api.localhost",
+		expect(packageJson.scripts["db:migrate:local"]).toBe(
+			"wrangler d1 migrations apply typeling-content --local",
 		);
-		expect(packageJson.scripts.dev).not.toContain("SERVER_PORT");
+		expect(packageJson.scripts["db:migrate:remote"]).toBe(
+			"wrangler d1 migrations apply typeling-content --remote",
+		);
+		expect(packageJson.scripts.dev).toContain("bun run dev:proxy &&");
+		expect(packageJson.scripts.dev).toContain("TYPELING_CLOUDFLARE=1");
+		expect(packageJson.scripts.dev).toContain("portless typeling vite");
 	});
 
-	it("keeps Cloudflare dev separate from the legacy Portless flow", async () => {
+	it("keeps the direct Hono/Vite fallback separate from the canonical Cloudflare path", async () => {
 		const packageJson = await Bun.file("package.json").json();
 		expect(packageJson.scripts["dev:cloud"]).toBe(
 			"TYPELING_CLOUDFLARE=1 vite --host 127.0.0.1",
 		);
-		expect(packageJson.scripts.dev).not.toContain("TYPELING_CLOUDFLARE");
+		expect(packageJson.scripts.dev).not.toContain("typeling-api");
+		expect(packageJson.scripts["dev:direct"]).toContain("bun --watch");
+		expect(packageJson.scripts["dev:direct"]).toContain("SERVER_PORT");
 	});
 
 	it("points direct wrangler dev at the built client assets", async () => {
@@ -31,20 +36,12 @@ describe("dev scripts", () => {
 		expect(viteConfig.build?.outDir).toBe("../../dist/client");
 	});
 
-	it("configures StateStore as a SQLite-backed Durable Object", async () => {
+	it("does not bind the removed progress Durable Object", async () => {
 		const wranglerConfig = await Bun.file("wrangler.jsonc").json();
 
-		expect(wranglerConfig.durable_objects.bindings).toContainEqual({
-			name: "STATE_STORE",
-			class_name: "StateStore",
-		});
-		expect(wranglerConfig.migrations).toContainEqual({
-			tag: "v1",
-			new_sqlite_classes: ["StateStore"],
-		});
-		expect(JSON.stringify(wranglerConfig.migrations)).not.toContain(
-			"new_classes",
-		);
+		expect(wranglerConfig.durable_objects).toBeUndefined();
+		expect(wranglerConfig.migrations).toBeUndefined();
+		expect(JSON.stringify(wranglerConfig)).not.toContain("STATE_STORE");
 	});
 
 	it("binds the Worker to the R2 assets bucket with Node compatibility", async () => {

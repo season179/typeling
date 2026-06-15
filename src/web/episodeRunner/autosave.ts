@@ -11,29 +11,29 @@ export interface Draft
 const DRAFT_PREFIX = "typeling:draft:";
 
 export const keyFor = (
-	childId: string,
+	ownerId: string,
 	seasonSlug: string,
 	episodeIdx: number,
-): string => `${DRAFT_PREFIX}${childId}:${seasonSlug}:${episodeIdx}`;
+): string => `${DRAFT_PREFIX}${ownerId}:${seasonSlug}:${episodeIdx}`;
 
 export function saveDraft(
-	childId: string,
+	ownerId: string,
 	seasonSlug: string,
 	episodeIdx: number,
 	draft: Draft,
 ): void {
 	localStorage.setItem(
-		keyFor(childId, seasonSlug, episodeIdx),
+		keyFor(ownerId, seasonSlug, episodeIdx),
 		JSON.stringify(draft),
 	);
 }
 
 export function loadDraft(
-	childId: string,
+	ownerId: string,
 	seasonSlug: string,
 	episodeIdx: number,
 ): Draft | null {
-	const key = keyFor(childId, seasonSlug, episodeIdx);
+	const key = keyFor(ownerId, seasonSlug, episodeIdx);
 	const raw = localStorage.getItem(key);
 	if (raw === null) return null;
 	try {
@@ -45,16 +45,16 @@ export function loadDraft(
 }
 
 export function clearDraft(
-	childId: string,
+	ownerId: string,
 	seasonSlug: string,
 	episodeIdx: number,
 ): void {
-	localStorage.removeItem(keyFor(childId, seasonSlug, episodeIdx));
+	localStorage.removeItem(keyFor(ownerId, seasonSlug, episodeIdx));
 }
 
 const parseDraftKey = (
 	key: string,
-): { childId: string; seasonSlug: string; episodeIdx: number } | null => {
+): { ownerId: string; seasonSlug: string; episodeIdx: number } | null => {
 	if (!key.startsWith(DRAFT_PREFIX)) return null;
 	const parts = key.slice(DRAFT_PREFIX.length).split(":");
 	if (parts.length < 3) return null;
@@ -62,17 +62,17 @@ const parseDraftKey = (
 	if (Number.isNaN(episodeIdx)) return null;
 	const seasonSlug = parts.pop();
 	if (seasonSlug === undefined) return null;
-	const childId = parts.join(":");
-	if (!childId || !seasonSlug) return null;
-	return { childId, seasonSlug, episodeIdx };
+	const ownerId = parts.join(":");
+	if (!ownerId || !seasonSlug) return null;
+	return { ownerId, seasonSlug, episodeIdx };
 };
 
-export function listDraftsForChild(
-	childId: string,
-): Array<{ childId: string; seasonSlug: string; episodeIdx: number }> {
-	const prefix = `${DRAFT_PREFIX}${childId}:`;
+export function listDraftsForOwner(
+	ownerId: string,
+): Array<{ ownerId: string; seasonSlug: string; episodeIdx: number }> {
+	const prefix = `${DRAFT_PREFIX}${ownerId}:`;
 	const results: Array<{
-		childId: string;
+		ownerId: string;
 		seasonSlug: string;
 		episodeIdx: number;
 	}> = [];
@@ -87,14 +87,14 @@ export function listDraftsForChild(
 }
 
 export function clearStaleDrafts(
-	children: Record<string, { active_season: string }>,
+	ownerId: string,
+	activeStorySlugs: string[],
 ): void {
-	for (const [childId, child] of Object.entries(children)) {
-		const drafts = listDraftsForChild(childId);
-		for (const draft of drafts) {
-			if (draft.seasonSlug !== child.active_season) {
-				clearDraft(childId, draft.seasonSlug, draft.episodeIdx);
-			}
+	const activeStories = new Set(activeStorySlugs);
+	const drafts = listDraftsForOwner(ownerId);
+	for (const draft of drafts) {
+		if (!activeStories.has(draft.seasonSlug)) {
+			clearDraft(ownerId, draft.seasonSlug, draft.episodeIdx);
 		}
 	}
 }

@@ -1,19 +1,23 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { GraduationStatus } from "../lib/graduation";
-import { graduationStatus } from "../lib/graduation";
-import { rolling3Wpm } from "../lib/rolling3";
-import type { Session, SignedInUser } from "../lib/schemas/state";
+import type { Session, UserProfile } from "../lib/schemas/state";
 
-interface ChildSummary {
+interface ProgressStory {
+	slug: string;
 	name: string;
 	theme: string;
+	total_episodes: number;
+	current_episode: number;
 	target_wpm: number;
-	active_season: string;
+	rolling3: number | null;
+	status: GraduationStatus;
+	recent_sessions: Session[];
 }
 
-type CurrentUserResponse =
-	| { authenticated: false }
-	| { authenticated: true; user: SignedInUser };
+interface ProgressResponse {
+	user: UserProfile;
+	stories: ProgressStory[];
+}
 
 const STATUS_MAP: Record<
 	GraduationStatus,
@@ -52,9 +56,7 @@ function formatRelativeTime(iso: string, now: number): string {
 }
 
 export default function ParentView() {
-	const [children, setChildren] = useState<Record<string, ChildSummary>>({});
-	const [sessions, setSessions] = useState<Record<string, Session[]>>({});
-	const [signedInUser, setSignedInUser] = useState<SignedInUser | null>(null);
+	const [data, setData] = useState<ProgressResponse | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
@@ -66,44 +68,16 @@ export default function ParentView() {
 				setLoading(true);
 				setError(null);
 
-				const [childrenRes, meRes] = await Promise.all([
-					fetch("/api/children", {
-						signal: controller.signal,
-					}),
-					fetch("/api/me", {
-						signal: controller.signal,
-					}),
-				]);
-				if (!childrenRes.ok) {
-					throw new Error(`HTTP ${childrenRes.status}`);
+				const res = await fetch("/api/progress", {
+					signal: controller.signal,
+				});
+				if (!res.ok) {
+					throw new Error(`HTTP ${res.status}`);
 				}
-				const childrenData: Record<string, ChildSummary> =
-					await childrenRes.json();
-				const currentUser = meRes.ok
-					? ((await meRes.json()) as CurrentUserResponse)
-					: ({ authenticated: false } as const);
-				if (controller.signal.aborted) return;
-				setChildren(childrenData);
-				setSignedInUser(currentUser.authenticated ? currentUser.user : null);
-
-				const entries = Object.entries(childrenData);
-				const sessionResults = await Promise.all(
-					entries.map(async ([id]) => {
-						const res = await fetch(`/api/children/${id}/sessions`, {
-							signal: controller.signal,
-						});
-						if (res.ok) return { id, sessions: await res.json() };
-						return { id, sessions: [] as Session[] };
-					}),
-				);
-
-				if (controller.signal.aborted) return;
-
-				const sessionsMap: Record<string, Session[]> = {};
-				for (const { id, sessions: s } of sessionResults) {
-					sessionsMap[id] = s;
+				const nextData = (await res.json()) as ProgressResponse;
+				if (!controller.signal.aborted) {
+					setData(nextData);
 				}
-				setSessions(sessionsMap);
 			} catch (err) {
 				if (!controller.signal.aborted) {
 					setError(err instanceof Error ? err.message : "Failed to load");
@@ -120,20 +94,6 @@ export default function ParentView() {
 	}, []);
 
 	const now = Date.now();
-
-	const childEntries = useMemo(
-		() =>
-			Object.entries(children).map(([id, child]) => {
-				const childSessions = sessions[id] ?? [];
-				const rolling3 = rolling3Wpm(childSessions, {
-					seasonSlug: child.active_season,
-				});
-				const status = graduationStatus(rolling3, child.target_wpm);
-				const last10 = childSessions.slice(0, 10);
-				return { id, child, rolling3, status, last10 };
-			}),
-		[children, sessions],
-	);
 
 	if (loading) {
 		return (
@@ -163,21 +123,19 @@ export default function ParentView() {
 				<header className="mb-10 flex flex-wrap items-start justify-between gap-4">
 					<div>
 						<h1 className="font-serif text-3xl font-bold text-stone-800 tracking-tight">
-							Admin Progress
+							Story Progress
 						</h1>
 						<p className="mt-1 text-sm text-stone-400">
-							Typing sessions for each child
+							Typing sessions for signed-in stories
 						</p>
 					</div>
-					{signedInUser && (
+					{data?.user && (
 						<p className="text-right text-sm font-medium text-stone-500">
 							Signed in as{" "}
-							<span className="text-stone-700">
-								{signedInUser.display_name}
-							</span>
-							{signedInUser.display_name !== signedInUser.email && (
+							<span className="text-stone-700">{data.user.display_name}</span>
+							{data.user.display_name !== data.user.email && (
 								<span className="block text-xs text-stone-400">
-									{signedInUser.email}
+									{data.user.email}
 								</span>
 							)}
 						</p>
@@ -185,115 +143,103 @@ export default function ParentView() {
 				</header>
 
 				<div className="space-y-10">
-					{childEntries.map(({ id, child, rolling3, status, last10 }) => (
-						<section key={id}>
-							{/* Child header card */}
-							<div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-								<div>
-									<h2 className="font-serif text-2xl font-semibold text-stone-800">
-										{child.name}
-									</h2>
-									<p className="text-sm text-stone-400">
-										{child.theme} · Target {child.target_wpm} WPM
-									</p>
-								</div>
-								<div className="flex items-center gap-3">
-									{rolling3 !== null && (
-										<span className="text-sm text-stone-400">
-											Rolling 3:{" "}
-											<span className="font-semibold text-stone-600">
-												{Math.round(rolling3)}
-											</span>{" "}
-											WPM
-										</span>
-									)}
-									<span
-										className={`inline-block rounded-full px-3 py-0.5 text-xs font-semibold tracking-wide uppercase ${STATUS_MAP[status].className}`}
-									>
-										{STATUS_MAP[status].label}
-									</span>
-								</div>
-							</div>
-
-							{/* Sessions card */}
-							<div className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
-								{last10.length === 0 ? (
-									<div className="px-6 py-12 text-center">
+					{data?.stories.map((story) => {
+						const last10 = story.recent_sessions;
+						return (
+							<section key={story.slug}>
+								<div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+									<div>
+										<h2 className="font-serif text-2xl font-semibold text-stone-800">
+											{story.name}
+										</h2>
 										<p className="text-sm text-stone-400">
-											No sessions completed yet — time to type!
+											{story.theme} · Chapter{" "}
+											{Math.min(
+												story.current_episode + 1,
+												story.total_episodes,
+											)}{" "}
+											of {story.total_episodes} · Target {story.target_wpm} WPM
 										</p>
 									</div>
-								) : (
-									<table className="w-full text-sm">
-										<thead>
-											<tr className="border-b border-stone-100 bg-stone-50/50 text-left">
-												<th className="py-3 pl-6 pr-2 font-medium text-stone-400">
-													Speed{" "}
-													<span className="font-normal text-stone-300">
-														WPM
-													</span>
-												</th>
-												<th className="py-3 px-2 font-medium text-stone-400">
-													Length{" "}
-													<span className="font-normal text-stone-300">
-														chars
-													</span>
-												</th>
-												<th className="py-3 px-2 font-medium text-stone-400">
-													Active time{" "}
-													<span className="font-normal text-stone-300">
-														typing
-													</span>
-												</th>
-												<th className="py-3 pr-4 pl-2 font-medium text-stone-400">
-													Completed
-												</th>
-											</tr>
-										</thead>
-										<tbody>
-											{last10.map((s) => (
-												<tr
-													key={s.id}
-													className="border-b border-stone-50 transition-colors hover:bg-amber-50/40"
-												>
-													<td className="py-3 pl-6 pr-2 font-semibold text-stone-700 tabular-nums">
-														{Math.round(s.wpm)}
-													</td>
-													<td className="py-3 px-2 tabular-nums text-stone-600">
-														{s.char_count}
-													</td>
-													<td className="py-3 px-2 tabular-nums text-stone-600">
-														{formatMs(s.active_ms)}
-													</td>
-													<td className="py-3 pr-4 pl-2 text-stone-500">
-														{formatRelativeTime(s.finished_at, now)}
-														{s.signed_in_user && (
-															<span
-																className="mt-0.5 block text-xs text-stone-400"
-																title={s.signed_in_user.email}
-															>
-																by {s.signed_in_user.display_name}
-															</span>
-														)}
-													</td>
-												</tr>
-											))}
-										</tbody>
-									</table>
-								)}
+									<div className="flex items-center gap-3">
+										{story.rolling3 !== null && (
+											<span className="text-sm text-stone-400">
+												Rolling 3:{" "}
+												<span className="font-semibold text-stone-600">
+													{Math.round(story.rolling3)}
+												</span>{" "}
+												WPM
+											</span>
+										)}
+										<span
+											className={`inline-block rounded-full px-3 py-0.5 text-xs font-semibold tracking-wide uppercase ${STATUS_MAP[story.status].className}`}
+										>
+											{STATUS_MAP[story.status].label}
+										</span>
+									</div>
+								</div>
 
-								{/* Session ID footer for the most recent session */}
-								{last10.length > 0 && (
-									<div className="border-t border-stone-100 bg-stone-50/30 px-6 py-2.5">
-										<p className="font-mono text-[11px] text-stone-400">
-											<span className="text-stone-300">session id </span>
-											{last10[0]?.id}
-										</p>
-									</div>
-								)}
-							</div>
-						</section>
-					))}
+								<div className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
+									{last10.length === 0 ? (
+										<div className="px-6 py-12 text-center">
+											<p className="text-sm text-stone-400">
+												No sessions completed yet.
+											</p>
+										</div>
+									) : (
+										<table className="w-full text-sm">
+											<thead>
+												<tr className="border-b border-stone-100 bg-stone-50/50 text-left">
+													<th className="py-3 pl-6 pr-2 font-medium text-stone-400">
+														Speed{" "}
+														<span className="font-normal text-stone-300">
+															WPM
+														</span>
+													</th>
+													<th className="py-3 px-2 font-medium text-stone-400">
+														Length{" "}
+														<span className="font-normal text-stone-300">
+															chars
+														</span>
+													</th>
+													<th className="py-3 px-2 font-medium text-stone-400">
+														Active time{" "}
+														<span className="font-normal text-stone-300">
+															typing
+														</span>
+													</th>
+													<th className="py-3 pr-4 pl-2 font-medium text-stone-400">
+														Completed
+													</th>
+												</tr>
+											</thead>
+											<tbody>
+												{last10.map((session) => (
+													<tr
+														key={session.id}
+														className="border-b border-stone-50 transition-colors hover:bg-amber-50/40"
+													>
+														<td className="py-3 pl-6 pr-2 font-semibold text-stone-700 tabular-nums">
+															{Math.round(session.wpm)}
+														</td>
+														<td className="py-3 px-2 tabular-nums text-stone-600">
+															{session.char_count}
+														</td>
+														<td className="py-3 px-2 tabular-nums text-stone-600">
+															{formatMs(session.active_ms)}
+														</td>
+														<td className="py-3 pr-4 pl-2 text-stone-500">
+															{formatRelativeTime(session.finished_at, now)}
+														</td>
+													</tr>
+												))}
+											</tbody>
+										</table>
+									)}
+								</div>
+							</section>
+						);
+					})}
 				</div>
 			</div>
 		</main>

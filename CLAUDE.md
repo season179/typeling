@@ -23,11 +23,12 @@ The implementation plan wins over this file.
 
 ## Stack Rules
 
-- Bun only. Do not introduce Node, npm, ESLint, Prettier, Playwright, or a database.
-- Server is Hono and must bind `127.0.0.1`, never `0.0.0.0`.
-- Honour `PORT` for server ports; use the documented fallback only when it is unset.
-- `bun run dev` runs the full Portless stack: Hono at `https://typeling-api.localhost` and Vite at `https://typeling.localhost`.
-- Use `bun run dev:direct` only when you need the direct localhost fallback; it uses `SERVER_PORT` for Hono.
+- Bun is the package manager and test runner. Do not introduce Node tooling, npm, ESLint, Prettier, or Playwright.
+- Persistence is Cloudflare D1 (database `typeling-content`, bound as `STORY_DB`). There is no longer a Durable Object `STATE_STORE` or `data/state.json` store. Schema changes are numbered `.sql` files in `migrations/`, applied with `bun run db:migrate:local` and, for production, `bun run db:migrate:remote`.
+- Server is a Hono app in `src/server/index.ts` that exports a Workers `fetch` handler (`export default { fetch }`). In dev it runs inside the Cloudflare Workers runtime via `@cloudflare/vite-plugin`; the `dev:direct` fallback serves the same app through `Bun.serve`. Either way it binds `127.0.0.1` (HOSTNAME), never `0.0.0.0`, and rejects wildcard-address requests.
+- Stores resolve by binding: when `STORY_DB` is present the server uses `D1StoryStore`/`D1ProgressStore`; otherwise it falls back to the in-memory stores (tests, D1-less dev).
+- `bun run dev` applies local D1 migrations, starts the Portless HTTPS proxy, then serves both API and frontend from `https://typeling.localhost` under the Workers runtime (`TYPELING_CLOUDFLARE=1`). There is no separate `typeling-api` host anymore.
+- Use `bun run dev:direct` only for the plain-localhost fallback: a separate Bun server on `SERVER_PORT` plus Vite proxying `/api`. Honour `PORT`/`SERVER_PORT`; use the documented fallback only when unset.
 - Frontend is React 19, Vite, Tailwind, TypeScript.
 - Lint and format with Biome. `bun run lint` checks `src/`; `bun run format` formats `src/`.
 - Browser automation is `agent-browser` only. Run `agent-browser --help` if unsure.
@@ -61,12 +62,13 @@ For timing-sensitive typing checks, prefer reducer/unit coverage plus focused sm
 - Do not add deploy, server-side mid-episode save, PIN gate, replay, iPad-specific work, illustrations, eval automation, backup rotation, or third-child UI unless the issue explicitly asks.
 - Typing uses document-level `keydown`, not an input element. Wrong keys flash briefly and do not advance. Backspace/Delete/arrows/modifiers/repeats are no-ops. Paste and Space prevent default browser behavior.
 - WPM uses the 5-character-word convention, starts on first keystroke, pauses after 5s idle, and pauses on `visibilitychange` hidden.
-- `POST /api/sessions` must be idempotent by client-generated `sessionId` and reject stale child/episode/season submissions with `409`.
-- Runtime state is `data/state.json`: single-process, single-writer, Zod-validated, atomic `.tmp` to rename, with one `.bak`.
+- `POST /api/sessions` must be idempotent by client-generated `sessionId` and reject stale episode/season submissions with `409`. Sessions are scoped to the authenticated user's email, not a child id.
+- Progress is email-scoped and stored in D1 (`users`, `user_story_progress`, `typing_sessions`). Stories are decoupled from children: navigation and the API key off `storySlug`, and per-user progress/WPM is keyed by `(email, season_slug)`. All writes pass Zod validation first.
+- Identity comes from Cloudflare Access (the `cf-access-jwt-assertion` header), normalised to a lowercase email; local dev falls back to the `dev@typeling.localhost` user.
 - Generated story text must be British English, kid-safe, and within `[A-Za-z0-9 .,!?'";:\-()\n]+`; violations are hard failures.
 - Generated stories must avoid real child names; use fictional protagonist names instead.
 - For audio/TTS work, create deterministic derived artifacts first, then speaker-labelled transcripts, then model calls. Do not mutate source season JSON as the first step.
 
 ## Review Posture
 
-Review for behavioural bugs first: broken acceptance criteria, missing lockfile/config changes, ignored negative checks, unsafe bind addresses, stale state writes, and child-facing product regressions. If no issue remains, say that plainly.
+Review for behavioural bugs first: broken acceptance criteria, missing lockfile/config/migration changes, ignored negative checks, unsafe bind addresses, stale session/progress writes, missing email/identity scoping, and child-facing product regressions. If no issue remains, say that plainly.

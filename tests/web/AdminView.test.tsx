@@ -7,31 +7,22 @@ setupDom();
 
 const adminPayload = {
 	admin: { access: "local-only" },
-	children: [
+	stories: [
 		{
-			id: "winni",
-			name: "Winni",
+			slug: "winni-s1-test",
+			name: "Test Rainbow Story",
 			theme: "rainbow-unicorn",
-			target_wpm: 15,
-			active_season: "winni-s1-test",
-			current_episode: 0,
-			current_session_id: null,
-			season: {
-				slug: "winni-s1-test",
-				name: "Test Rainbow Story",
-				theme: "rainbow-unicorn",
-				episodes: [
-					{
-						idx: 0,
-						text: "Luma saw a rainbow path.",
-						char_count: 24,
-						word_count: 5,
-						audio: {
-							status: "missing",
-						},
+			episodes: [
+				{
+					idx: 0,
+					text: "Luma saw a rainbow path.",
+					char_count: 24,
+					word_count: 5,
+					audio: {
+						status: "missing",
 					},
-				],
-			},
+				},
+			],
 		},
 	],
 };

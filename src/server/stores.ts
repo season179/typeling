@@ -2,13 +2,21 @@ import { createHash } from "node:crypto";
 import { rename } from "node:fs/promises";
 import { join } from "node:path";
 import { seasonSchema } from "../lib/schemas/season";
-import { type State, stateSchema } from "../lib/schemas/state";
+import {
+	type Session,
+	type SessionSubmission,
+	type SignedInUser,
+	type StoryProgress,
+	sessionSchema,
+	storyProgressSchema,
+	type UserProfile,
+	userProfileSchema,
+} from "../lib/schemas/state";
 import { extractAlignmentStoryWords } from "../lib/storyWordTokens";
 import {
 	type WordTimingSidecar,
 	wordTimingSidecarSchema,
 } from "../lib/wordTimings";
-import { createStateQueue, type MutateFn } from "./state";
 
 export type Season = ReturnType<typeof seasonSchema.parse>;
 type EpisodeAudioCode = "EpisodeAudioMissing" | "EpisodeAudioStale";
@@ -47,6 +55,32 @@ interface D1SeasonRow {
 interface D1EpisodeRow {
 	idx: number;
 	text: string;
+}
+
+interface D1UserRow {
+	email: string;
+	display_name: string;
+	name: string | null;
+	access_subject: string | null;
+	target_wpm: number;
+}
+
+interface D1ProgressRow {
+	email: string;
+	season_slug: string;
+	current_episode: number;
+}
+
+interface D1SessionRow {
+	id: string;
+	email: string;
+	season_slug: string;
+	episode_idx: number;
+	wpm: number;
+	char_count: number;
+	active_ms: number;
+	started_at: string;
+	finished_at: string;
 }
 
 export interface StorySummary {
@@ -245,6 +279,475 @@ export class D1StoryStore implements StoryStore {
 
 		return this.readSeason(seasonSlug);
 	}
+}
+
+const DEFAULT_TARGET_WPM = 15;
+
+export class SessionIdConflictError extends Error {
+	constructor(sessionId: string) {
+		super(`Session id belongs to a different user: ${sessionId}`);
+		this.name = "SessionIdConflictError";
+	}
+}
+
+export class ProgressMismatchError extends Error {
+	constructor() {
+		super("episode_mismatch");
+		this.name = "ProgressMismatchError";
+	}
+}
+
+export interface ProgressStore {
+	upsertUser(user: SignedInUser): Promise<UserProfile>;
+	ensureStoryProgress(
+		email: string,
+		seasonSlug: string,
+	): Promise<StoryProgress>;
+	listStoryProgress(email: string): Promise<StoryProgress[]>;
+	createSession(email: string, session: SessionSubmission): Promise<Session>;
+	listSessions(email: string, seasonSlug?: string): Promise<Session[]>;
+	resetStoryProgress(
+		email: string,
+		seasonSlug: string,
+		episodeIdx: number,
+	): Promise<StoryProgress>;
+}
+
+export class InMemoryProgressStore implements ProgressStore {
+	#users = new Map<string, UserProfile>();
+	#progress = new Map<string, StoryProgress>();
+	#sessions = new Map<string, Session>();
+	#queue = Promise.resolve();
+
+	async upsertUser(user: SignedInUser): Promise<UserProfile> {
+		return this.#mutate(() => {
+			const email = normalizeStoredEmail(user.email);
+			const existing = this.#users.get(email);
+			const next = userProfileSchema.parse({
+				email,
+				display_name: user.display_name,
+				...(user.name ? { name: user.name } : {}),
+				...(user.access_subject ? { access_subject: user.access_subject } : {}),
+				target_wpm: existing?.target_wpm ?? DEFAULT_TARGET_WPM,
+			});
+			this.#users.set(email, next);
+			return structuredClone(next);
+		});
+	}
+
+	async ensureStoryProgress(
+		email: string,
+		seasonSlug: string,
+	): Promise<StoryProgress> {
+		return this.#mutate(() => {
+			const key = progressKey(email, seasonSlug);
+			const existing = this.#progress.get(key);
+			if (existing) return structuredClone(existing);
+			const progress = storyProgressSchema.parse({
+				email: normalizeStoredEmail(email),
+				season_slug: seasonSlug,
+				current_episode: 0,
+			});
+			this.#progress.set(key, progress);
+			return structuredClone(progress);
+		});
+	}
+
+	async listStoryProgress(email: string): Promise<StoryProgress[]> {
+		const normalized = normalizeStoredEmail(email);
+		return [...this.#progress.values()]
+			.filter((progress) => progress.email === normalized)
+			.map((progress) => structuredClone(progress));
+	}
+
+	async createSession(
+		email: string,
+		session: SessionSubmission,
+	): Promise<Session> {
+		return this.#mutate(() => {
+			const normalized = normalizeStoredEmail(email);
+			const existing = this.#sessions.get(session.id);
+			if (existing) {
+				if (existing.email !== normalized) {
+					throw new SessionIdConflictError(session.id);
+				}
+				return structuredClone(existing);
+			}
+
+			const progress = this.#ensureProgressSync(
+				normalized,
+				session.season_slug,
+			);
+			if (session.episode_idx > progress.current_episode) {
+				throw new ProgressMismatchError();
+			}
+
+			const stored = sessionSchema.parse({ ...session, email: normalized });
+			this.#sessions.set(stored.id, stored);
+			if (session.episode_idx === progress.current_episode) {
+				const nextProgress = storyProgressSchema.parse({
+					...progress,
+					current_episode: session.episode_idx + 1,
+				});
+				this.#progress.set(
+					progressKey(normalized, session.season_slug),
+					nextProgress,
+				);
+			}
+			return structuredClone(stored);
+		});
+	}
+
+	async listSessions(email: string, seasonSlug?: string): Promise<Session[]> {
+		const normalized = normalizeStoredEmail(email);
+		return [...this.#sessions.values()]
+			.filter(
+				(session) =>
+					session.email === normalized &&
+					(seasonSlug === undefined || session.season_slug === seasonSlug),
+			)
+			.sort((a, b) => b.finished_at.localeCompare(a.finished_at))
+			.map((session) => structuredClone(session));
+	}
+
+	async resetStoryProgress(
+		email: string,
+		seasonSlug: string,
+		episodeIdx: number,
+	): Promise<StoryProgress> {
+		return this.#mutate(() => {
+			const normalized = normalizeStoredEmail(email);
+			const progress = this.#ensureProgressSync(normalized, seasonSlug);
+			if (episodeIdx > progress.current_episode) {
+				throw new ProgressMismatchError();
+			}
+			for (const [id, session] of this.#sessions.entries()) {
+				if (
+					session.email === normalized &&
+					session.season_slug === seasonSlug &&
+					session.episode_idx >= episodeIdx
+				) {
+					this.#sessions.delete(id);
+				}
+			}
+			const nextProgress = storyProgressSchema.parse({
+				...progress,
+				current_episode: episodeIdx,
+			});
+			this.#progress.set(progressKey(normalized, seasonSlug), nextProgress);
+			return structuredClone(nextProgress);
+		});
+	}
+
+	#ensureProgressSync(email: string, seasonSlug: string): StoryProgress {
+		const key = progressKey(email, seasonSlug);
+		const existing = this.#progress.get(key);
+		if (existing) return existing;
+		const progress = storyProgressSchema.parse({
+			email,
+			season_slug: seasonSlug,
+			current_episode: 0,
+		});
+		this.#progress.set(key, progress);
+		return progress;
+	}
+
+	#mutate<T>(fn: () => T): Promise<T> {
+		const { promise, resolve, reject } = Promise.withResolvers<T>();
+		this.#queue = this.#queue.then(() => {
+			try {
+				resolve(fn());
+			} catch (error) {
+				reject(error);
+			}
+		});
+		return promise;
+	}
+}
+
+export class D1ProgressStore implements ProgressStore {
+	#db: D1DatabaseLike;
+
+	constructor(db: D1DatabaseLike) {
+		this.#db = db;
+	}
+
+	async upsertUser(user: SignedInUser): Promise<UserProfile> {
+		const email = normalizeStoredEmail(user.email);
+		await this.#db
+			.prepare(
+				`
+					INSERT INTO users (email, display_name, name, access_subject)
+					VALUES (?, ?, ?, ?)
+					ON CONFLICT(email) DO UPDATE SET
+						display_name = excluded.display_name,
+						name = excluded.name,
+						access_subject = excluded.access_subject,
+						updated_at = CURRENT_TIMESTAMP
+				`,
+			)
+			.bind(
+				email,
+				user.display_name,
+				user.name ?? null,
+				user.access_subject ?? null,
+			)
+			.run();
+
+		return this.#readUser(email);
+	}
+
+	async ensureStoryProgress(
+		email: string,
+		seasonSlug: string,
+	): Promise<StoryProgress> {
+		const normalized = normalizeStoredEmail(email);
+		await this.#db
+			.prepare(
+				`
+					INSERT OR IGNORE INTO user_story_progress (email, season_slug)
+					VALUES (?, ?)
+				`,
+			)
+			.bind(normalized, seasonSlug)
+			.run();
+		return this.#readStoryProgress(normalized, seasonSlug);
+	}
+
+	async listStoryProgress(email: string): Promise<StoryProgress[]> {
+		const normalized = normalizeStoredEmail(email);
+		const rows = await this.#db
+			.prepare(
+				`
+					SELECT email, season_slug, current_episode
+					FROM user_story_progress
+					WHERE email = ?
+				`,
+			)
+			.bind(normalized)
+			.all<D1ProgressRow>();
+		return (rows.results ?? []).map(progressFromRow);
+	}
+
+	async createSession(
+		email: string,
+		session: SessionSubmission,
+	): Promise<Session> {
+		const normalized = normalizeStoredEmail(email);
+		const existing = await this.#readSessionById(session.id);
+		if (existing) {
+			if (existing.email !== normalized) {
+				throw new SessionIdConflictError(session.id);
+			}
+			return existing;
+		}
+
+		const progress = await this.ensureStoryProgress(
+			normalized,
+			session.season_slug,
+		);
+		if (session.episode_idx > progress.current_episode) {
+			throw new ProgressMismatchError();
+		}
+
+		await this.#db
+			.prepare(
+				`
+					INSERT OR IGNORE INTO typing_sessions (
+						id,
+						email,
+						season_slug,
+						episode_idx,
+						wpm,
+						char_count,
+						active_ms,
+						started_at,
+						finished_at
+					)
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+				`,
+			)
+			.bind(
+				session.id,
+				normalized,
+				session.season_slug,
+				session.episode_idx,
+				session.wpm,
+				session.char_count,
+				session.active_ms,
+				session.started_at,
+				session.finished_at,
+			)
+			.run();
+
+		const saved = await this.#readSessionById(session.id);
+		if (!saved) {
+			throw new Error(`Session was not saved: ${session.id}`);
+		}
+		if (
+			saved.email === normalized &&
+			session.episode_idx === progress.current_episode
+		) {
+			await this.#db
+				.prepare(
+					`
+						UPDATE user_story_progress
+						SET current_episode = ?, updated_at = CURRENT_TIMESTAMP
+						WHERE email = ? AND season_slug = ?
+					`,
+				)
+				.bind(session.episode_idx + 1, normalized, session.season_slug)
+				.run();
+		}
+		return saved;
+	}
+
+	async listSessions(email: string, seasonSlug?: string): Promise<Session[]> {
+		const normalized = normalizeStoredEmail(email);
+		const rows = seasonSlug
+			? await this.#db
+					.prepare(
+						`
+							SELECT id, email, season_slug, episode_idx, wpm, char_count, active_ms, started_at, finished_at
+							FROM typing_sessions
+							WHERE email = ? AND season_slug = ?
+							ORDER BY finished_at DESC
+						`,
+					)
+					.bind(normalized, seasonSlug)
+					.all<D1SessionRow>()
+			: await this.#db
+					.prepare(
+						`
+							SELECT id, email, season_slug, episode_idx, wpm, char_count, active_ms, started_at, finished_at
+							FROM typing_sessions
+							WHERE email = ?
+							ORDER BY finished_at DESC
+						`,
+					)
+					.bind(normalized)
+					.all<D1SessionRow>();
+		return (rows.results ?? []).map(sessionFromRow);
+	}
+
+	async resetStoryProgress(
+		email: string,
+		seasonSlug: string,
+		episodeIdx: number,
+	): Promise<StoryProgress> {
+		const normalized = normalizeStoredEmail(email);
+		const progress = await this.ensureStoryProgress(normalized, seasonSlug);
+		if (episodeIdx > progress.current_episode) {
+			throw new ProgressMismatchError();
+		}
+		await this.#db
+			.prepare(
+				`
+					DELETE FROM typing_sessions
+					WHERE email = ? AND season_slug = ? AND episode_idx >= ?
+				`,
+			)
+			.bind(normalized, seasonSlug, episodeIdx)
+			.run();
+		await this.#db
+			.prepare(
+				`
+					UPDATE user_story_progress
+					SET current_episode = ?, updated_at = CURRENT_TIMESTAMP
+					WHERE email = ? AND season_slug = ?
+				`,
+			)
+			.bind(episodeIdx, normalized, seasonSlug)
+			.run();
+		return this.#readStoryProgress(normalized, seasonSlug);
+	}
+
+	async #readUser(email: string): Promise<UserProfile> {
+		const row = await this.#db
+			.prepare(
+				"SELECT email, display_name, name, access_subject, target_wpm FROM users WHERE email = ?",
+			)
+			.bind(normalizeStoredEmail(email))
+			.first<D1UserRow>();
+		if (!row) {
+			throw new Error(`User was not saved: ${email}`);
+		}
+		return userFromRow(row);
+	}
+
+	async #readStoryProgress(
+		email: string,
+		seasonSlug: string,
+	): Promise<StoryProgress> {
+		const row = await this.#db
+			.prepare(
+				`
+					SELECT email, season_slug, current_episode
+					FROM user_story_progress
+					WHERE email = ? AND season_slug = ?
+				`,
+			)
+			.bind(normalizeStoredEmail(email), seasonSlug)
+			.first<D1ProgressRow>();
+		if (!row) {
+			throw new Error(`Progress was not saved: ${email}/${seasonSlug}`);
+		}
+		return progressFromRow(row);
+	}
+
+	async #readSessionById(sessionId: string): Promise<Session | null> {
+		const row = await this.#db
+			.prepare(
+				`
+					SELECT id, email, season_slug, episode_idx, wpm, char_count, active_ms, started_at, finished_at
+					FROM typing_sessions
+					WHERE id = ?
+				`,
+			)
+			.bind(sessionId)
+			.first<D1SessionRow>();
+		return row ? sessionFromRow(row) : null;
+	}
+}
+
+function normalizeStoredEmail(email: string): string {
+	return email.trim().toLowerCase();
+}
+
+function progressKey(email: string, seasonSlug: string): string {
+	return `${normalizeStoredEmail(email)}:${seasonSlug}`;
+}
+
+function userFromRow(row: D1UserRow): UserProfile {
+	return userProfileSchema.parse({
+		email: normalizeStoredEmail(row.email),
+		display_name: row.display_name,
+		...(row.name ? { name: row.name } : {}),
+		...(row.access_subject ? { access_subject: row.access_subject } : {}),
+		target_wpm: row.target_wpm,
+	});
+}
+
+function progressFromRow(row: D1ProgressRow): StoryProgress {
+	return storyProgressSchema.parse({
+		email: normalizeStoredEmail(row.email),
+		season_slug: row.season_slug,
+		current_episode: row.current_episode,
+	});
+}
+
+function sessionFromRow(row: D1SessionRow): Session {
+	return sessionSchema.parse({
+		id: row.id,
+		email: normalizeStoredEmail(row.email),
+		season_slug: row.season_slug,
+		episode_idx: row.episode_idx,
+		wpm: row.wpm,
+		char_count: row.char_count,
+		active_ms: row.active_ms,
+		started_at: row.started_at,
+		finished_at: row.finished_at,
+	});
 }
 
 function storySummary(season: Season): StorySummary {
@@ -794,69 +1297,10 @@ function assertR2AudioMetadataMatchesSidecar(
 	}
 }
 
-export interface StateStore {
-	readState(): Promise<State>;
-	mutateState(fn: MutateFn): Promise<State>;
-}
-
-export interface DurableObjectStub {
-	fetch(request: Request): Response | Promise<Response>;
-}
-
-export interface DurableObjectNamespaceBinding {
-	idFromName(name: string): unknown;
-	get(id: unknown): DurableObjectStub;
-}
-
-export class InMemoryStateStore implements StateStore {
-	#state: State;
-	#queue = Promise.resolve();
-
-	constructor(seed: State) {
-		this.#state = stateSchema.parse(structuredClone(seed));
-	}
-
-	async readState(): Promise<State> {
-		return structuredClone(this.#state);
-	}
-
-	mutateState(fn: MutateFn): Promise<State> {
-		const { promise, resolve, reject } = Promise.withResolvers<State>();
-		this.#queue = this.#queue.then(async () => {
-			try {
-				const current = structuredClone(this.#state);
-				const next = fn(current);
-				this.#state = stateSchema.parse(structuredClone(next));
-				resolve(structuredClone(this.#state));
-			} catch (error) {
-				reject(error);
-			}
-		});
-		return promise;
-	}
-}
-
-export class DiskStateStore implements StateStore {
-	#queue: ReturnType<typeof createStateQueue>;
-
-	constructor(statePath: string) {
-		this.#queue = createStateQueue(statePath);
-	}
-
-	readState(): Promise<State> {
-		return this.#queue.readState();
-	}
-
-	mutateState(fn: MutateFn): Promise<State> {
-		return this.#queue.mutateState(fn);
-	}
-}
-
 export interface ServerBindings {
 	ASSET_STORE?: AssetStore;
 	ASSETS_BUCKET?: R2BucketLike;
-	APP_STATE_STORE?: StateStore;
+	PROGRESS_STORE?: ProgressStore;
 	STORY_DB?: D1DatabaseLike;
 	STORY_STORE?: StoryStore;
-	STATE_STORE?: DurableObjectNamespaceBinding;
 }

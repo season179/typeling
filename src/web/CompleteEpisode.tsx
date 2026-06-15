@@ -2,13 +2,15 @@ import { useEffect, useState } from "react";
 import { useLocation, useParams } from "wouter";
 import { MAX_EPISODES } from "../lib/schemas/season";
 
-interface ChildSummary {
+interface ProgressStory {
+	slug: string;
 	name: string;
-	theme?: string;
+	theme: string;
+	total_episodes: number;
 }
 
 interface ChapterMapProps {
-	childId: string;
+	storySlug: string;
 	totalEpisodes: number;
 	completedUpTo: number;
 }
@@ -25,8 +27,8 @@ function chapterCellClass(isCurrent: boolean, isCompleted: boolean) {
 	return `${base} border-2 border-gray-300 text-gray-400`;
 }
 
-function themeForComplete(childId: string | undefined, childTheme: string) {
-	const themeText = `${childId ?? ""} ${childTheme}`.toLowerCase();
+function themeForComplete(storySlug: string | undefined, storyTheme: string) {
+	const themeText = `${storySlug ?? ""} ${storyTheme}`.toLowerCase();
 	if (
 		themeText.includes("zack") ||
 		themeText.includes("science") ||
@@ -38,7 +40,7 @@ function themeForComplete(childId: string | undefined, childTheme: string) {
 }
 
 function ChapterMap({
-	childId,
+	storySlug,
 	totalEpisodes,
 	completedUpTo,
 }: ChapterMapProps) {
@@ -66,7 +68,7 @@ function ChapterMap({
 						data-status={isCompleted ? "completed" : "upcoming"}
 						data-current={isCurrent ? "true" : undefined}
 						className={chapterCellClass(isCurrent, isCompleted)}
-						onClick={() => navigate(`/play/${childId}/episode/${i}`)}
+						onClick={() => navigate(`/play/${storySlug}/episode/${i}`)}
 					>
 						{chapterNumber}
 					</button>
@@ -78,20 +80,20 @@ function ChapterMap({
 
 export default function CompleteEpisode() {
 	const [_, navigate] = useLocation();
-	const { childId, episodeIdx } = useParams<{
-		childId: string;
+	const { storySlug, episodeIdx } = useParams<{
+		storySlug: string;
 		episodeIdx: string;
 	}>();
-	const [childName, setChildName] = useState<string | null>(null);
-	const [childTheme, setChildTheme] = useState<string>("");
+	const [storyName, setStoryName] = useState<string | null>(null);
+	const [storyTheme, setStoryTheme] = useState<string>("");
 	const [totalEpisodes, setTotalEpisodes] = useState<number>(MAX_EPISODES);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
 	useEffect(() => {
-		if (!childId) {
+		if (!storySlug) {
 			setLoading(false);
-			setError("Missing child id");
+			setError("Missing story");
 			return;
 		}
 
@@ -102,33 +104,23 @@ export default function CompleteEpisode() {
 				setLoading(true);
 				setError(null);
 
-				const childrenRes = await fetch("/api/children", {
+				const progressRes = await fetch("/api/progress", {
 					signal: controller.signal,
 				});
-				if (!childrenRes.ok) {
-					throw new Error(`HTTP ${childrenRes.status}`);
+				if (!progressRes.ok) {
+					throw new Error(`HTTP ${progressRes.status}`);
 				}
-				const data = (await childrenRes.json()) as Record<string, ChildSummary>;
+				const data = (await progressRes.json()) as { stories: ProgressStory[] };
 				if (controller.signal.aborted) return;
 
-				const child = data[childId];
-				if (!child) {
-					setError("Child not found");
+				const story = data.stories.find((item) => item.slug === storySlug);
+				if (!story) {
+					setError("Story not found");
 					return;
 				}
-				setChildName(child.name);
-				setChildTheme(child.theme ?? "");
-
-				fetch(`/api/children/${childId}/season`)
-					.then((r) =>
-						r.ok ? (r.json() as Promise<{ total_episodes: number }>) : null,
-					)
-					.then((d) => {
-						if (!cancelled && typeof d?.total_episodes === "number") {
-							setTotalEpisodes(d.total_episodes);
-						}
-					})
-					.catch(() => {});
+				setStoryName(story.name);
+				setStoryTheme(story.theme);
+				setTotalEpisodes(story.total_episodes);
 			} catch (err) {
 				if (!controller.signal.aborted) {
 					setError(err instanceof Error ? err.message : "Failed to load");
@@ -140,13 +132,11 @@ export default function CompleteEpisode() {
 			}
 		};
 
-		let cancelled = false;
 		void load();
 		return () => {
-			cancelled = true;
 			controller.abort();
 		};
-	}, [childId]);
+	}, [storySlug]);
 
 	if (loading) {
 		return (
@@ -169,7 +159,7 @@ export default function CompleteEpisode() {
 		? 0
 		: Math.max(0, Math.min(rawIdx, totalEpisodes - 1));
 	const episodeNumber = completedIdx + 1;
-	const theme = themeForComplete(childId, childTheme);
+	const theme = themeForComplete(storySlug, storyTheme);
 
 	return (
 		<main
@@ -189,11 +179,9 @@ export default function CompleteEpisode() {
 				<h1 className="text-3xl font-bold">
 					Episode {episodeNumber} complete!
 				</h1>
-				{childName && (
-					<p className="text-xl text-gray-600">Great job, {childName}!</p>
-				)}
+				{storyName && <p className="text-xl text-gray-600">{storyName}</p>}
 				<ChapterMap
-					childId={childId}
+					storySlug={storySlug}
 					totalEpisodes={totalEpisodes}
 					completedUpTo={completedIdx}
 				/>
@@ -205,7 +193,7 @@ export default function CompleteEpisode() {
 					<button
 						type="button"
 						className="start-next rounded-lg bg-blue-500 px-6 py-3 text-lg font-semibold text-white hover:bg-blue-600 transition-colors"
-						onClick={() => navigate(`/play/${childId}`)}
+						onClick={() => navigate(`/play/${storySlug}`)}
 					>
 						Start next
 					</button>
