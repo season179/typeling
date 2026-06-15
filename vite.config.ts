@@ -22,6 +22,12 @@ function createPlugins(): PluginOption[] {
 		cloudflare({
 			configPath: "../../wrangler.jsonc",
 			inspectorPort: false,
+			// Vite's root is `src/web`, so the plugin would persist local D1/R2/KV
+			// state under `src/web/.wrangler/state`. `db:migrate:local` runs from the
+			// project root and writes to `./.wrangler/state`, so without this the dev
+			// worker reads an unmigrated database ("no such table: users"). Anchor the
+			// plugin's state to the project root so both share one local D1.
+			persistState: { path: "../../.wrangler/state" },
 		}),
 	];
 }
