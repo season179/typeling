@@ -9,6 +9,10 @@ import { contentBlacklist } from "../lib/contentBlacklist";
 import { MAX_EPISODES, seasonSchema } from "../lib/schemas/season";
 import { type State, sessionSchema, stateSchema } from "../lib/schemas/state";
 import {
+	accessIdentityFromRequest,
+	currentUserResponse,
+} from "./accessIdentity";
+import {
 	DEFAULT_AUDIO_DIR,
 	DEFAULT_PORT,
 	DEFAULT_SEASONS_DIR,
@@ -94,6 +98,16 @@ function seasonsDir(): string {
 
 function audioDir(): string {
 	return bunEnv("TYPELING_AUDIO_DIR", DEFAULT_AUDIO_DIR);
+}
+
+function stripClientSessionIdentity(body: unknown): unknown {
+	if (typeof body !== "object" || body === null || Array.isArray(body)) {
+		return body;
+	}
+
+	const copy = { ...(body as Record<string, unknown>) };
+	delete copy.signed_in_user;
+	return copy;
 }
 
 const bundledState = stateSchema.parse(seedStateData);
@@ -459,25 +473,29 @@ function buildEpisodeCaptions(
 
 app.post("/api/sessions", async (c) => {
 	const stateStore = getStateStore(c.env);
+	const signedInUser = accessIdentityFromRequest(c.req.raw);
 
 	const body = await c.req.json().catch(() => null);
-	const parsed = sessionSchema.safeParse(body);
+	const parsed = sessionSchema.safeParse(stripClientSessionIdentity(body));
 	if (!parsed.success) {
 		return c.json({ error: "InvalidSession" }, 400);
 	}
+	const sessionData = signedInUser
+		? { ...parsed.data, signed_in_user: signedInUser }
+		: parsed.data;
 
 	try {
 		const nextState = await stateStore.mutateState((current) => {
-			if (current.sessions.some((s) => s.id === parsed.data.id)) return current;
+			if (current.sessions.some((s) => s.id === sessionData.id)) return current;
 
-			const child = current.children[parsed.data.child_id];
+			const child = current.children[sessionData.child_id];
 			if (!child) {
 				throw new SessionMismatchError("child_not_found");
 			}
-			if (parsed.data.season_slug !== child.active_season) {
+			if (sessionData.season_slug !== child.active_season) {
 				throw new SessionMismatchError("season_mismatch");
 			}
-			if (parsed.data.episode_idx > child.current_episode) {
+			if (sessionData.episode_idx > child.current_episode) {
 				throw new SessionMismatchError("episode_mismatch");
 			}
 
@@ -485,19 +503,19 @@ app.post("/api/sessions", async (c) => {
 				...current,
 				children: {
 					...current.children,
-					[parsed.data.child_id]: {
+					[sessionData.child_id]: {
 						...child,
 						current_episode:
-							parsed.data.episode_idx === child.current_episode
-								? parsed.data.episode_idx + 1
+							sessionData.episode_idx === child.current_episode
+								? sessionData.episode_idx + 1
 								: child.current_episode,
 					},
 				},
-				sessions: [...current.sessions, parsed.data],
+				sessions: [...current.sessions, sessionData],
 			};
 		});
 
-		const session = nextState.sessions.find((s) => s.id === parsed.data.id);
+		const session = nextState.sessions.find((s) => s.id === sessionData.id);
 		return c.json(session, 200);
 	} catch (error) {
 		if (error instanceof SessionMismatchError) {
@@ -509,6 +527,10 @@ app.post("/api/sessions", async (c) => {
 
 app.get("/api/health", (c) => {
 	return c.json({ ok: true });
+});
+
+app.get("/api/me", (c) => {
+	return c.json(currentUserResponse(c.req.raw));
 });
 
 app.get("/api/stories", async (c) => {

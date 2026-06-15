@@ -88,6 +88,13 @@ describe("Router /parent", () => {
 		const originalFetch = globalThis.fetch;
 		globalThis.fetch = ((input: RequestInfo | URL) => {
 			const url = String(input);
+			if (url === "/api/me") {
+				return Promise.resolve(
+					new Response(JSON.stringify({ authenticated: false }), {
+						headers: { "content-type": "application/json" },
+					}),
+				);
+			}
 			if (url.includes("/api/children/")) {
 				return Promise.resolve(
 					new Response("[]", {

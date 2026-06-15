@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
+import type { SignedInUser } from "../lib/schemas/state";
 import { clearStaleDrafts } from "./episodeRunner/autosave";
 
 interface ChildSummary {
@@ -18,6 +19,10 @@ interface StorySummary {
 	total_episodes: number;
 }
 
+type CurrentUserResponse =
+	| { authenticated: false }
+	| { authenticated: true; user: SignedInUser };
+
 export default function App() {
 	const [, navigate] = useLocation();
 	const [children, setChildren] = useState<Record<string, ChildSummary>>({});
@@ -25,6 +30,7 @@ export default function App() {
 	const [selectedStories, setSelectedStories] = useState<
 		Record<string, string>
 	>({});
+	const [signedInUser, setSignedInUser] = useState<SignedInUser | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
@@ -35,11 +41,14 @@ export default function App() {
 			try {
 				setLoading(true);
 				setError(null);
-				const [childrenRes, storiesRes] = await Promise.all([
+				const [childrenRes, storiesRes, meRes] = await Promise.all([
 					fetch("/api/children", {
 						signal: controller.signal,
 					}),
 					fetch("/api/stories", {
+						signal: controller.signal,
+					}),
+					fetch("/api/me", {
 						signal: controller.signal,
 					}),
 				]);
@@ -51,9 +60,13 @@ export default function App() {
 				}
 				const data = await childrenRes.json();
 				const nextStories = (await storiesRes.json()) as StorySummary[];
+				const currentUser = meRes.ok
+					? ((await meRes.json()) as CurrentUserResponse)
+					: ({ authenticated: false } as const);
 				if (!controller.signal.aborted) {
 					setChildren(data);
 					setStories(nextStories);
+					setSignedInUser(currentUser.authenticated ? currentUser.user : null);
 					setSelectedStories(
 						Object.fromEntries(
 							Object.entries(data as Record<string, ChildSummary>).map(
@@ -151,7 +164,18 @@ export default function App() {
 				<div className="drift-shape drift-shape-b" />
 				<div className="ground-glow" />
 			</div>
-			<h1 className="home-title text-3xl font-bold">Typeling</h1>
+			<header className="text-center">
+				<h1 className="home-title text-3xl font-bold">Typeling</h1>
+				{signedInUser && (
+					<p className="mt-2 text-sm font-medium text-stone-500">
+						Signed in as{" "}
+						<span className="text-stone-700">{signedInUser.display_name}</span>
+						{signedInUser.display_name !== signedInUser.email && (
+							<span className="ml-2 text-stone-400">{signedInUser.email}</span>
+						)}
+					</p>
+				)}
+			</header>
 			<div className="child-select flex flex-wrap justify-center gap-4">
 				{childEntries.map(([id, child]) => {
 					const selectedStorySlug = selectedStories[id] ?? child.active_season;

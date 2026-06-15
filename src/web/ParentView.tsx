@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { GraduationStatus } from "../lib/graduation";
 import { graduationStatus } from "../lib/graduation";
 import { rolling3Wpm } from "../lib/rolling3";
-import type { Session } from "../lib/schemas/state";
+import type { Session, SignedInUser } from "../lib/schemas/state";
 
 interface ChildSummary {
 	name: string;
@@ -10,6 +10,10 @@ interface ChildSummary {
 	target_wpm: number;
 	active_season: string;
 }
+
+type CurrentUserResponse =
+	| { authenticated: false }
+	| { authenticated: true; user: SignedInUser };
 
 const STATUS_MAP: Record<
 	GraduationStatus,
@@ -50,6 +54,7 @@ function formatRelativeTime(iso: string, now: number): string {
 export default function ParentView() {
 	const [children, setChildren] = useState<Record<string, ChildSummary>>({});
 	const [sessions, setSessions] = useState<Record<string, Session[]>>({});
+	const [signedInUser, setSignedInUser] = useState<SignedInUser | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
@@ -61,16 +66,25 @@ export default function ParentView() {
 				setLoading(true);
 				setError(null);
 
-				const childrenRes = await fetch("/api/children", {
-					signal: controller.signal,
-				});
+				const [childrenRes, meRes] = await Promise.all([
+					fetch("/api/children", {
+						signal: controller.signal,
+					}),
+					fetch("/api/me", {
+						signal: controller.signal,
+					}),
+				]);
 				if (!childrenRes.ok) {
 					throw new Error(`HTTP ${childrenRes.status}`);
 				}
 				const childrenData: Record<string, ChildSummary> =
 					await childrenRes.json();
+				const currentUser = meRes.ok
+					? ((await meRes.json()) as CurrentUserResponse)
+					: ({ authenticated: false } as const);
 				if (controller.signal.aborted) return;
 				setChildren(childrenData);
+				setSignedInUser(currentUser.authenticated ? currentUser.user : null);
 
 				const entries = Object.entries(childrenData);
 				const sessionResults = await Promise.all(
@@ -146,13 +160,28 @@ export default function ParentView() {
 	return (
 		<main className="min-h-screen bg-stone-50 p-6 sm:p-10">
 			<div className="mx-auto max-w-3xl">
-				<header className="mb-10">
-					<h1 className="font-serif text-3xl font-bold text-stone-800 tracking-tight">
-						Admin Progress
-					</h1>
-					<p className="mt-1 text-sm text-stone-400">
-						Typing sessions for each child
-					</p>
+				<header className="mb-10 flex flex-wrap items-start justify-between gap-4">
+					<div>
+						<h1 className="font-serif text-3xl font-bold text-stone-800 tracking-tight">
+							Admin Progress
+						</h1>
+						<p className="mt-1 text-sm text-stone-400">
+							Typing sessions for each child
+						</p>
+					</div>
+					{signedInUser && (
+						<p className="text-right text-sm font-medium text-stone-500">
+							Signed in as{" "}
+							<span className="text-stone-700">
+								{signedInUser.display_name}
+							</span>
+							{signedInUser.display_name !== signedInUser.email && (
+								<span className="block text-xs text-stone-400">
+									{signedInUser.email}
+								</span>
+							)}
+						</p>
+					)}
 				</header>
 
 				<div className="space-y-10">
@@ -238,6 +267,14 @@ export default function ParentView() {
 													</td>
 													<td className="py-3 pr-4 pl-2 text-stone-500">
 														{formatRelativeTime(s.finished_at, now)}
+														{s.signed_in_user && (
+															<span
+																className="mt-0.5 block text-xs text-stone-400"
+																title={s.signed_in_user.email}
+															>
+																by {s.signed_in_user.display_name}
+															</span>
+														)}
 													</td>
 												</tr>
 											))}

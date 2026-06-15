@@ -15,6 +15,13 @@ export const childSchema = z.object({
 	current_session_id: z.string().min(1).nullable(),
 });
 
+export const signedInUserSchema = z.object({
+	email: z.string().email(),
+	name: z.string().min(1).optional(),
+	display_name: z.string().min(1),
+	access_subject: z.string().min(1).optional(),
+});
+
 export const sessionSchema = z
 	.object({
 		id: z.string().min(1),
@@ -26,6 +33,7 @@ export const sessionSchema = z
 		active_ms: z.number().int().min(0).max(MAX_ACTIVE_MS),
 		started_at: z.iso.datetime(),
 		finished_at: z.iso.datetime(),
+		signed_in_user: signedInUserSchema.optional(),
 	})
 	.refine((s) => Date.parse(s.finished_at) >= Date.parse(s.started_at), {
 		message: "finished_at must be at or after started_at",
@@ -37,5 +45,6 @@ export const stateSchema = z.object({
 });
 
 export type Session = z.infer<typeof sessionSchema>;
+export type SignedInUser = z.infer<typeof signedInUserSchema>;
 export type Child = z.infer<typeof childSchema>;
 export type State = z.infer<typeof stateSchema>;

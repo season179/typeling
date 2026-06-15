@@ -22,6 +22,11 @@ const defaultStories = [
 	},
 ];
 
+const unauthenticatedResponse = () =>
+	new Response(JSON.stringify({ authenticated: false }), {
+		headers: { "content-type": "application/json" },
+	});
+
 function renderApp(initialPath = "/") {
 	const { hook } = memoryLocation({ path: initialPath });
 	const result = render(
@@ -40,6 +45,9 @@ describe("App (ProfileSelect)", () => {
 		const originalFetch = globalThis.fetch;
 		let resolveFetch: (value: Response) => void;
 		globalThis.fetch = ((input: RequestInfo | URL) => {
+			if (String(input).includes("/api/me")) {
+				return Promise.resolve(unauthenticatedResponse());
+			}
 			if (String(input).includes("/api/stories")) {
 				return Promise.resolve(
 					new Response(JSON.stringify(defaultStories), {
@@ -90,20 +98,22 @@ describe("App (ProfileSelect)", () => {
 			Promise.resolve(
 				new Response(
 					JSON.stringify(
-						String(input).includes("/api/stories")
-							? defaultStories
-							: {
-									winni: {
-										name: "Winni",
-										theme: "rainbow-unicorn",
-										active_season: "rainbow-story",
+						String(input).includes("/api/me")
+							? { authenticated: false }
+							: String(input).includes("/api/stories")
+								? defaultStories
+								: {
+										winni: {
+											name: "Winni",
+											theme: "rainbow-unicorn",
+											active_season: "rainbow-story",
+										},
+										zack: {
+											name: "Zack",
+											theme: "robot-builders",
+											active_season: "robot-story",
+										},
 									},
-									zack: {
-										name: "Zack",
-										theme: "robot-builders",
-										active_season: "robot-story",
-									},
-								},
 					),
 					{ headers: { "content-type": "application/json" } },
 				),
@@ -127,7 +137,13 @@ describe("App (ProfileSelect)", () => {
 		globalThis.fetch = ((input: RequestInfo | URL) =>
 			Promise.resolve(
 				new Response(
-					JSON.stringify(String(input).includes("/api/stories") ? [] : {}),
+					JSON.stringify(
+						String(input).includes("/api/me")
+							? { authenticated: false }
+							: String(input).includes("/api/stories")
+								? []
+								: {},
+					),
 					{
 						headers: { "content-type": "application/json" },
 					},
@@ -167,15 +183,17 @@ describe("App (ProfileSelect)", () => {
 			Promise.resolve(
 				new Response(
 					JSON.stringify(
-						String(input).includes("/api/stories")
-							? defaultStories
-							: {
-									winni: {
-										name: "Winni",
-										theme: "rainbow-unicorn",
-										active_season: "rainbow-story",
+						String(input).includes("/api/me")
+							? { authenticated: false }
+							: String(input).includes("/api/stories")
+								? defaultStories
+								: {
+										winni: {
+											name: "Winni",
+											theme: "rainbow-unicorn",
+											active_season: "rainbow-story",
+										},
 									},
-								},
 					),
 					{ headers: { "content-type": "application/json" } },
 				),
@@ -208,6 +226,9 @@ describe("App (ProfileSelect)", () => {
 				method,
 				body: typeof init?.body === "string" ? init.body : undefined,
 			});
+			if (url.includes("/api/me")) {
+				return Promise.resolve(unauthenticatedResponse());
+			}
 			if (url.includes("/api/stories")) {
 				return Promise.resolve(
 					new Response(JSON.stringify(defaultStories), {

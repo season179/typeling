@@ -48,9 +48,7 @@ describe("childSchema", () => {
 	});
 
 	it("rejects target_wpm below 1", () => {
-		expect(() =>
-			childSchema.parse({ ...validChild, target_wpm: 0 }),
-		).toThrow();
+		expect(() => childSchema.parse({ ...validChild, target_wpm: 0 })).toThrow();
 	});
 
 	it("rejects fractional integer fields", () => {
@@ -80,6 +78,20 @@ describe("childSchema", () => {
 describe("sessionSchema", () => {
 	it("accepts a valid session", () => {
 		expect(sessionSchema.parse(validSession)).toEqual(validSession);
+	});
+
+	it("accepts a session stamped with the signed-in user", () => {
+		const session = {
+			...validSession,
+			signed_in_user: {
+				email: "season@example.com",
+				name: "Season Saw",
+				display_name: "Season Saw",
+				access_subject: "access-user-1",
+			},
+		};
+
+		expect(sessionSchema.parse(session)).toEqual(session);
 	});
 
 	it("rejects negative wpm, episode_idx, char_count, active_ms", () => {
@@ -118,9 +130,7 @@ describe("sessionSchema", () => {
 	});
 
 	it("rejects wpm above the sensible upper bound", () => {
-		expect(() =>
-			sessionSchema.parse({ ...validSession, wpm: 1001 }),
-		).toThrow();
+		expect(() => sessionSchema.parse({ ...validSession, wpm: 1001 })).toThrow();
 	});
 
 	it("rejects char_count and active_ms above their sensible upper bounds", () => {
@@ -151,6 +161,18 @@ describe("sessionSchema", () => {
 		).toThrow();
 		expect(() =>
 			sessionSchema.parse({ ...validSession, finished_at: 1715000000000 }),
+		).toThrow();
+	});
+
+	it("rejects a signed-in user without a valid email", () => {
+		expect(() =>
+			sessionSchema.parse({
+				...validSession,
+				signed_in_user: {
+					email: "not-an-email",
+					display_name: "Season",
+				},
+			}),
 		).toThrow();
 	});
 });

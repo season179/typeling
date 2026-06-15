@@ -54,14 +54,26 @@ afterEach(async () => {
 const writeState = (state: unknown) =>
 	writeFile(stateFile, JSON.stringify(state), "utf8");
 
-const postSession = (body: unknown) =>
+const postSession = (body: unknown, headers: Record<string, string> = {}) =>
 	fetch(
 		new Request("http://127.0.0.1:3001/api/sessions", {
 			method: "POST",
-			headers: { "content-type": "application/json" },
+			headers: { "content-type": "application/json", ...headers },
 			body: JSON.stringify(body),
 		}),
 	);
+
+const accessJwt = (payload: Record<string, unknown>) => {
+	const bytes = new TextEncoder().encode(JSON.stringify(payload));
+	const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join(
+		"",
+	);
+	const encodedPayload = btoa(binary)
+		.replaceAll("+", "-")
+		.replaceAll("/", "_")
+		.replace(/=+$/, "");
+	return `e30.${encodedPayload}.signature`;
+};
 
 describe("POST /api/sessions", () => {
 	it("returns 200 on valid session body and appends to state.sessions", async () => {
@@ -74,6 +86,51 @@ describe("POST /api/sessions", () => {
 
 		const onDisk = await readState(stateFile);
 		expect(onDisk.sessions).toHaveLength(1);
+		expect(onDisk.sessions[0]).toEqual(validSessionBody);
+	});
+
+	it("stores the Cloudflare Access identity on new sessions", async () => {
+		await writeState(fixtureState);
+
+		const res = await postSession(validSessionBody, {
+			"cf-access-jwt-assertion": accessJwt({
+				email: "season@example.com",
+				name: "Season Saw",
+				sub: "access-user-1",
+			}),
+		});
+
+		expect(res.status).toBe(200);
+		const expectedSession = {
+			...validSessionBody,
+			signed_in_user: {
+				email: "season@example.com",
+				name: "Season Saw",
+				display_name: "Season Saw",
+				access_subject: "access-user-1",
+			},
+		};
+		expect(await res.json()).toEqual(expectedSession);
+
+		const onDisk = await readState(stateFile);
+		expect(onDisk.sessions[0]).toEqual(expectedSession);
+	});
+
+	it("ignores client-provided signed_in_user and only trusts the Access header", async () => {
+		await writeState(fixtureState);
+
+		const res = await postSession({
+			...validSessionBody,
+			signed_in_user: {
+				email: "fake@example.com",
+				display_name: "Fake Parent",
+			},
+		});
+
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual(validSessionBody);
+
+		const onDisk = await readState(stateFile);
 		expect(onDisk.sessions[0]).toEqual(validSessionBody);
 	});
 
