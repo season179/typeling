@@ -1,60 +1,25 @@
 import { describe, expect, it } from "bun:test";
+import type { SignedInUser } from "../../../src/lib/schemas/state.ts";
 import { fetch } from "../../../src/server/index.ts";
 
-const accessJwt = (payload: Record<string, unknown>) => {
-	const bytes = new TextEncoder().encode(JSON.stringify(payload));
-	const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join(
-		"",
-	);
-	const encodedPayload = btoa(binary)
-		.replaceAll("+", "-")
-		.replaceAll("/", "_")
-		.replace(/=+$/, "");
-	return `e30.${encodedPayload}.signature`;
+// Identity is resolved from the Better Auth session in production. Tests inject
+// it directly via the `IDENTITY` binding seam (never set by the Workers runtime),
+// so they exercise the route logic without standing up a real OAuth session.
+const identity: SignedInUser = {
+	email: "season@example.com",
+	name: "Season Saw",
+	display_name: "Season Saw",
+	access_subject: "google-user-1",
 };
 
 const getMe = (
-	headers: Record<string, string> = {},
-	url = "https://typeling.example.com/api/me",
-) =>
-	fetch(
-		new Request(url, {
-			headers,
-		}),
-	);
+	env: { IDENTITY?: SignedInUser } = {},
+	url = "http://127.0.0.1:3001/api/me",
+) => fetch(new Request(url), env);
 
 describe("GET /api/me", () => {
-	it("uses the deterministic dev user on localhost without an Access token", async () => {
-		const res = await getMe({}, "http://127.0.0.1:3001/api/me");
-
-		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual({
-			authenticated: true,
-			user: {
-				email: "dev@typeling.localhost",
-				name: "Typeling Dev",
-				display_name: "Typeling Dev",
-				access_subject: "local-dev",
-				target_wpm: 15,
-			},
-		});
-	});
-
-	it("returns unauthenticated for non-local requests without an Access token", async () => {
-		const res = await getMe();
-
-		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual({ authenticated: false });
-	});
-
-	it("returns email and name from the Access JWT when present", async () => {
-		const res = await getMe({
-			"cf-access-jwt-assertion": accessJwt({
-				email: "season@example.com",
-				name: "Season Saw",
-				sub: "access-user-1",
-			}),
-		});
+	it("returns the signed-in user from the session identity", async () => {
+		const res = await getMe({ IDENTITY: identity });
 
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({
@@ -63,46 +28,16 @@ describe("GET /api/me", () => {
 				email: "season@example.com",
 				name: "Season Saw",
 				display_name: "Season Saw",
-				access_subject: "access-user-1",
+				access_subject: "google-user-1",
 				target_wpm: 15,
 			},
 		});
 	});
 
-	it("falls back to OIDC name fields and then email", async () => {
-		const withOidcName = await getMe({
-			"cf-access-jwt-assertion": accessJwt({
-				email: "parent@example.com",
-				oidc_fields: {
-					given_name: "Story",
-					family_name: "Parent",
-				},
-			}),
-		});
+	it("returns unauthenticated when there is no session", async () => {
+		const res = await getMe();
 
-		expect(await withOidcName.json()).toEqual({
-			authenticated: true,
-			user: {
-				email: "parent@example.com",
-				name: "Story Parent",
-				display_name: "Story Parent",
-				target_wpm: 15,
-			},
-		});
-
-		const emailOnly = await getMe({
-			"cf-access-jwt-assertion": accessJwt({
-				email: "email-only@example.com",
-			}),
-		});
-
-		expect(await emailOnly.json()).toEqual({
-			authenticated: true,
-			user: {
-				email: "email-only@example.com",
-				display_name: "email-only@example.com",
-				target_wpm: 15,
-			},
-		});
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ authenticated: false });
 	});
 });

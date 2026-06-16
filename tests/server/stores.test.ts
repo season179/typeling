@@ -16,6 +16,15 @@ import {
 } from "../../src/server/stores";
 import { fakeD1StoryDatabase } from "../lib/fakeD1Story";
 
+// Identity now comes from the Better Auth session; tests inject it directly via
+// the `IDENTITY` binding seam instead of relying on a localhost dev fallback.
+const devIdentity = {
+	email: "dev@typeling.localhost",
+	display_name: "Typeling Dev",
+	name: "Typeling Dev",
+	access_subject: "local-dev",
+};
+
 const fixtureSeason = {
 	slug: "winni-s1-test",
 	name: "Test Rainbow Story",
@@ -319,13 +328,14 @@ describe.each([
 });
 
 describe("email/story API routes", () => {
-	it("returns progress for all stories and uses the local dev fallback email", async () => {
+	it("returns progress for all stories scoped to the signed-in user", async () => {
 		const progressStore = new InMemoryProgressStore();
 		const storyStore = new InMemoryStoryStore({
 			seasons: [fixtureSeason, secondSeason],
 		});
 
 		const res = await fetch(new Request("http://127.0.0.1:3001/api/progress"), {
+			IDENTITY: devIdentity,
 			PROGRESS_STORE: progressStore,
 			STORY_STORE: storyStore,
 		});
@@ -354,7 +364,11 @@ describe("email/story API routes", () => {
 	it("serves current episode, rejects locked future episodes, then advances after a session", async () => {
 		const progressStore = new InMemoryProgressStore();
 		const storyStore = new InMemoryStoryStore({ seasons: [fixtureSeason] });
-		const env = { PROGRESS_STORE: progressStore, STORY_STORE: storyStore };
+		const env = {
+			IDENTITY: devIdentity,
+			PROGRESS_STORE: progressStore,
+			STORY_STORE: storyStore,
+		};
 
 		const current = await fetch(
 			new Request(
@@ -416,6 +430,7 @@ describe("email/story API routes", () => {
 			makeSession({ id: "open-chapter-one" }),
 		);
 		const env = {
+			IDENTITY: devIdentity,
 			PROGRESS_STORE: progressStore,
 			STORY_STORE: new InMemoryStoryStore({ seasons: [fixtureSeason] }),
 			ASSET_STORE: new InMemoryAssetStore({
@@ -456,7 +471,7 @@ describe("email/story API routes", () => {
 
 	it("uses the STORY_DB binding for both story content and progress", async () => {
 		const storyDb = fakeD1StoryDatabase([d1OnlySeason]);
-		const env = { STORY_DB: storyDb };
+		const env = { IDENTITY: devIdentity, STORY_DB: storyDb };
 
 		const first = await fetch(
 			new Request(

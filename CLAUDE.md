@@ -27,7 +27,7 @@ The implementation plan wins over this file.
 - Persistence is Cloudflare D1 (database `typeling-content`, bound as `STORY_DB`). There is no longer a Durable Object `STATE_STORE` or `data/state.json` store. Schema changes are numbered `.sql` files in `migrations/`, applied with `bun run db:migrate:local` and, for production, `bun run db:migrate:remote`.
 - Server is a Hono app in `src/server/index.ts` that exports a Workers `fetch` handler (`export default { fetch }`). In dev it runs inside the Cloudflare Workers runtime via `@cloudflare/vite-plugin`; the `dev:direct` fallback serves the same app through `Bun.serve`. Either way it binds `127.0.0.1` (HOSTNAME), never `0.0.0.0`, and rejects wildcard-address requests.
 - Stores resolve by binding: when `STORY_DB` is present the server uses `D1StoryStore`/`D1ProgressStore`; otherwise it falls back to the in-memory stores (tests, D1-less dev).
-- `bun run dev` applies local D1 migrations, starts the Portless HTTPS proxy, then serves both API and frontend from `https://typeling.localhost` under the Workers runtime (`TYPELING_CLOUDFLARE=1`). There is no separate `typeling-api` host anymore.
+- `bun run dev` applies local D1 migrations, starts the Portless HTTPS proxy (`PORTLESS_TLD=dev`), then serves both API and frontend from `https://typeling.dev` under the Workers runtime (`TYPELING_CLOUDFLARE=1`). The dev TLD is `.dev`, not `.localhost`, because Google OAuth rejects `*.localhost` redirect URIs. There is no separate `typeling-api` host anymore.
 - Use `bun run dev:direct` only for the plain-localhost fallback: a separate Bun server on `SERVER_PORT` plus Vite proxying `/api`. Honour `PORT`/`SERVER_PORT`; use the documented fallback only when unset.
 - Frontend is React 19, Vite, Tailwind, TypeScript.
 - Lint and format with Biome. `bun run lint` checks `src/`; `bun run format` formats `src/`.
@@ -52,7 +52,7 @@ bun run lint
 bun run format
 ```
 
-For browser-facing changes, start `bun run dev`, verify with `agent-browser` against `https://typeling.localhost`, then stop the server. For format changes, run `bun run format` twice and confirm the second run makes no diff.
+For browser-facing changes, start `bun run dev`, verify with `agent-browser` against `https://typeling.dev`, then stop the server. For format changes, run `bun run format` twice and confirm the second run makes no diff.
 
 For timing-sensitive typing checks, prefer reducer/unit coverage plus focused smoke tests. `agent-browser press` can behave differently from a child's single physical keypress.
 
@@ -64,7 +64,7 @@ For timing-sensitive typing checks, prefer reducer/unit coverage plus focused sm
 - WPM uses the 5-character-word convention, starts on first keystroke, pauses after 5s idle, and pauses on `visibilitychange` hidden.
 - `POST /api/sessions` must be idempotent by client-generated `sessionId` and reject stale episode/season submissions with `409`. Sessions are scoped to the authenticated user's email, not a child id.
 - Progress is email-scoped and stored in D1 (`users`, `user_story_progress`, `typing_sessions`). Stories are decoupled from children: navigation and the API key off `storySlug`, and per-user progress/WPM is keyed by `(email, season_slug)`. All writes pass Zod validation first.
-- Identity comes from Cloudflare Access (the `cf-access-jwt-assertion` header), normalised to a lowercase email; local dev falls back to the `dev@typeling.localhost` user.
+- Identity comes from Better Auth's Google sign-in (handled at `/api/auth/*`), mapped to a lowercase-normalised email. The auth instance is built per request from the Workers `env` bindings (`.dev.vars` in dev, `wrangler secret` in prod). There is no localhost dev fallback — local dev signs in with Google; tests and overrides inject identity via the `IDENTITY` binding seam.
 - Generated story text must be British English, kid-safe, and within `[A-Za-z0-9 .,!?'";:\-()\n]+`; violations are hard failures.
 - Generated stories must avoid real child names; use fictional protagonist names instead.
 - For audio/TTS work, create deterministic derived artifacts first, then speaker-labelled transcripts, then model calls. Do not mutate source season JSON as the first step.

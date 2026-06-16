@@ -1309,4 +1309,14 @@ export interface ServerBindings {
 	PROGRESS_STORE?: ProgressStore;
 	STORY_DB?: D1DatabaseLike;
 	STORY_STORE?: StoryStore;
+	// Better Auth (Google sign-in) configuration. Present in the Workers runtime
+	// via `.dev.vars` (dev) and `wrangler secret` (prod); absent in tests and the
+	// D1-less `dev:direct` fallback, where auth is treated as unconfigured.
+	BETTER_AUTH_SECRET?: string;
+	BETTER_AUTH_URL?: string;
+	GOOGLE_CLIENT_ID?: string;
+	GOOGLE_CLIENT_SECRET?: string;
+	// Test/override seam: when set, this identity is used directly instead of
+	// reading a Better Auth session. Never populated by the Workers runtime.
+	IDENTITY?: SignedInUser;
 }

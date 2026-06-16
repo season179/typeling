@@ -11,13 +11,14 @@ import {
 	type SignedInUser,
 	type StoryProgress,
 	sessionSubmissionSchema,
+	signedInUserSchema,
 	type UserProfile,
 } from "../lib/schemas/state";
 import {
 	checkStoryText,
 	type StoryTextViolation,
 } from "../lib/storyTextPolicy";
-import { accessIdentityFromRequest, devSignedInUser } from "./accessIdentity";
+import { isAuthConfigured, makeAuth } from "./auth";
 import {
 	DEFAULT_AUDIO_DIR,
 	DEFAULT_PORT,
@@ -137,6 +138,16 @@ app.onError((error, c) => {
 	return c.json({ error: error.name }, 500);
 });
 
+// Better Auth owns the Google OAuth flow and its own session/user tables; this
+// catch-all hands every /api/auth/* request to it. Returns 503 when auth is
+// unconfigured (tests, D1-less dev:direct) so the route never half-runs.
+app.on(["POST", "GET"], "/api/auth/*", (c) => {
+	if (!isAuthConfigured(c.env)) {
+		return c.json({ error: "AuthNotConfigured" }, 503);
+	}
+	return makeAuth(c.env).handler(c.req.raw);
+});
+
 function parseEpisodeIdx(raw: string): number {
 	const episodeIdx = Number.parseInt(raw, 10);
 	if (!Number.isInteger(episodeIdx) || String(episodeIdx) !== raw) {
@@ -246,18 +257,40 @@ function getStoryStore(env: ServerBindings): StoryStore {
 	return getDefaultStoryStore();
 }
 
-function currentIdentityFromRequest(request: Request): SignedInUser | null {
-	const accessIdentity = accessIdentityFromRequest(request);
-	if (accessIdentity) return accessIdentity;
-	if (isLocalAdminRequest(request)) return devSignedInUser;
-	return null;
+async function currentIdentityFromRequest(
+	request: Request,
+	env: ServerBindings,
+): Promise<SignedInUser | null> {
+	if (env.IDENTITY) return env.IDENTITY;
+	return sessionIdentity(request, env);
+}
+
+async function sessionIdentity(
+	request: Request,
+	env: ServerBindings,
+): Promise<SignedInUser | null> {
+	if (!isAuthConfigured(env)) return null;
+	const session = await makeAuth(env).api.getSession({
+		headers: request.headers,
+	});
+	const sessionUser = session?.user;
+	if (!sessionUser?.email) return null;
+
+	const name = sessionUser.name?.trim();
+	const parsed = signedInUserSchema.safeParse({
+		email: sessionUser.email.trim().toLowerCase(),
+		display_name: name || sessionUser.email,
+		...(name ? { name } : {}),
+		...(sessionUser.id ? { access_subject: String(sessionUser.id) } : {}),
+	});
+	return parsed.success ? parsed.data : null;
 }
 
 async function requireUser(
 	request: Request,
 	env: ServerBindings,
 ): Promise<UserProfile> {
-	const identity = currentIdentityFromRequest(request);
+	const identity = await currentIdentityFromRequest(request, env);
 	if (!identity) {
 		throw new AuthError();
 	}
@@ -430,19 +463,12 @@ app.get("/api/health", (c) => {
 });
 
 app.get("/api/me", async (c) => {
-	try {
-		const identity = currentIdentityFromRequest(c.req.raw);
-		if (!identity) {
-			return c.json({ authenticated: false });
-		}
-		const user = await getProgressStore(c.env).upsertUser(identity);
-		return c.json({ authenticated: true, user });
-	} catch (error) {
-		if (error instanceof AuthError) {
-			return c.json({ authenticated: false });
-		}
-		throw error;
+	const identity = await currentIdentityFromRequest(c.req.raw, c.env);
+	if (!identity) {
+		return c.json({ authenticated: false });
 	}
+	const user = await getProgressStore(c.env).upsertUser(identity);
+	return c.json({ authenticated: true, user });
 });
 
 app.get("/api/stories", async (c) => {
@@ -791,7 +817,8 @@ function isServerBindings(value: unknown): value is ServerBindings {
 			"STORY_DB" in value ||
 			"STORY_STORE" in value ||
 			"PROGRESS_STORE" in value ||
-			"ASSETS_BUCKET" in value)
+			"ASSETS_BUCKET" in value ||
+			"IDENTITY" in value)
 	);
 }
 

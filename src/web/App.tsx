@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import type { UserProfile } from "../lib/schemas/state";
 import { getProgress, type ProgressStory } from "./api";
+import { authClient } from "./authClient";
 import { clearStaleDrafts } from "./episodeRunner/autosave";
 
 export default function App() {
@@ -9,6 +10,7 @@ export default function App() {
 	const [stories, setStories] = useState<ProgressStory[]>([]);
 	const [signedInUser, setSignedInUser] = useState<UserProfile | null>(null);
 	const [loading, setLoading] = useState(true);
+	const [needsSignIn, setNeedsSignIn] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
 	useEffect(() => {
@@ -18,6 +20,7 @@ export default function App() {
 			try {
 				setLoading(true);
 				setError(null);
+				setNeedsSignIn(false);
 				const data = await getProgress(controller.signal);
 				if (!controller.signal.aborted) {
 					setStories(data.stories);
@@ -29,7 +32,14 @@ export default function App() {
 				}
 			} catch (err) {
 				if (!controller.signal.aborted) {
-					setError(err instanceof Error ? err.message : "Failed to load");
+					const message = err instanceof Error ? err.message : "Failed to load";
+					// A 401 means there is no signed-in user yet — show the Google
+					// sign-in screen rather than a hard error.
+					if (message === "HTTP 401") {
+						setNeedsSignIn(true);
+					} else {
+						setError(message);
+					}
 				}
 			} finally {
 				if (!controller.signal.aborted) {
@@ -41,6 +51,19 @@ export default function App() {
 		void load();
 		return () => controller.abort();
 	}, []);
+
+	const handleSignIn = () => {
+		void authClient.signIn.social({ provider: "google", callbackURL: "/" });
+	};
+
+	const handleSignOut = () => {
+		// Reload regardless of outcome so the button always responds: on success
+		// the reload lands on the sign-in screen, and a failed sign-out re-checks
+		// the session rather than leaving the click with no visible effect.
+		void authClient.signOut().finally(() => {
+			window.location.reload();
+		});
+	};
 
 	if (loading) {
 		return (
@@ -54,6 +77,26 @@ export default function App() {
 		return (
 			<main className="typeling-game flex min-h-screen items-center justify-center theme-zack">
 				<div className="loading-card">Error: {error}</div>
+			</main>
+		);
+	}
+
+	if (needsSignIn) {
+		return (
+			<main className="typeling-game flex min-h-screen items-center justify-center theme-winni">
+				<div className="loading-card flex flex-col items-center gap-4 text-center">
+					<h1 className="home-title text-2xl font-bold">Typeling</h1>
+					<p className="text-sm text-stone-500">
+						Sign in to unlock your stories.
+					</p>
+					<button
+						type="button"
+						className="rounded-md bg-stone-900 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-stone-700"
+						onClick={handleSignIn}
+					>
+						Sign in with Google
+					</button>
+				</div>
 			</main>
 		);
 	}
@@ -88,6 +131,15 @@ export default function App() {
 							<span className="ml-2 text-stone-400">{signedInUser.email}</span>
 						)}
 					</p>
+				)}
+				{signedInUser && (
+					<button
+						type="button"
+						className="mt-2 text-xs font-semibold uppercase tracking-normal text-stone-400 underline transition-colors hover:text-stone-600"
+						onClick={handleSignOut}
+					>
+						Sign out
+					</button>
 				)}
 			</header>
 			<div className="child-select flex flex-wrap justify-center gap-4">

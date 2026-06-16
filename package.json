@@ -4,7 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "bun run db:migrate:local && bun run dev:proxy && TYPELING_CLOUDFLARE=1 portless typeling vite --host 127.0.0.1",
+    "dev": "bun run db:migrate:local && PORTLESS_TLD=dev bun run dev:proxy && TYPELING_CLOUDFLARE=1 PORTLESS_TLD=dev portless typeling vite --host 127.0.0.1",
     "dev:proxy": "portless proxy start --https",
     "dev:direct": "concurrently --kill-others --names api,web 'PORT=${SERVER_PORT:-3001} bun --watch src/server/index.ts' 'SERVER_URL=http://127.0.0.1:${SERVER_PORT:-3001} vite --host 127.0.0.1 --port 5173 --strictPort'",
     "dev:cloud": "TYPELING_CLOUDFLARE=1 vite --host 127.0.0.1",
@@ -27,7 +27,9 @@
     "audio:zack-s1-e0:timings": "bun run scripts/generate-word-timings.ts"
   },
   "dependencies": {
+    "better-auth": "^1.6.14",
     "hono": "^4.12.18",
+    "kysely": "0.28.17",
     "openai": "^6.37.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
