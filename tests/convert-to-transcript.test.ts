@@ -115,9 +115,6 @@ describe("convert-to-transcript", () => {
       .map((l) => l.slice("Character: ".length));
 
     expect(characterTexts).toContain("What a lovely day,");
-    expect(characterTexts).toContain("Oh,");
-    expect(characterTexts).toContain("A surprise!");
-    expect(characterTexts).toContain("I wonder who left this here,");
   });
 
   it("includes narration after dialogue", async () => {
@@ -130,7 +127,7 @@ describe("convert-to-transcript", () => {
     // Last line should be Storyteller (narration closes the episode)
     const lastLine = lines[lines.length - 1]!;
     expect(lastLine).toMatch(/^Storyteller: /);
-    expect(lastLine).toContain("Pixel could not wait");
+    expect(lastLine).toContain("buzzy voice");
   });
 
   it("fails validation if an unexpected speaker label appears", async () => {

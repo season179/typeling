@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { rename } from "node:fs/promises";
 import { join } from "node:path";
+import { checkSidecarMatchesEpisodeText } from "../lib/audio/sidecarMatch";
 import { seasonSchema } from "../lib/schemas/season";
 import {
 	type Session,
@@ -12,7 +13,6 @@ import {
 	type UserProfile,
 	userProfileSchema,
 } from "../lib/schemas/state";
-import { extractAlignmentStoryWords } from "../lib/storyWordTokens";
 import {
 	type WordTimingSidecar,
 	wordTimingSidecarSchema,
@@ -1263,33 +1263,14 @@ function assertSidecarMatchesEpisodeText(
 	episodeIdx: number,
 	episodeText: string,
 ): void {
-	if (
-		sidecar.seasonSlug !== seasonSlug ||
-		sidecar.episodeIdx !== episodeIdx ||
-		sidecar.textHash !== sha256(episodeText)
-	) {
+	const result = checkSidecarMatchesEpisodeText(
+		sidecar,
+		seasonSlug,
+		episodeIdx,
+		episodeText,
+	);
+	if (!result.ok) {
 		throw new EpisodeAudioError("EpisodeAudioStale", 409);
-	}
-
-	const expectedWords = extractAlignmentStoryWords(episodeText);
-	if (sidecar.words.length !== expectedWords.length) {
-		throw new EpisodeAudioError("EpisodeAudioStale", 409);
-	}
-
-	let previousEnd = 0;
-	for (const [index, word] of sidecar.words.entries()) {
-		const expected = expectedWords[index];
-		if (
-			!expected ||
-			word.index !== expected.wordIndex ||
-			word.text !== expected.text ||
-			word.end < word.start ||
-			word.start < previousEnd ||
-			word.end > sidecar.durationSeconds
-		) {
-			throw new EpisodeAudioError("EpisodeAudioStale", 409);
-		}
-		previousEnd = word.end;
 	}
 }
 

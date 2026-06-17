@@ -5,7 +5,7 @@ import winniSeasonData from "../../seasons/winni-s1.json";
 import zackSeasonData from "../../seasons/zack-s1.json";
 import { graduationStatus } from "../lib/graduation";
 import { rolling3Wpm } from "../lib/rolling3";
-import { MAX_EPISODES, seasonSchema } from "../lib/schemas/season";
+import { seasonSchema } from "../lib/schemas/season";
 import {
 	type Session,
 	type SignedInUser,
@@ -780,7 +780,11 @@ app.post("/api/stories/:storySlug/episodes/:episodeIdx/reset", async (c) => {
 		user.email,
 		season.slug,
 	);
-	assertEpisodeIsOpen(episodeIdx, progress.current_episode, MAX_EPISODES);
+	assertEpisodeIsOpen(
+		episodeIdx,
+		progress.current_episode,
+		season.episodes.length,
+	);
 	const nextProgress = await getProgressStore(c.env).resetStoryProgress(
 		user.email,
 		season.slug,

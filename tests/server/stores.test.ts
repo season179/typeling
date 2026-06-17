@@ -159,12 +159,12 @@ describe("D1StoryStore", () => {
 	});
 
 	it("validates D1 season output through the season schema", async () => {
-		const incompleteSeason = {
+		const invalidSeason = {
 			...fixtureSeason,
-			episodes: fixtureSeason.episodes.slice(0, 13),
+			episodes: [{ idx: -1, text: "" }],
 		};
 		const store = new D1StoryStore(
-			fakeD1StoryDatabase([incompleteSeason as typeof fixtureSeason]),
+			fakeD1StoryDatabase([invalidSeason as typeof fixtureSeason]),
 		);
 
 		await expect(store.readSeason(fixtureSeason.slug)).rejects.toThrow();
