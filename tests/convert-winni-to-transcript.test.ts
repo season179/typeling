@@ -108,8 +108,6 @@ describe("convert-winni-to-transcript", () => {
 
 		expect(characterTexts).toContain("Hello?");
 		expect(characterTexts).toContain("Is anyone there?");
-		expect(characterTexts).toContain("Should I open it?");
-		expect(characterTexts).toContain("Wow,");
 	});
 
 	it("ends with narration (Storyteller)", async () => {

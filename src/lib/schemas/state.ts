@@ -1,7 +1,6 @@
 import { z } from "zod";
+import { MAX_CURRENT_EPISODE, MAX_EPISODE_IDX } from "./season";
 
-const MAX_EPISODE_IDX = 13;
-const MAX_CURRENT_EPISODE = MAX_EPISODE_IDX + 1; // one past last valid episode — allows tracking season completion
 const MAX_WPM = 1000;
 const MAX_CHAR_COUNT = 10_000;
 const MAX_ACTIVE_MS = 24 * 60 * 60 * 1000;

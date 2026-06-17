@@ -25,19 +25,38 @@ describe("season JSON files", () => {
 		expect(() => seasonSchema.parse(JSON.parse(raw))).not.toThrow();
 	});
 
+	const wordCountOf = (text: string) =>
+		text.split(/\s+/).filter(Boolean).length;
+
 	it.each(
 		seasonFiles.filter((file) => !file.includes("-test.")),
 	)("%s real season content is clean and in budget", (file) => {
 		const raw = readFileSync(join(seasonsDir, file), "utf8");
 		const season = seasonSchema.parse(JSON.parse(raw));
 
-		expect(season.episodes).toHaveLength(14);
+		// 28 episodes: each original beat split into two shorter halves so a
+		// per-session sitting is roughly halved.
+		expect(season.episodes).toHaveLength(28);
+
+		// Each half is clean and a substantial single sitting — at least half the
+		// shortest full-session budget, never longer than the largest.
+		const halfSessionFloor = Math.floor(selectableStoryBudget.min / 2);
 		for (const episode of season.episodes) {
 			expect(() => assertCharset(episode.text)).not.toThrow();
 			expect(contentBlacklist(episode.text)).toEqual([]);
-			const wordCount = episode.text.split(/\s+/).filter(Boolean).length;
-			expect(wordCount).toBeGreaterThanOrEqual(selectableStoryBudget.min);
+			const wordCount = wordCountOf(episode.text);
+			expect(wordCount).toBeGreaterThanOrEqual(halfSessionFloor);
 			expect(wordCount).toBeLessThanOrEqual(selectableStoryBudget.max);
+		}
+
+		// A consecutive pair reconstitutes one original beat, so together they
+		// stay within the full-session word budget.
+		for (let i = 0; i < season.episodes.length; i += 2) {
+			const pairWords =
+				wordCountOf(season.episodes[i]?.text ?? "") +
+				wordCountOf(season.episodes[i + 1]?.text ?? "");
+			expect(pairWords).toBeGreaterThanOrEqual(selectableStoryBudget.min);
+			expect(pairWords).toBeLessThanOrEqual(selectableStoryBudget.max);
 		}
 	});
 });

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useLocation, useParams } from "wouter";
-import { MAX_EPISODES } from "../lib/schemas/season";
 import { getProgress } from "./api";
 
 interface ChapterMapProps {
@@ -33,7 +32,7 @@ function themeForComplete(storySlug: string | undefined, storyTheme: string) {
 	return "winni";
 }
 
-function ChapterMap({
+export function ChapterMap({
 	storySlug,
 	totalEpisodes,
 	completedUpTo,
@@ -80,7 +79,7 @@ export default function CompleteEpisode() {
 	}>();
 	const [storyName, setStoryName] = useState<string | null>(null);
 	const [storyTheme, setStoryTheme] = useState<string>("");
-	const [totalEpisodes, setTotalEpisodes] = useState<number>(MAX_EPISODES);
+	const [totalEpisodes, setTotalEpisodes] = useState<number>(0);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 

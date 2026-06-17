@@ -1,8 +1,9 @@
 import { describe, expect, it } from "bun:test";
+import { MAX_CURRENT_EPISODE } from "../../../src/lib/schemas/season";
 import {
 	childSchema,
-	sessionSubmissionSchema,
 	sessionSchema,
+	sessionSubmissionSchema,
 	stateSchema,
 	storyProgressSchema,
 	userProfileSchema,
@@ -77,7 +78,10 @@ describe("childSchema", () => {
 
 	it("rejects current_episode above the max episode index", () => {
 		expect(() =>
-			childSchema.parse({ ...validChild, current_episode: 15 }),
+			childSchema.parse({
+				...validChild,
+				current_episode: MAX_CURRENT_EPISODE + 1,
+			}),
 		).toThrow();
 	});
 });
@@ -255,7 +259,7 @@ describe("storyProgressSchema", () => {
 			storyProgressSchema.parse({
 				email: "season@example.com",
 				season_slug: "winni-season-01",
-				current_episode: 15,
+				current_episode: MAX_CURRENT_EPISODE + 1,
 			}),
 		).toThrow();
 	});

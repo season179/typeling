@@ -1,8 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import {
 	episodeSchema,
-	MAX_EPISODES,
+	MAX_EPISODE_IDX,
+	MAX_EPISODES_PER_SEASON,
 	seasonSchema,
+	TARGET_EPISODES_PER_SEASON,
 } from "../../../src/lib/schemas/season";
 
 const validEpisode = {
@@ -20,7 +22,7 @@ const validSeason = {
 	slug: "rainbow-season-01",
 	name: "Rainbow Meadow",
 	theme: "rainbow-unicorn",
-	episodes: makeEpisodes(MAX_EPISODES),
+	episodes: makeEpisodes(TARGET_EPISODES_PER_SEASON),
 };
 
 describe("episodeSchema", () => {
@@ -28,15 +30,19 @@ describe("episodeSchema", () => {
 		expect(episodeSchema.parse(validEpisode)).toEqual(validEpisode);
 	});
 
-	it("accepts the boundary idx values 0 and 13", () => {
+	it("accepts the boundary idx values 0 and MAX_EPISODE_IDX", () => {
 		expect(episodeSchema.parse({ ...validEpisode, idx: 0 }).idx).toBe(0);
-		expect(episodeSchema.parse({ ...validEpisode, idx: 13 }).idx).toBe(13);
+		expect(
+			episodeSchema.parse({ ...validEpisode, idx: MAX_EPISODE_IDX }).idx,
+		).toBe(MAX_EPISODE_IDX);
 	});
 
 	it("rejects negative, fractional, or out-of-range idx", () => {
 		expect(() => episodeSchema.parse({ ...validEpisode, idx: -1 })).toThrow();
 		expect(() => episodeSchema.parse({ ...validEpisode, idx: 1.5 })).toThrow();
-		expect(() => episodeSchema.parse({ ...validEpisode, idx: 14 })).toThrow();
+		expect(() =>
+			episodeSchema.parse({ ...validEpisode, idx: MAX_EPISODE_IDX + 1 }),
+		).toThrow();
 	});
 
 	it("rejects empty text and non-string text", () => {
@@ -71,17 +77,24 @@ describe("seasonSchema", () => {
 		).toThrow();
 	});
 
-	it("rejects when episodes count is not exactly MAX_EPISODES", () => {
+	it("accepts any episode count between 1 and MAX_EPISODES_PER_SEASON", () => {
+		expect(
+			seasonSchema.parse({ ...validSeason, episodes: makeEpisodes(1) })
+				.episodes,
+		).toHaveLength(1);
+		expect(
+			seasonSchema.parse({
+				...validSeason,
+				episodes: makeEpisodes(MAX_EPISODES_PER_SEASON),
+			}).episodes,
+		).toHaveLength(MAX_EPISODES_PER_SEASON);
+	});
+
+	it("rejects more than MAX_EPISODES_PER_SEASON episodes", () => {
 		expect(() =>
 			seasonSchema.parse({
 				...validSeason,
-				episodes: makeEpisodes(MAX_EPISODES - 1),
-			}),
-		).toThrow();
-		expect(() =>
-			seasonSchema.parse({
-				...validSeason,
-				episodes: makeEpisodes(MAX_EPISODES + 1),
+				episodes: makeEpisodes(MAX_EPISODES_PER_SEASON + 1),
 			}),
 		).toThrow();
 	});
@@ -90,7 +103,7 @@ describe("seasonSchema", () => {
 		const input = {
 			...validSeason,
 			extra: "ignore me",
-			episodes: makeEpisodes(MAX_EPISODES).map((ep, i) =>
+			episodes: makeEpisodes(TARGET_EPISODES_PER_SEASON).map((ep, i) =>
 				i === 0 ? { ...ep, extra: "also ignore" } : ep,
 			),
 		};
