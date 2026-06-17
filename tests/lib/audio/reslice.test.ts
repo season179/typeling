@@ -1,6 +1,5 @@
-import { createHash } from "node:crypto";
 import { describe, expect, it } from "bun:test";
-import { checkSidecarMatchesEpisodeText } from "../../../src/lib/audio/sidecarMatch";
+import { createHash } from "node:crypto";
 import {
 	chooseEpisodeSplit,
 	parseWav,
@@ -8,6 +7,7 @@ import {
 	resliceEpisode,
 	resliceEpisodeToTexts,
 } from "../../../src/lib/audio/reslice";
+import { checkSidecarMatchesEpisodeText } from "../../../src/lib/audio/sidecarMatch";
 import { sentenceBoundaries } from "../../../src/lib/sentenceBoundaries";
 import { extractAlignmentStoryWords } from "../../../src/lib/storyWordTokens";
 import { pcmToWavBuffer } from "../../../src/lib/wav";
@@ -77,15 +77,15 @@ describe("chooseEpisodeSplit", () => {
 		const split = chooseEpisodeSplit(STORY);
 
 		// The cut is a real sentence boundary offset.
-		const boundaryEnds = new Set(
-			sentenceBoundaries(STORY).map((b) => b.end),
-		);
+		const boundaryEnds = new Set(sentenceBoundaries(STORY).map((b) => b.end));
 		expect(boundaryEnds.has(split.charIndex)).toBe(true);
 
 		// And it is the boundary closest to half the words.
 		expect(split.wordIndex).toBeGreaterThan(0);
 		expect(split.wordIndex).toBeLessThan(total);
-		expect(Math.abs(split.wordIndex - total / 2)).toBeLessThanOrEqual(total / 4);
+		expect(Math.abs(split.wordIndex - total / 2)).toBeLessThanOrEqual(
+			total / 4,
+		);
 	});
 
 	it("throws when there is no interior sentence boundary", () => {

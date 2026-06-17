@@ -2,8 +2,8 @@ import { describe, expect, it } from "bun:test";
 import { MAX_CURRENT_EPISODE } from "../../../src/lib/schemas/season";
 import {
 	childSchema,
-	sessionSubmissionSchema,
 	sessionSchema,
+	sessionSubmissionSchema,
 	stateSchema,
 	storyProgressSchema,
 	userProfileSchema,

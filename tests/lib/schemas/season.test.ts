@@ -79,7 +79,8 @@ describe("seasonSchema", () => {
 
 	it("accepts any episode count between 1 and MAX_EPISODES_PER_SEASON", () => {
 		expect(
-			seasonSchema.parse({ ...validSeason, episodes: makeEpisodes(1) }).episodes,
+			seasonSchema.parse({ ...validSeason, episodes: makeEpisodes(1) })
+				.episodes,
 		).toHaveLength(1);
 		expect(
 			seasonSchema.parse({

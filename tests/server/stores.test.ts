@@ -6,13 +6,13 @@ import { fetch } from "../../src/server/index";
 import {
 	D1ProgressStore,
 	D1StoryStore,
+	type EpisodeAudioAsset,
 	InMemoryAssetStore,
 	InMemoryProgressStore,
 	InMemoryStoryStore,
 	ProgressMismatchError,
-	SessionIdConflictError,
-	type EpisodeAudioAsset,
 	type ProgressStore,
+	SessionIdConflictError,
 } from "../../src/server/stores";
 import { fakeD1StoryDatabase } from "../lib/fakeD1Story";
 
@@ -78,7 +78,9 @@ const sha256 = (input: string | Uint8Array) =>
 
 const testAudioBytes = pcmToWavBuffer(new Uint8Array(24000 * 2 * 2));
 
-const audioForEpisode = (episodeIdx: number): EpisodeAudioAsset & {
+const audioForEpisode = (
+	episodeIdx: number,
+): EpisodeAudioAsset & {
 	seasonSlug: string;
 	episodeIdx: number;
 } => {
@@ -250,9 +252,9 @@ describe.each([
 			season_slug: fixtureSeason.slug,
 			current_episode: 1,
 		});
-		expect(await store.listSessions(user.email, fixtureSeason.slug)).toHaveLength(
-			1,
-		);
+		expect(
+			await store.listSessions(user.email, fixtureSeason.slug),
+		).toHaveLength(1);
 	});
 
 	it("rejects duplicate session ids across emails", async () => {
@@ -459,9 +461,9 @@ describe("email/story API routes", () => {
 			audio_url: `/api/stories/${fixtureSeason.slug}/episodes/0/audio/file`,
 			duration_seconds: 2,
 		});
-		expect(metadataBody.words.map((word: { text: string }) => word.text)).toEqual(
-			["Episode", "1", "text", "for", "testing."],
-		);
+		expect(
+			metadataBody.words.map((word: { text: string }) => word.text),
+		).toEqual(["Episode", "1", "text", "for", "testing."]);
 		expect(audio.status).toBe(200);
 		expect(audio.headers.get("content-type")).toBe("audio/wav");
 		expect(new Uint8Array(await audio.arrayBuffer()).slice(0, 4)).toEqual(
