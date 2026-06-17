@@ -109,6 +109,27 @@ Each step is also a standalone script under `scripts/` (`extract-audio-source.ts
 
 The package.json shortcuts `tts:zack-s1-e0`, `audio:winni-s1-e0:extract`, `audio:winni-s1-e0:transcript`, and `audio:zack-s1-e0:timings` invoke individual steps for those specific season/episode pairs.
 
+### Re-slicing episodes (no TTS, no alignment)
+
+When a season's episodes are split or re-cut (the 14→28 split, or regenerating one flat seam later), existing audio can be re-sliced from the original word timings instead of re-running TTS and forced alignment. The same `chooseEpisodeSplit` sentence-boundary logic drives both the text split and the audio cut, so the re-sliced `2i`/`2i+1` audio always matches the split `2i`/`2i+1` episode text.
+
+First author the split season JSON in place:
+
+```bash
+bun run scripts/split-season.ts --dry-run                 # preview cuts for the two real seasons
+bun run scripts/split-season.ts seasons/winni-s1.json      # write the split episodes in place
+```
+
+Then re-slice the existing audio to match:
+
+```bash
+bun run scripts/reslice-episodes.ts                       # verify every half passes the serve-time check (no writes)
+bun run scripts/reslice-episodes.ts --write               # write the new .wav / .words.json / -source.txt halves
+bun run scripts/reslice-episodes.ts --write winni-s1      # limit to one season
+```
+
+Every half is run through the exact serve-time `EpisodeAudioStale` check (`src/lib/audio/sidecarMatch.ts`) before anything is written. Under `--write`, stale build intermediates (`-transcript.txt`, `-styled-transcript.txt`, `.meta.json`, `.qwen-align.raw.txt`) for the touched episodes are removed, since they cannot be regenerated here and would otherwise publish as stale. Publish the new halves to R2 afterwards with `bun run scripts/publish-assets.ts`. See `docs/episode-split-and-admin-generation-plan.md` §1.4.
+
 ### Gemini TTS notes
 
 - Non-streaming: full audio comes back in one response; expect a few seconds of latency for long episodes.

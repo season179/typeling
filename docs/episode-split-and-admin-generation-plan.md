@@ -1,6 +1,6 @@
 # Plan: Episode Split (14→28) + Admin-Driven Generation
 
-Status: CONSENSUS draft (pre-implementation, no code yet).
+Status: CONSENSUS plan. Part 1 (episode split) is implemented on the `split-episodes-28` branch; Part 2 (admin-driven generation) remains future design. The "Grounded facts" below describe the pre-split codebase that motivated the plan and are kept as the historical record.
 Authoring: Claude (Opus 4.8) ↔ Pi (GLM-5.2, Z.ai). Pi ran a code-grounded round-1 review
 (20 tool calls) and found real gaps; resolutions below are incorporated. Pi's round-2
 confirmation pass stalled three times on Z.ai API timeouts, so the consensus is synthesized
