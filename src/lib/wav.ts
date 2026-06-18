@@ -60,25 +60,6 @@ export function pcmToWavBuffer(
 	return out;
 }
 
-/**
- * Write a WAV file to disk from raw PCM bytes.
- */
-export async function writeWav(
-	outputPath: string,
-	pcmData: Uint8Array,
-	sampleRate?: number,
-	numChannels?: number,
-	bitsPerSample?: number,
-): Promise<void> {
-	const wavBuffer = pcmToWavBuffer(
-		pcmData,
-		sampleRate,
-		numChannels,
-		bitsPerSample,
-	);
-	await Bun.write(outputPath, wavBuffer);
-}
-
 function writeFourCC(view: DataView, offset: number, fourcc: string): void {
 	for (let i = 0; i < 4; i++) {
 		view.setUint8(offset + i, fourcc.charCodeAt(i));

@@ -157,3 +157,13 @@ export function putAdminEpisode(
 		},
 	);
 }
+
+export function postAdminEpisodeAudio(
+	storySlug: string,
+	episodeIdx: number,
+): Promise<Response> {
+	return fetch(
+		`/api/admin/seasons/${encodeURIComponent(storySlug)}/episodes/${episodeIdx}/audio`,
+		{ method: "POST" },
+	);
+}

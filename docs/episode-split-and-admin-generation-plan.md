@@ -1,6 +1,6 @@
 # Plan: Episode Split (14→28) + Admin-Driven Generation
 
-Status: CONSENSUS plan. Part 1 (episode split) is implemented on the `split-episodes-28` branch; Part 2 (admin-driven generation) remains future design. The "Grounded facts" below describe the pre-split codebase that motivated the plan and are kept as the historical record.
+Status: CONSENSUS plan. Part 1 (episode split) is implemented. Part 2 (admin-driven generation) is now implemented too — see §2.x for the as-built design (it replaced the original marker-file/sidecar sketch with a synchronous Worker route + a loopback aligner service). The "Grounded facts" below describe the pre-split codebase that motivated the plan and are kept as the historical record.
 Authoring: Claude (Opus 4.8) ↔ Pi (GLM-5.2, Z.ai). Pi ran a code-grounded round-1 review
 (20 tool calls) and found real gaps; resolutions below are incorporated. Pi's round-2
 confirmation pass stalled three times on Z.ai API timeouts, so the consensus is synthesized
@@ -122,33 +122,49 @@ h. Full gate: `bun test` · `bunx tsc --noEmit` · `bunx vite build` · `bun run
 
 ---
 
-## PART 2 — Admin-Driven Generation (future design only)
+## PART 2 — Admin-Driven Generation (AS BUILT)
 
-### 2.1 Scope (DECIDED — build it; do not stay on the CLI)
-**Decision (you, in review):** admin generation is a committed Phase 2, not a maybe. The CLI is not
-the long-term home. Pi argued it was over-engineering for two kids; you overrode that — it gets built
-**after Part 1 ships** (sequencing unchanged; Part 1 is the kid-facing value and is independent).
-Keep the shape minimal (2.3); full *cloud* generation stays out of scope — generation runs locally.
+### 2.1 Scope (DONE — built; off the CLI)
+Per-episode "Generate audio" button on `/admin`, for `Missing` episodes and to refresh `Stale`
+ones. No bulk/season-wide generation, no D1 jobs table, no queues, no cloud generation. The pipeline
+matches the CLI exactly but runs inside the Worker plus one loopback call to a local aligner.
 
-### 2.2 The runtime wall
-`/admin` is served by workerd (no `Bun.spawn`, no fs) — the aligner can't run there. So generation
-can't be inline.
+### 2.2 The runtime wall → resolved by a loopback service
+`/admin` is served by workerd (no `Bun.spawn`, no fs) — the forced aligner can't run there. Instead
+of a marker-file + polling sidecar (the original sketch), the aligner runs as a tiny **loopback HTTP
+service** (`scripts/aligner-server.ts`, `127.0.0.1:8765`) that wraps `speech align`. `bun run dev`
+starts it next to vite via `concurrently --kill-others-on-fail` (`dev:aligner`); a startup preflight
+fails fast if the `speech` CLI is absent. We proved Miniflare can `fetch` a 127.0.0.1 service
+(GET + multipart POST), so the Worker calls it synchronously — no marker files, no extra process to
+poll.
 
-### 2.3 Minimal local trigger (consensus: NO D1 jobs table in v0)
-If built: admin (workerd) drops a **watched marker file**; a small **Bun sidecar** (separate process)
-polls it, runs the re-slice module / `build-chapter-audio.ts`, writes status back; admin UI extends
-its existing ready/missing/stale display with `generating`/`failed`. No Cloudflare Queues, no
-`generation_jobs` table.
+### 2.3 The route + orchestrator (synchronous, deps injected)
+`POST /api/admin/seasons/:slug/episodes/:idx/audio` (`src/server/index.ts`) is gated by
+`assertLocalAdminRequest`, then `ADMIN_AUDIO_GENERATION_ENABLED` (checked **before** any secret is
+read), then a config read that requires `GEMINI_API_KEY` + `OPENROUTER_API_KEY` + a **loopback**
+`ALIGNER_URL`. `src/server/audioGeneration.ts` orchestrates: D1 text → transcript
+(`parseTranscript`/`formatTranscript`) → style (OpenRouter, plain `fetch`) → **preservation guard**
+(spoken words must equal the source, else stop before spending a TTS call) → TTS (Gemini, plain
+`fetch`) → PCM → WAV (`pcmToWavBuffer`) → forced alignment (multipart POST to the loopback service) →
+`buildWordTimingSidecar` (reused verbatim) → `AssetStore.writeEpisodeAudio` (validates, stages on
+temp keys, promotes, reads back). Every external dep is injectable so it runs offline in tests;
+errors surface as typed `AudioGenerationError` codes the admin UI maps to friendly messages.
 
-### 2.4 The one cloud blocker
+**Bundle purity:** the orchestrator imports only Worker-safe code. The shared pipeline helpers were
+moved into `src/lib/` (`transcript.ts`, `styleTranscript.ts`, `styleTranscriptPrompt.ts`,
+`openRouterStyleClient.ts`); `wav.ts` stays pure (disk writes live in `wavFile.ts`); `generateWav.ts`
+(fs/Bun) is never imported at runtime (the base64→PCM extraction is inlined). Use `globalThis.fetch`
+everywhere because the server module's `export function fetch` shadows the global.
+
+### 2.4 The one cloud blocker (unchanged)
 Styling (OpenRouter) + TTS (Gemini) are HTTP and Worker-portable; R2 writes are fine. **Only the
-forced aligner is non-portable.** True cloud generation later = replace it with a hosted
-word-timestamp API or a remote aligner box; nothing else moves. Keep the pipeline free of *new*
-local-only deps meanwhile.
+forced aligner is non-portable** — hence the loopback service. True cloud generation later = replace
+`ALIGNER_URL` with a hosted word-timestamp API or a remote aligner box; nothing else moves. Secrets
++ flag live in `.dev.vars` only, so the route is inert in production.
 
 ### 2.5 Auth
-Hostname-gating is fine while local. Remote admin would need real auth (Better Auth email allowlist).
-Out of scope now.
+Hostname-gating + the feature flag keep this local-only. Remote admin would need real auth (Better
+Auth email allowlist). Out of scope now.
 
 ---
 

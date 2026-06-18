@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { rename } from "node:fs/promises";
+import { rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { checkSidecarMatchesEpisodeText } from "../lib/audio/sidecarMatch";
 import { seasonSchema } from "../lib/schemas/season";
@@ -827,11 +827,22 @@ export interface R2ObjectBodyLike {
 	json<T>(): Promise<T>;
 }
 
+export interface R2PutOptionsLike {
+	httpMetadata?: { contentType?: string };
+	customMetadata?: Record<string, string>;
+}
+
 export interface R2BucketLike {
 	get(
 		key: string,
 		options?: R2GetOptionsLike,
 	): Promise<R2ObjectBodyLike | null>;
+	put(
+		key: string,
+		value: ArrayBuffer | ArrayBufferView | string,
+		options?: R2PutOptionsLike,
+	): Promise<unknown>;
+	delete(key: string): Promise<void>;
 }
 
 export interface AssetStore {
@@ -846,6 +857,13 @@ export interface AssetStore {
 		episodeText: string,
 		requestHeaders: Headers,
 	): Promise<EpisodeAudioFileAsset | null>;
+	writeEpisodeAudio(
+		seasonSlug: string,
+		episodeIdx: number,
+		episodeText: string,
+		audioBytes: Uint8Array,
+		sidecar: WordTimingSidecar,
+	): Promise<void>;
 }
 
 export class InMemoryAssetStore implements AssetStore {
@@ -901,6 +919,26 @@ export class InMemoryAssetStore implements AssetStore {
 			audio.audioBytes,
 			audio.contentType,
 			requestHeaders,
+		);
+	}
+
+	async writeEpisodeAudio(
+		seasonSlug: string,
+		episodeIdx: number,
+		episodeText: string,
+		audioBytes: Uint8Array,
+		sidecar: WordTimingSidecar,
+	): Promise<void> {
+		assertSidecarMatchesEpisode(
+			sidecar,
+			seasonSlug,
+			episodeIdx,
+			episodeText,
+			audioBytes,
+		);
+		this.#audio.set(
+			audioKey(seasonSlug, episodeIdx),
+			cloneAudioAsset({ audioBytes, sidecar, contentType: "audio/wav" }),
 		);
 	}
 }
@@ -986,6 +1024,74 @@ export class R2AssetStore implements AssetStore {
 			throw new EpisodeAudioError("EpisodeAudioStale", 409);
 		}
 	}
+
+	async writeEpisodeAudio(
+		seasonSlug: string,
+		episodeIdx: number,
+		episodeText: string,
+		audioBytes: Uint8Array,
+		sidecar: WordTimingSidecar,
+	): Promise<void> {
+		assertSidecarMatchesEpisode(
+			sidecar,
+			seasonSlug,
+			episodeIdx,
+			episodeText,
+			audioBytes,
+		);
+		const baseName = audioBaseName(seasonSlug, episodeIdx);
+		const wavKey = `audio/${baseName}.wav`;
+		const sidecarKey = `audio/${baseName}.words.json`;
+		const tmpWavKey = `${wavKey}.tmp`;
+		const tmpSidecarKey = `${sidecarKey}.tmp`;
+		const audioBody = arrayBufferFromBytes(audioBytes);
+		const sidecarJson = JSON.stringify(sidecar);
+		const wavPut: R2PutOptionsLike = {
+			httpMetadata: { contentType: "audio/wav" },
+			customMetadata: { sha256: sidecar.audioHash },
+		};
+		const jsonPut: R2PutOptionsLike = {
+			httpMetadata: { contentType: "application/json" },
+		};
+
+		// Stage to temp keys and verify the round-trip survives R2 before
+		// touching the live keys, so a bad write can't corrupt existing audio.
+		await this.#bucket.put(tmpWavKey, audioBody, wavPut);
+		await this.#bucket.put(tmpSidecarKey, sidecarJson, jsonPut);
+		try {
+			const staged = await readR2AudioPair(
+				this.#bucket,
+				tmpWavKey,
+				tmpSidecarKey,
+			);
+			if (!staged) {
+				throw new EpisodeAudioError("EpisodeAudioMissing", 404);
+			}
+			assertSidecarMatchesEpisode(
+				staged.sidecar,
+				seasonSlug,
+				episodeIdx,
+				episodeText,
+				staged.audioBytes,
+			);
+
+			// Promote: WAV first, sidecar last as the commit marker.
+			await this.#bucket.put(wavKey, audioBody, wavPut);
+			await this.#bucket.put(sidecarKey, sidecarJson, jsonPut);
+		} finally {
+			await this.#bucket.delete(tmpWavKey).catch(() => undefined);
+			await this.#bucket.delete(tmpSidecarKey).catch(() => undefined);
+		}
+
+		const readBack = await this.readEpisodeAudio(
+			seasonSlug,
+			episodeIdx,
+			episodeText,
+		);
+		if (!readBack) {
+			throw new EpisodeAudioError("EpisodeAudioMissing", 404);
+		}
+	}
 }
 
 export class DiskAssetStore implements AssetStore {
@@ -1050,6 +1156,52 @@ export class DiskAssetStore implements AssetStore {
 			requestHeaders,
 		);
 	}
+
+	async writeEpisodeAudio(
+		seasonSlug: string,
+		episodeIdx: number,
+		episodeText: string,
+		audioBytes: Uint8Array,
+		sidecar: WordTimingSidecar,
+	): Promise<void> {
+		assertSidecarMatchesEpisode(
+			sidecar,
+			seasonSlug,
+			episodeIdx,
+			episodeText,
+			audioBytes,
+		);
+		const baseName = audioBaseName(seasonSlug, episodeIdx);
+		const wavPath = join(this.#audioDir, `${baseName}.wav`);
+		const sidecarPath = join(this.#audioDir, `${baseName}.words.json`);
+		const tmpWavPath = `${wavPath}.tmp`;
+		const tmpSidecarPath = `${sidecarPath}.tmp`;
+
+		// Write temp files then rename into place (WAV first, sidecar last).
+		try {
+			await Bun.write(tmpWavPath, arrayBufferFromBytes(audioBytes));
+			await Bun.write(tmpSidecarPath, `${JSON.stringify(sidecar, null, 2)}\n`);
+			await rename(tmpWavPath, wavPath);
+			await rename(tmpSidecarPath, sidecarPath);
+		} finally {
+			// A mid-write failure can leave temp files the renames never consumed;
+			// remove any stragglers so they can't be promoted later.
+			await rm(tmpWavPath, { force: true }).catch(() => undefined);
+			await rm(tmpSidecarPath, { force: true }).catch(() => undefined);
+		}
+
+		// Read back so a torn or corrupt write surfaces here, matching
+		// R2AssetStore and the orchestrator's "validates, stages, reads back"
+		// contract instead of silently reporting success.
+		const readBack = await this.readEpisodeAudio(
+			seasonSlug,
+			episodeIdx,
+			episodeText,
+		);
+		if (!readBack) {
+			throw new EpisodeAudioError("EpisodeAudioMissing", 404);
+		}
+	}
 }
 
 function audioKey(seasonSlug: string, episodeIdx: number): string {
@@ -1058,6 +1210,23 @@ function audioKey(seasonSlug: string, episodeIdx: number): string {
 
 function audioBaseName(seasonSlug: string, episodeIdx: number): string {
 	return `${seasonSlug}-e${episodeIdx}`;
+}
+
+async function readR2AudioPair(
+	bucket: R2BucketLike,
+	wavKey: string,
+	sidecarKey: string,
+): Promise<{ audioBytes: Uint8Array; sidecar: WordTimingSidecar } | null> {
+	const [audioObject, sidecarObject] = await Promise.all([
+		bucket.get(wavKey),
+		bucket.get(sidecarKey),
+	]);
+	if (!audioObject || !sidecarObject) {
+		return null;
+	}
+	const sidecar = wordTimingSidecarSchema.parse(await sidecarObject.json());
+	const audioBytes = new Uint8Array(await audioObject.arrayBuffer());
+	return { audioBytes, sidecar };
 }
 
 function sha256(input: string | Uint8Array): string {
@@ -1300,4 +1469,10 @@ export interface ServerBindings {
 	// Test/override seam: when set, this identity is used directly instead of
 	// reading a Better Auth session. Never populated by the Workers runtime.
 	IDENTITY?: SignedInUser;
+	// Admin-only audio generation (local dev). Present via `.dev.vars`; absent in
+	// prod so the generate route stays inert. ALIGNER_URL must be a loopback URL.
+	ADMIN_AUDIO_GENERATION_ENABLED?: string;
+	ALIGNER_URL?: string;
+	GEMINI_API_KEY?: string;
+	OPENROUTER_API_KEY?: string;
 }

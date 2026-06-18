@@ -10,7 +10,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { DEFAULT_VOICE_CHOICES } from "./geminiTtsRequest";
-import { writeWav } from "./wav";
+import { writeWav } from "./wavFile";
 
 // ── Types ────────────────────────────────────────────────────────
 

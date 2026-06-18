@@ -1,52 +1,17 @@
-import { parseArgs } from "node:util";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { parseArgs } from "node:util";
+import {
+  formatTranscript,
+  parseTranscript,
+  TranscriptError,
+  validateTranscript,
+} from "../src/lib/transcript";
 
-class TranscriptError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "TranscriptError";
-  }
-}
-
-const ALLOWED_SPEAKERS = new Set(["Storyteller", "Character"]);
-
-interface TranscriptLine {
-  speaker: "Storyteller" | "Character";
-  text: string;
-}
-
-export function parseTranscript(text: string): TranscriptLine[] {
-  const segments = text.split('"');
-  const lines: TranscriptLine[] = [];
-
-  for (let i = 0; i < segments.length; i++) {
-    const trimmed = segments[i]!.trim();
-    if (trimmed.length === 0) continue;
-
-    // Even-indexed segments (0, 2, 4, ...) are outside quotes → Storyteller
-    // Odd-indexed segments (1, 3, 5, ...) are inside quotes → Character
-    const speaker = i % 2 === 0 ? "Storyteller" : "Character";
-    lines.push({ speaker, text: trimmed });
-  }
-
-  return lines;
-}
-
-export function validateTranscript(lines: TranscriptLine[]): void {
-  for (const [i, line] of lines.entries()) {
-    if (!ALLOWED_SPEAKERS.has(line.speaker)) {
-      throw new TranscriptError(
-        `Unexpected speaker label "${line.speaker}" on line ${i + 1}. ` +
-        `Only Storyteller and Character are allowed.`,
-      );
-    }
-  }
-}
-
-export function formatTranscript(lines: TranscriptLine[]): string {
-  return lines.map((line) => `${line.speaker}: ${line.text}`).join("\n") + "\n";
-}
+// Re-exported so existing tests can import these pure helpers from this
+// script entrypoint. The implementations live in src/lib/transcript.ts so the
+// Worker can share them.
+export { formatTranscript, parseTranscript, validateTranscript };
 
 async function main() {
   const { values } = parseArgs({
