@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, useParams } from "wouter";
 import {
 	type EpisodeData,
@@ -63,12 +63,39 @@ function ChapterPicker({
 	onReset,
 }: ChapterPickerProps) {
 	const [_, navigate] = useLocation();
+	const pickerRef = useRef<HTMLDivElement>(null);
 
 	const latestOpen = Math.min(currentEpisode, totalEpisodes - 1);
 	const theme = themeForStory(storySlug);
 
+	// The picker is fixed at the top and wraps to a variable number of rows
+	// depending on the episode count and viewport width. Publish its measured
+	// height as --chapter-picker-h so the content below (HUD, reader) offsets by
+	// the real height instead of a hardcoded single-row guess.
+	useLayoutEffect(() => {
+		const el = pickerRef.current;
+		if (!el) return;
+		const root = document.documentElement;
+		const publish = () => {
+			root.style.setProperty("--chapter-picker-h", `${el.offsetHeight}px`);
+		};
+		publish();
+		// ResizeObserver is absent in some environments (e.g. the test DOM); the
+		// one-shot publish above still sets a sane height, we just skip live updates.
+		const observer =
+			typeof ResizeObserver === "undefined"
+				? null
+				: new ResizeObserver(publish);
+		observer?.observe(el);
+		return () => {
+			observer?.disconnect();
+			root.style.removeProperty("--chapter-picker-h");
+		};
+	}, []);
+
 	return (
 		<div
+			ref={pickerRef}
 			className={`chapter-picker theme-${theme} fixed left-0 right-0 top-0 z-20 px-4 py-3`}
 		>
 			<div className="mx-auto flex max-w-4xl flex-wrap items-center justify-center gap-2">

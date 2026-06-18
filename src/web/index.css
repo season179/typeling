@@ -268,7 +268,7 @@
 	justify-content: center;
 	align-items: stretch;
 	overflow: hidden;
-	padding: 5.6rem 1rem 1.2rem;
+	padding: calc(var(--chapter-picker-h, 3.8rem) + 1.8rem) 1rem 1.2rem;
 }
 
 .reader-shell {
@@ -436,7 +436,7 @@
 	grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) 8.75rem;
 	gap: 0.75rem;
 	width: min(58rem, calc(100% - 2rem));
-	margin: 4.7rem auto 0;
+	margin: calc(var(--chapter-picker-h, 3.8rem) + 0.9rem) auto 0;
 }
 
 .hud-panel {
@@ -848,7 +848,7 @@
 @media (max-width: 700px) {
 	.game-hud {
 		grid-template-columns: 1fr 1fr;
-		margin-top: 4.35rem;
+		margin-top: calc(var(--chapter-picker-h, 3.45rem) + 0.9rem);
 	}
 
 	.key-panel {
@@ -877,7 +877,7 @@
 	}
 
 	.reader-world {
-		padding-top: 8.2rem;
+		padding-top: calc(var(--chapter-picker-h, 6.4rem) + 1.8rem);
 	}
 
 	.reader-shell {
