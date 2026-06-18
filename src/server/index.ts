@@ -20,6 +20,7 @@ import {
 	type StoryTextViolation,
 } from "../lib/storyTextPolicy";
 import { AudioGenerationError, generateEpisodeAudio } from "./audioGeneration";
+import { AudioPublishError, publishEpisodeAudio } from "./audioPublish";
 import { isAuthConfigured, makeAuth } from "./auth";
 import {
 	DEFAULT_AUDIO_DIR,
@@ -387,6 +388,33 @@ function readAudioGenerationConfig(env: ServerBindings): AudioGenerationConfig {
 	return { geminiApiKey, openRouterApiKey, alignerUrl };
 }
 
+function isAudioPublishEnabled(env: ServerBindings): boolean {
+	const flag = env.ADMIN_AUDIO_PUBLISH_ENABLED?.trim().toLowerCase();
+	return flag === "1" || flag === "true" || flag === "yes";
+}
+
+function assertAudioPublishEnabled(env: ServerBindings): void {
+	// Checked BEFORE the loopback URL is read: when the feature flag is off the
+	// route never touches the publisher. The flag lives in `.dev.vars` only, so
+	// this route is inert in production.
+	if (!isAudioPublishEnabled(env)) {
+		throw new AdminAccessError("AudioPublishDisabled", 403);
+	}
+}
+
+function readAudioPublishConfig(env: ServerBindings): { publisherUrl: string } {
+	const publisherUrl = env.ALIGNER_URL?.trim();
+	if (!publisherUrl) {
+		throw new AdminAccessError("AudioPublishNotConfigured", 503);
+	}
+	// Defence in depth: the publisher sidecar is a local-only service. Never let
+	// the Worker POST audio to a non-loopback address.
+	if (!isLoopbackUrl(publisherUrl)) {
+		throw new AdminAccessError("PublishUrlNotLoopback", 403);
+	}
+	return { publisherUrl };
+}
+
 function adminStoryViolationCode(violation: StoryTextViolation): string {
 	switch (violation.kind) {
 		case "charset":
@@ -746,6 +774,48 @@ app.post("/api/admin/seasons/:slug/episodes/:episodeIdx/audio", async (c) => {
 	});
 });
 
+app.post(
+	"/api/admin/seasons/:slug/episodes/:episodeIdx/audio/publish",
+	async (c) => {
+		assertLocalAdminRequest(c.req.raw);
+		// Gate on the feature flag before reading the loopback URL.
+		assertAudioPublishEnabled(c.env);
+		const { publisherUrl } = readAudioPublishConfig(c.env);
+
+		const slug = c.req.param("slug");
+		const episodeIdx = parseEpisodeIdx(c.req.param("episodeIdx"));
+		const storyStore = getStoryStore(c.env);
+		const season = await storyStore.readSeason(slug);
+		const episode = season.episodes[episodeIdx];
+		if (!episode) {
+			throw new AdminAccessError("EpisodeNotFound", 404);
+		}
+
+		const assetStore = getAssetStore(c.env);
+		try {
+			const publish = await publishEpisodeAudio({
+				seasonSlug: season.slug,
+				episodeIdx,
+				episodeText: episode.text,
+				assetStore,
+				publisherUrl,
+			});
+			return c.json({
+				season_slug: season.slug,
+				episode: { idx: episodeIdx, publish },
+			});
+		} catch (error) {
+			if (error instanceof AudioPublishError) {
+				return c.json(
+					{ error: error.code, detail: error.message },
+					error.status as ContentfulStatusCode,
+				);
+			}
+			throw error;
+		}
+	},
+);
+
 app.get("/api/stories/:storySlug/current-episode", async (c) => {
 	const user = await requireUser(c.req.raw, c.env);
 	const season = await getStoryStore(c.env).readSeason(
@@ -932,6 +1002,7 @@ function isServerBindings(value: unknown): value is ServerBindings {
 			"ASSETS_BUCKET" in value ||
 			"IDENTITY" in value ||
 			"ADMIN_AUDIO_GENERATION_ENABLED" in value ||
+			"ADMIN_AUDIO_PUBLISH_ENABLED" in value ||
 			"ALIGNER_URL" in value ||
 			"GEMINI_API_KEY" in value ||
 			"OPENROUTER_API_KEY" in value)

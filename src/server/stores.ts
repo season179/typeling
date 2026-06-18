@@ -1472,6 +1472,10 @@ export interface ServerBindings {
 	// Admin-only audio generation (local dev). Present via `.dev.vars`; absent in
 	// prod so the generate route stays inert. ALIGNER_URL must be a loopback URL.
 	ADMIN_AUDIO_GENERATION_ENABLED?: string;
+	// Admin-only "Publish to production" (local dev). Present via `.dev.vars`;
+	// absent in prod so the publish route stays inert. Reuses ALIGNER_URL as the
+	// loopback sidecar that performs the remote-R2 upload from `.env` creds.
+	ADMIN_AUDIO_PUBLISH_ENABLED?: string;
 	ALIGNER_URL?: string;
 	GEMINI_API_KEY?: string;
 	OPENROUTER_API_KEY?: string;

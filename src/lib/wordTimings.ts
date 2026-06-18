@@ -197,7 +197,10 @@ export function buildWordTimingSidecar(
 	};
 }
 
-function sha256(input: string | Uint8Array): string {
+/** SHA-256 hex digest. Shared so the serve-time staleness gate, the sidecar
+ * audio hash, and the publish sidecar's re-verification all agree byte-for-byte
+ * on one canonical digest. */
+export function sha256(input: string | Uint8Array): string {
 	return createHash("sha256").update(input).digest("hex");
 }
 

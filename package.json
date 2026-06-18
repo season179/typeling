@@ -14,6 +14,7 @@
     "db:migrate:remote": "wrangler d1 migrations apply typeling-content --remote",
     "db:seed:local": "bun run scripts/seed-story-d1.ts --local",
     "assets:seed:local": "bun run scripts/seed-assets-r2.ts --local",
+    "audio:publish": "bun run scripts/publish-episode-audio.ts",
     "server": "bun run src/server/index.ts",
     "web": "vite",
     "lint": "biome check src/",

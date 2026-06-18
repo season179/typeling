@@ -1,5 +1,10 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
-import { getAdminStories, postAdminEpisodeAudio, putAdminEpisode } from "./api";
+import {
+	getAdminStories,
+	postAdminEpisodeAudio,
+	postAdminEpisodeAudioPublish,
+	putAdminEpisode,
+} from "./api";
 
 type AdminAudioStatus =
 	| {
@@ -44,6 +49,18 @@ interface AdminAudioGenerateResponse {
 	episode: { idx: number; audio: AdminAudioStatus };
 }
 
+interface AdminAudioPublishResult {
+	textHash: string;
+	wavSha256: string;
+	verified: boolean;
+	skipped: boolean;
+}
+
+interface AdminAudioPublishResponse {
+	season_slug: string;
+	episode: { idx: number; publish: AdminAudioPublishResult };
+}
+
 // Friendly text for each AudioGenerationError code the route can return.
 const AUDIO_ERROR_MESSAGES: Record<string, string> = {
 	AudioGenerationDisabled:
@@ -64,15 +81,34 @@ const AUDIO_ERROR_MESSAGES: Record<string, string> = {
 	VerificationFailed: "The generated audio failed verification.",
 };
 
-function audioErrorMessage(
+// Map a route's error code to friendly text, appending any server detail. Shared
+// by the Generate and Publish buttons so both render errors identically.
+function formatErrorMessage(
+	messages: Record<string, string>,
 	code: string | undefined,
 	detail: string | undefined,
 	status: number,
 ): string {
-	const friendly =
-		(code && AUDIO_ERROR_MESSAGES[code]) || code || `HTTP ${status}`;
+	const friendly = (code && messages[code]) || code || `HTTP ${status}`;
 	return detail ? `${friendly} (${detail})` : friendly;
 }
+
+// Friendly text for each publish-related error code the route can return.
+const PUBLISH_ERROR_MESSAGES: Record<string, string> = {
+	AudioPublishDisabled:
+		"Publishing is turned off (set ADMIN_AUDIO_PUBLISH_ENABLED).",
+	AudioPublishNotConfigured: "Set ALIGNER_URL in .dev.vars.",
+	PublishUrlNotLoopback: "ALIGNER_URL must be a loopback address.",
+	AudioMissing: "No generated audio for this episode yet.",
+	AudioStale: "Story and narration do not match, so publishing was stopped.",
+	PublisherUnreachable:
+		"The local publisher is not running. Is `bun run dev` up?",
+	PublishNotConfigured: "Production R2 credentials are missing from .env.",
+	PublishUploadFailed: "Uploading to production failed.",
+	PublishVerificationFailed:
+		"The uploaded audio failed verification in production.",
+	PublisherBadResponse: "The publisher returned an unexpected response.",
+};
 
 const AUDIO_LABELS: Record<AdminAudioStatus["status"], string> = {
 	missing: "Missing",
@@ -122,6 +158,9 @@ export default function AdminView() {
 	const [generating, setGenerating] = useState(false);
 	const [audioError, setAudioError] = useState<string | null>(null);
 	const [audioMessage, setAudioMessage] = useState<string | null>(null);
+	const [publishing, setPublishing] = useState(false);
+	const [publishError, setPublishError] = useState<string | null>(null);
+	const [publishMessage, setPublishMessage] = useState<string | null>(null);
 
 	useEffect(() => {
 		const controller = new AbortController();
@@ -181,6 +220,8 @@ export default function AdminView() {
 		setSaveMessage(null);
 		setAudioError(null);
 		setAudioMessage(null);
+		setPublishError(null);
+		setPublishMessage(null);
 	}, [selectedEpisode]);
 
 	const saveEpisode = async () => {
@@ -243,7 +284,12 @@ export default function AdminView() {
 					detail?: string;
 				} | null;
 				throw new Error(
-					audioErrorMessage(body?.error, body?.detail, res.status),
+					formatErrorMessage(
+						AUDIO_ERROR_MESSAGES,
+						body?.error,
+						body?.detail,
+						res.status,
+					),
 				);
 			}
 
@@ -272,6 +318,48 @@ export default function AdminView() {
 			);
 		} finally {
 			setGenerating(false);
+		}
+	};
+
+	const publishAudio = async () => {
+		if (!selectedStory || !selectedEpisode) return;
+
+		try {
+			setPublishing(true);
+			setPublishError(null);
+			setPublishMessage(null);
+			const res = await postAdminEpisodeAudioPublish(
+				selectedStory.slug,
+				selectedEpisode.idx,
+			);
+			if (!res.ok) {
+				const body = (await res.json().catch(() => null)) as {
+					error?: string;
+					detail?: string;
+				} | null;
+				throw new Error(
+					formatErrorMessage(
+						PUBLISH_ERROR_MESSAGES,
+						body?.error,
+						body?.detail,
+						res.status,
+					),
+				);
+			}
+
+			const published: AdminAudioPublishResponse = await res.json();
+			const shortHash = published.episode.publish.textHash.slice(0, 12);
+			setPublishMessage(
+				published.episode.publish.skipped
+					? `Already up to date — text hash ${shortHash}…`
+					: `Published to production — text hash ${shortHash}…`,
+			);
+		} catch (err) {
+			setPublishError(
+				err instanceof Error ? err.message : "Failed to publish audio",
+			);
+		} finally {
+			setPublishing(false);
 		}
 	};
 
@@ -529,18 +617,50 @@ export default function AdminView() {
 											</p>
 										)}
 									</div>
-									<button
-										type="button"
-										className="rounded-md bg-stone-900 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-stone-700 disabled:cursor-not-allowed disabled:bg-stone-300"
-										disabled={isDirty || generating || saving}
-										onClick={generateAudio}
-									>
-										{generating
-											? "Generating…"
-											: selectedEpisode.audio.status === "missing"
-												? "Generate audio"
-												: "Regenerate audio"}
-									</button>
+									<div className="flex flex-wrap items-center gap-2">
+										<button
+											type="button"
+											className="rounded-md bg-stone-900 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-stone-700 disabled:cursor-not-allowed disabled:bg-stone-300"
+											disabled={isDirty || generating || saving}
+											onClick={generateAudio}
+										>
+											{generating
+												? "Generating…"
+												: selectedEpisode.audio.status === "missing"
+													? "Generate audio"
+													: "Regenerate audio"}
+										</button>
+										<button
+											type="button"
+											className="rounded-md border border-stone-900 bg-white px-4 py-2 text-sm font-bold text-stone-900 transition-colors hover:bg-stone-100 disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400"
+											disabled={
+												selectedEpisode.audio.status !== "ready" ||
+												publishing ||
+												generating ||
+												saving
+											}
+											onClick={publishAudio}
+										>
+											{publishing ? "Publishing…" : "Publish to production"}
+										</button>
+									</div>
+								</div>
+
+								<div className="mt-3 min-h-5 text-sm">
+									{publishError && (
+										<p className="text-rose-700">{publishError}</p>
+									)}
+									{publishMessage && (
+										<p className="font-semibold text-emerald-700">
+											{publishMessage}
+										</p>
+									)}
+									{isDirty && !publishError && !publishMessage && (
+										<p className="text-stone-500">
+											Publishing sends the saved narration, not your unsaved
+											edits.
+										</p>
+									)}
 								</div>
 							</section>
 						</div>
