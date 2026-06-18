@@ -5,13 +5,13 @@ import { join } from "node:path";
 const TEST_DIR = join(import.meta.dir, "..");
 const SCRIPT = join(TEST_DIR, "scripts", "convert-to-transcript.ts");
 const OUTPUT_DIR = join(TEST_DIR, "data", "audio");
-const TRANSCRIPT_FILE = join(OUTPUT_DIR, "zack-s1-e0-transcript.txt");
+const TRANSCRIPT_FILE = join(OUTPUT_DIR, "pixel-garden-s1-e0-transcript.txt");
 
 const SCRIPT_ARGS = [
 	"--source",
-	"data/audio/zack-s1-e0-source.txt",
+	"data/audio/pixel-garden-s1-e0-source.txt",
 	"--output",
-	"data/audio/zack-s1-e0-transcript.txt",
+	"data/audio/pixel-garden-s1-e0-transcript.txt",
 ];
 
 async function runScript(args: string[]): Promise<{
@@ -39,9 +39,9 @@ async function ensureSourceArtifact() {
 			"run",
 			join(TEST_DIR, "scripts", "extract-audio-source.ts"),
 			"--season",
-			"seasons/zack-s1.json",
+			"seasons/pixel-garden-s1.json",
 			"--output",
-			"data/audio/zack-s1-e0-source.txt",
+			"data/audio/pixel-garden-s1-e0-source.txt",
 			"--episode-idx",
 			"0",
 		],

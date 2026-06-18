@@ -29,7 +29,7 @@ const STORY =
  * (0.3s slot, 0.2s spoken, 0.1s gap) plus a silent WAV long enough to cover
  * them — the shape `buildWordTimingSidecar` produces from a real alignment.
  */
-function buildSource(text: string, seasonSlug = "winni-s1", episodeIdx = 4) {
+function buildSource(text: string, seasonSlug = "rainbow-door-s1", episodeIdx = 4) {
 	const alignment = extractAlignmentStoryWords(text);
 	const words = alignment.map((word, i) => ({
 		index: word.wordIndex,
@@ -101,8 +101,8 @@ describe("chooseEpisodeSplit", () => {
 
 describe("resliceEpisode", () => {
 	it("splits an episode into two halves that pass the serve-time check", () => {
-		const source = buildSource(STORY, "winni-s1", 4);
-		const { partA, partB } = partsFor("winni-s1", 8);
+		const source = buildSource(STORY, "rainbow-door-s1", 4);
+		const { partA, partB } = partsFor("rainbow-door-s1", 8);
 
 		const result = resliceEpisode({
 			sourceSidecar: source.sidecar,
@@ -123,7 +123,7 @@ describe("resliceEpisode", () => {
 		expect(
 			checkSidecarMatchesEpisodeText(
 				result.a.sidecar,
-				"winni-s1",
+				"rainbow-door-s1",
 				8,
 				result.a.text,
 			),
@@ -131,7 +131,7 @@ describe("resliceEpisode", () => {
 		expect(
 			checkSidecarMatchesEpisodeText(
 				result.b.sidecar,
-				"winni-s1",
+				"rainbow-door-s1",
 				9,
 				result.b.text,
 			),
@@ -162,8 +162,8 @@ describe("resliceEpisode", () => {
 	});
 
 	it("honours an explicit split point", () => {
-		const source = buildSource(STORY, "zack-s1", 0);
-		const { partA, partB } = partsFor("zack-s1", 0);
+		const source = buildSource(STORY, "pixel-garden-s1", 0);
+		const { partA, partB } = partsFor("pixel-garden-s1", 0);
 		const split = chooseEpisodeSplit(STORY);
 
 		const result = resliceEpisode({
@@ -181,8 +181,8 @@ describe("resliceEpisode", () => {
 	});
 
 	it("re-slices from authoritative split texts (matches the JSON the server reads)", () => {
-		const source = buildSource(STORY, "winni-s1", 4);
-		const { partA, partB } = partsFor("winni-s1", 8);
+		const source = buildSource(STORY, "rainbow-door-s1", 4);
+		const { partA, partB } = partsFor("rainbow-door-s1", 8);
 		const split = chooseEpisodeSplit(STORY);
 		const textA = STORY.slice(0, split.charIndex).trim();
 		const textB = STORY.slice(split.charIndex).trim();
@@ -200,10 +200,10 @@ describe("resliceEpisode", () => {
 		// Sidecars hash exactly the supplied texts and pass the serve-time check.
 		expect(result.a.sidecar.textHash).toBe(result.a.sidecar.textHash);
 		expect(
-			checkSidecarMatchesEpisodeText(result.a.sidecar, "winni-s1", 8, textA),
+			checkSidecarMatchesEpisodeText(result.a.sidecar, "rainbow-door-s1", 8, textA),
 		).toEqual({ ok: true });
 		expect(
-			checkSidecarMatchesEpisodeText(result.b.sidecar, "winni-s1", 9, textB),
+			checkSidecarMatchesEpisodeText(result.b.sidecar, "rainbow-door-s1", 9, textB),
 		).toEqual({ ok: true });
 		expect(result.a.text).toBe(textA);
 		expect(result.b.text).toBe(textB);
@@ -222,8 +222,8 @@ describe("resliceEpisode", () => {
 	});
 
 	it("rejects target texts whose word counts do not cover the source", () => {
-		const source = buildSource(STORY, "winni-s1", 4);
-		const { partA, partB } = partsFor("winni-s1", 8);
+		const source = buildSource(STORY, "rainbow-door-s1", 4);
+		const { partA, partB } = partsFor("rainbow-door-s1", 8);
 		expect(() =>
 			resliceEpisodeToTexts({
 				sourceSidecar: source.sidecar,
@@ -238,8 +238,8 @@ describe("resliceEpisode", () => {
 	});
 
 	it("rejects a source sidecar that does not match its text", () => {
-		const source = buildSource(STORY, "winni-s1", 4);
-		const { partA, partB } = partsFor("winni-s1", 8);
+		const source = buildSource(STORY, "rainbow-door-s1", 4);
+		const { partA, partB } = partsFor("rainbow-door-s1", 8);
 
 		expect(() =>
 			resliceEpisode({

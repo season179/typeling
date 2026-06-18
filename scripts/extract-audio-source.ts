@@ -3,9 +3,9 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 const ROOT = join(import.meta.dir, "..");
-const DEFAULT_SEASON_PATH = join(ROOT, "seasons", "zack-s1.json");
+const DEFAULT_SEASON_PATH = join(ROOT, "seasons", "pixel-garden-s1.json");
 const DEFAULT_OUTPUT_DIR = join(ROOT, "data", "audio");
-const DEFAULT_OUTPUT_FILE = "zack-s1-e0-source.txt";
+const DEFAULT_OUTPUT_FILE = "pixel-garden-s1-e0-source.txt";
 
 interface SeasonFile {
   episodes: Array<{ idx: number; text: string }>;
@@ -46,7 +46,7 @@ async function main() {
     raw = await readFile(seasonPath, "utf-8");
   } catch {
     throw new ExtractionError(
-      `Cannot read season file: ${seasonPath}. Does Zack season 1 exist?`,
+      `Cannot read season file: ${seasonPath}. Does it exist?`,
     );
   }
 

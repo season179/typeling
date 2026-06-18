@@ -3,7 +3,7 @@ import { checkStoryText, findForbiddenName } from "./storyTextPolicy";
 
 describe("findForbiddenName", () => {
 	test("matches a name as a whole word, case-insensitively", () => {
-		expect(findForbiddenName("Then ZACK smiled.", ["Zack"])).toBe("Zack");
+		expect(findForbiddenName("Then ALEX smiled.", ["Alex"])).toBe("Alex");
 	});
 
 	test("does not match a name embedded in another word (word mode)", () => {
@@ -12,8 +12,8 @@ describe("findForbiddenName", () => {
 
 	test("matches a name embedded in another word in substring mode", () => {
 		expect(
-			findForbiddenName("Winnie waved hello.", ["Winni"], "substring"),
-		).toBe("Winni");
+			findForbiddenName("Samantha waved hello.", ["Sam"], "substring"),
+		).toBe("Sam");
 	});
 
 	test("ignores empty or whitespace-only names", () => {
@@ -21,9 +21,7 @@ describe("findForbiddenName", () => {
 	});
 
 	test("returns null when no name is present", () => {
-		expect(
-			findForbiddenName("A quiet afternoon.", ["Zack", "Winni"]),
-		).toBeNull();
+		expect(findForbiddenName("A quiet afternoon.", ["Alex", "Sam"])).toBeNull();
 	});
 });
 
@@ -49,13 +47,13 @@ describe("checkStoryText", () => {
 
 	test("reports a forbidden name", () => {
 		expect(
-			checkStoryText("Then Zack ran home.", { forbiddenNames: ["Zack"] }),
-		).toEqual({ kind: "forbidden-name", name: "Zack" });
+			checkStoryText("Then Alex ran home.", { forbiddenNames: ["Alex"] }),
+		).toEqual({ kind: "forbidden-name", name: "Alex" });
 	});
 
 	test("returns the highest-priority violation first (charset over the rest)", () => {
 		expect(
-			checkStoryText("Zack\tfight now", { forbiddenNames: ["Zack"] }),
+			checkStoryText("Alex\tfight now", { forbiddenNames: ["Alex"] }),
 		).toEqual({ kind: "charset", position: 4, char: "\t" });
 	});
 
@@ -65,12 +63,12 @@ describe("checkStoryText", () => {
 		).toBeNull();
 	});
 
-	test("flags a real name extended into a longer word in substring mode", () => {
+	test("flags a name extended into a longer word in substring mode", () => {
 		expect(
-			checkStoryText("Winnie waved hello.", {
-				forbiddenNames: ["Winni"],
+			checkStoryText("Samantha waved hello.", {
+				forbiddenNames: ["Sam"],
 				nameMatch: "substring",
 			}),
-		).toEqual({ kind: "forbidden-name", name: "Winni" });
+		).toEqual({ kind: "forbidden-name", name: "Sam" });
 	});
 });

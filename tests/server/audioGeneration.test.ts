@@ -10,7 +10,7 @@ import {
 } from "../../src/server/audioGeneration";
 import { InMemoryAssetStore } from "../../src/server/stores";
 
-const SEASON = "winni-s1-gen";
+const SEASON = "rainbow-door-s1-gen";
 const EPISODE_IDX = 0;
 const EPISODE_TEXT = "Luma saw a rainbow path in the sunny garden.";
 

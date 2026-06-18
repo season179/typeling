@@ -3,7 +3,7 @@
  *
  * Usage:
  *   bun run scripts/generate-wav.ts
- *   bun run scripts/generate-wav.ts --season winni-s1 --episode-idx 0
+ *   bun run scripts/generate-wav.ts --season rainbow-door-s1 --episode-idx 0
  *   bun run scripts/generate-wav.ts --fixture fixtures/gemini-audio-response.json --output data/audio/test.wav
  *
  * Does NOT call Gemini or any network API.
@@ -44,7 +44,7 @@ class CliError extends Error {
 }
 
 async function main() {
-	const season = values.season ?? "zack-s1";
+	const season = values.season ?? "pixel-garden-s1";
 	const rawIdx = values["episode-idx"] ?? "0";
 	const episodeIdx = Number(rawIdx);
 	if (!Number.isInteger(episodeIdx) || episodeIdx < 0) {

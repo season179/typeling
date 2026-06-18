@@ -35,10 +35,10 @@ them to R2.
 
 | Slug       | Story name                 | File                    |
 |------------|----------------------------|-------------------------|
-| `winni-s1` | The Rainbow Door           | `seasons/winni-s1.json` |
-| `zack-s1`  | Pixel's Science Garden     | `seasons/zack-s1.json`  |
+| `rainbow-door-s1` | The Rainbow Door           | `seasons/rainbow-door-s1.json` |
+| `pixel-garden-s1`  | Pixel's Science Garden     | `seasons/pixel-garden-s1.json`  |
 
-Test slugs (`winni-s1-test`, `zack-s1-test`) remain local fixtures unless
+Test slugs (`rainbow-door-s1-test`, `pixel-garden-s1-test`) remain local fixtures unless
 explicitly seeded for tests.
 
 The Worker resolves a season via `StoryStore.readSeason(seasonSlug)`, which
@@ -117,16 +117,16 @@ S3-compatible API stores custom metadata as `x-amz-meta-*` headers.
 
 ## Key examples
 
-For `zack-s1` episode 0 (`baseName = zack-s1-e0`):
+For `pixel-garden-s1` episode 0 (`baseName = pixel-garden-s1-e0`):
 
 ```
-audio/zack-s1-e0.wav
-audio/zack-s1-e0.words.json
-audio/zack-s1-e0-source.txt
-audio/zack-s1-e0-transcript.txt
-audio/zack-s1-e0-styled-transcript.txt
-audio/zack-s1-e0.meta.json
-audio/zack-s1-e0.qwen-align.raw.txt
+audio/pixel-garden-s1-e0.wav
+audio/pixel-garden-s1-e0.words.json
+audio/pixel-garden-s1-e0-source.txt
+audio/pixel-garden-s1-e0-transcript.txt
+audio/pixel-garden-s1-e0-styled-transcript.txt
+audio/pixel-garden-s1-e0.meta.json
+audio/pixel-garden-s1-e0.qwen-align.raw.txt
 ```
 
 ---
@@ -134,8 +134,8 @@ audio/zack-s1-e0.qwen-align.raw.txt
 ## Naming convention
 
 - **`{seasonSlug}`** — matches the story `slug` field in D1
-  (for example, the current legacy audio-compatible slugs are `winni-s1` and
-  `zack-s1`). New story slugs should describe the story rather than a child.
+  (for example, the current legacy audio-compatible slugs are `rainbow-door-s1` and
+  `pixel-garden-s1`). New story slugs should describe the story rather than a child.
 - **`{episodeIdx}`** — zero-indexed integer matching `episode.idx` in
   the D1 episode row.
 - **`{baseName}`** — `{seasonSlug}-e{episodeIdx}`.

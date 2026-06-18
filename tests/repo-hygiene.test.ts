@@ -4,7 +4,7 @@ describe("repo hygiene", () => {
 	it.each([
 		"data/state.json",
 		"data/state.json.bak",
-		"seasons/winni-s1.json.bak",
+		"seasons/rainbow-door-s1.json.bak",
 	])("ignores %s", async (path) => {
 		const proc = Bun.spawn(["git", "check-ignore", "-q", path]);
 		expect(await proc.exited).toBe(0);

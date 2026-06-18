@@ -13,6 +13,7 @@ import { postSession } from "./api";
 import { clearDraft, loadDraft, saveDraft } from "./episodeRunner/autosave";
 import { episodeRunnerReducer as cursorReducer } from "./episodeRunner/reducer";
 import { episodeRunnerReducer as sessionReducer } from "./episodeRunnerReducer";
+import { themeForStory } from "./storyTheme";
 
 interface EpisodeRunnerProps {
 	episodeText: string;
@@ -21,13 +22,6 @@ interface EpisodeRunnerProps {
 	seasonSlug: string;
 	episodeIdx: number;
 	totalEpisodes?: number;
-}
-
-function themeForStory(storySlug: string): "winni" | "zack" {
-	return storySlug.toLowerCase().includes("zack") ||
-		storySlug.toLowerCase().includes("science")
-		? "zack"
-		: "winni";
 }
 
 function progressForCursor(cursorIdx: number, textLength: number) {

@@ -7,11 +7,11 @@ import { createStateQueue, readState, writeStateAtomic } from "./state";
 
 const SEED: State = {
 	children: {
-		winni: {
-			name: "Winni",
+		reader: {
+			name: "Reader",
 			theme: "rainbow-unicorn",
 			target_wpm: 10,
-			active_season: "winni-season-01",
+			active_season: "rainbow-door-season-01",
 			current_episode: 0,
 			current_session_id: null,
 		},
@@ -21,8 +21,8 @@ const SEED: State = {
 
 const makeSession = (id: string) => ({
 	id,
-	child_id: "winni",
-	season_slug: "winni-season-01",
+	child_id: "reader",
+	season_slug: "rainbow-door-season-01",
 	episode_idx: 0,
 	wpm: 10,
 	char_count: 50,

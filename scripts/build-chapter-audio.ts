@@ -4,7 +4,7 @@
  *
  * Usage:
  *   bun run scripts/build-chapter-audio.ts --season <slug> --episode-idx <n>
- *   bun run scripts/build-chapter-audio.ts --season zack-s1 --episode-idx 0 --from audio --force
+ *   bun run scripts/build-chapter-audio.ts --season pixel-garden-s1 --episode-idx 0 --from audio --force
  *
  * The six steps are:
  *   1. source     — extract episode text from seasons/<slug>.json
@@ -268,7 +268,7 @@ async function main(): Promise<void> {
 	});
 
 	if (!values.season) {
-		throw new BuildError("--season is required (e.g. --season zack-s1)");
+		throw new BuildError("--season is required (e.g. --season pixel-garden-s1)");
 	}
 	if (!values["episode-idx"]) {
 		throw new BuildError("--episode-idx is required (e.g. --episode-idx 0)");

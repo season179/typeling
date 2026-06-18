@@ -16,13 +16,7 @@ bun run dev
 
 Runs the full Portless HTTPS stack: Hono at `https://typeling-api.localhost` and Vite at `https://typeling.localhost`. Use `bun run dev:direct` for the plain `127.0.0.1` fallback (override Hono with `SERVER_PORT`).
 
-On first run, copy the seed state into place:
-
-```bash
-cp data/state.seed.json data/state.json
-```
-
-Runtime state is written to `data/state.json` and is gitignored. The committed `data/state.seed.json` holds the initial child progress defaults.
+Local content and progress live in Cloudflare D1 (`typeling-content`). `bun run dev` applies the local migrations automatically; seed story content with `bun run db:seed:local`.
 
 ## End-to-end tests
 
@@ -35,7 +29,7 @@ npm i -g agent-browser && agent-browser install
 Start the dev server in one terminal, then run a test in another:
 
 ```bash
-bun run e2e:happy-path   # Winni → episode 0 → completion page → chapter map marks it completed
+bun run e2e:happy-path   # story card → episode 0 → completion page → chapter map marks it completed
 bun run e2e:wrong-key    # wrong key flashes red, does not advance; correct key advances by 1
 bun run e2e:idle         # 8s pause mid-episode → recorded active_ms excludes the idle gap
 ```
@@ -77,22 +71,22 @@ Speaker labels are always `Storyteller` (narration, Kore voice) and `Character` 
 `scripts/build-chapter-audio.ts` walks all six steps for any season + episode. Each step writes a file under `data/audio/<season>-e<n>-*`; if a file already exists, the step is skipped (use `--force` to override). The orchestrator hard-fails up front if `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, or the `speech` CLI is missing.
 
 ```bash
-# Build everything for Winni episode 0
-bun run scripts/build-chapter-audio.ts --season winni-s1 --episode-idx 0
+# Build everything for Rainbow Door episode 0
+bun run scripts/build-chapter-audio.ts --season rainbow-door-s1 --episode-idx 0
 
-# Build everything for Zack episode 0
-bun run scripts/build-chapter-audio.ts --season zack-s1 --episode-idx 0
+# Build everything for Pixel's Science Garden episode 0
+bun run scripts/build-chapter-audio.ts --season pixel-garden-s1 --episode-idx 0
 
 # Re-run from step 4 onward, regenerating audio + alignment + timings
-bun run scripts/build-chapter-audio.ts --season zack-s1 --episode-idx 0 --from audio --force
+bun run scripts/build-chapter-audio.ts --season pixel-garden-s1 --episode-idx 0 --from audio --force
 
 # Force a clean re-run of every step
-bun run scripts/build-chapter-audio.ts --season zack-s1 --episode-idx 0 --force
+bun run scripts/build-chapter-audio.ts --season pixel-garden-s1 --episode-idx 0 --force
 ```
 
 Flags:
 
-- `--season <slug>` — required, e.g. `zack-s1`, `winni-s1`.
+- `--season <slug>` — required, e.g. `pixel-garden-s1`, `rainbow-door-s1`.
 - `--episode-idx <n>` — required, 0-based episode index.
 - `--from <step>` — start from one of `source | transcript | style | audio | align | timings`. Earlier steps are skipped even if outputs are missing.
 - `--force` — re-run from the starting step regardless of existing outputs.
@@ -107,7 +101,7 @@ After it finishes, the three artifacts worth inspecting are:
 
 Each step is also a standalone script under `scripts/` (`extract-audio-source.ts`, `convert-to-transcript.ts`, `style-transcript.ts`, `generate-chapter-audio.ts`, `generate-word-timings.ts`). Run any one with `--help` for its flags. The orchestrator is just a thin wrapper around them.
 
-The package.json shortcuts `tts:zack-s1-e0`, `audio:winni-s1-e0:extract`, `audio:winni-s1-e0:transcript`, and `audio:zack-s1-e0:timings` invoke individual steps for those specific season/episode pairs.
+The package.json shortcuts `tts:pixel-garden-s1-e0`, `audio:rainbow-door-s1-e0:extract`, `audio:rainbow-door-s1-e0:transcript`, and `audio:pixel-garden-s1-e0:timings` invoke individual steps for those specific season/episode pairs.
 
 ### Re-slicing episodes (no TTS, no alignment)
 
@@ -117,7 +111,7 @@ First author the split season JSON in place:
 
 ```bash
 bun run scripts/split-season.ts --dry-run                 # preview cuts for the two real seasons
-bun run scripts/split-season.ts seasons/winni-s1.json      # write the split episodes in place
+bun run scripts/split-season.ts seasons/rainbow-door-s1.json      # write the split episodes in place
 ```
 
 Then re-slice the existing audio to match:
@@ -125,7 +119,7 @@ Then re-slice the existing audio to match:
 ```bash
 bun run scripts/reslice-episodes.ts                       # verify every half passes the serve-time check (no writes)
 bun run scripts/reslice-episodes.ts --write               # write the new .wav / .words.json / -source.txt halves
-bun run scripts/reslice-episodes.ts --write winni-s1      # limit to one season
+bun run scripts/reslice-episodes.ts --write rainbow-door-s1      # limit to one season
 ```
 
 Every half is run through the exact serve-time `EpisodeAudioStale` check (`src/lib/audio/sidecarMatch.ts`) before anything is written. Under `--write`, stale build intermediates (`-transcript.txt`, `-styled-transcript.txt`, `.meta.json`, `.qwen-align.raw.txt`) for the touched episodes are removed, since they cannot be regenerated here and would otherwise publish as stale. Publish the new halves to R2 afterwards with `bun run scripts/publish-assets.ts`. See `docs/episode-split-and-admin-generation-plan.md` §1.4.
@@ -174,7 +168,7 @@ Full details: [`docs/cloudflare-deploy-plan.md`](docs/cloudflare-deploy-plan.md)
 | `bun run e2e:wrong-key` | Wrong-key isolation test via agent-browser. |
 | `bun run e2e:idle` | End-to-end idle handling test via agent-browser. |
 | `bun run gen:season` | Generate a season JSON from prompts. |
-| `bun run tts:zack-s1-e0` | Shortcut for `generate-chapter-audio.ts --season zack-s1 --episode-idx 0`. |
-| `bun run audio:winni-s1-e0:extract` | Step 1 for Winni episode 0. |
-| `bun run audio:winni-s1-e0:transcript` | Step 2 for Winni episode 0. |
-| `bun run audio:zack-s1-e0:timings` | Step 6 for Zack episode 0. |
+| `bun run tts:pixel-garden-s1-e0` | Shortcut for `generate-chapter-audio.ts --season pixel-garden-s1 --episode-idx 0`. |
+| `bun run audio:rainbow-door-s1-e0:extract` | Step 1 for Rainbow Door episode 0. |
+| `bun run audio:rainbow-door-s1-e0:transcript` | Step 2 for Rainbow Door episode 0. |
+| `bun run audio:pixel-garden-s1-e0:timings` | Step 6 for Pixel's Science Garden episode 0. |

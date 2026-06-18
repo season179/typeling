@@ -6,7 +6,7 @@ Related: [PRD](./prd-cloudflare-deploy.md) (product framing and acceptance crite
 
 ## Goal
 
-Let Winni and Zack open Typeling from Windows anytime, without Dad’s Mac running `bun run dev`. The app runs on Cloudflare; audio and season content live in R2; progress lives in a Durable Object; TTS and asset publishing stay on the Mac.
+Let the kids open Typeling from Windows anytime, without Dad’s Mac running `bun run dev`. The app runs on Cloudflare; audio and season content live in R2; progress lives in a Durable Object; TTS and asset publishing stay on the Mac.
 
 ## Research summary (platform changes that matter)
 
@@ -47,7 +47,7 @@ Audio **Range** forwarding is required for cloud (scrub bar) but is **not** impl
 
 ```mermaid
 flowchart TB
-  subgraph kids [Winni and Zack]
+  subgraph kids [The kids]
     Browser[HTTPS browser]
   end
 
@@ -229,7 +229,7 @@ const object = await env.ASSETS_BUCKET.get(key, {
 
 1. Deploy Worker to `workers.dev`.
 2. Dashboard → Worker → Settings → Domains & Routes → **Enable Cloudflare Access**.
-3. Allow policy: specific **Emails** (Dad, Winni, Zack).
+3. Allow policy: specific **Emails** (Dad and the kids).
 4. Optional hardening: validate `Cf-Access-Jwt-Assertion` in Worker (dashboard gate is enough for family use).
 
 **Done when:** Unlisted email blocked; allowed three reach the app.

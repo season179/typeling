@@ -10,17 +10,17 @@ import {
 } from "../../../src/lib/schemas/state";
 
 const validChild = {
-	name: "Winni",
+	name: "Reader",
 	theme: "rainbow-unicorn",
 	target_wpm: 10,
-	active_season: "winni-season-01",
+	active_season: "rainbow-door-season-01",
 	current_episode: 0,
 	current_session_id: null,
 };
 
 const validSession = {
 	id: "11111111-2222-3333-4444-555555555555",
-	season_slug: "winni-season-01",
+	season_slug: "rainbow-door-season-01",
 	episode_idx: 0,
 	wpm: 12.4,
 	char_count: 187,
@@ -94,7 +94,7 @@ describe("sessionSubmissionSchema", () => {
 	it("strips client-provided identity fields", () => {
 		const session = {
 			...validSession,
-			child_id: "winni",
+			child_id: "reader",
 			email: "client@example.com",
 			signed_in_user: {
 				email: "season@example.com",
@@ -237,12 +237,12 @@ describe("storyProgressSchema", () => {
 		expect(
 			storyProgressSchema.parse({
 				email: "season@example.com",
-				season_slug: "winni-season-01",
+				season_slug: "rainbow-door-season-01",
 				current_episode: 1,
 			}),
 		).toEqual({
 			email: "season@example.com",
-			season_slug: "winni-season-01",
+			season_slug: "rainbow-door-season-01",
 			current_episode: 1,
 		});
 	});
@@ -251,14 +251,14 @@ describe("storyProgressSchema", () => {
 		expect(() =>
 			storyProgressSchema.parse({
 				email: "not-an-email",
-				season_slug: "winni-season-01",
+				season_slug: "rainbow-door-season-01",
 				current_episode: 1,
 			}),
 		).toThrow();
 		expect(() =>
 			storyProgressSchema.parse({
 				email: "season@example.com",
-				season_slug: "winni-season-01",
+				season_slug: "rainbow-door-season-01",
 				current_episode: MAX_CURRENT_EPISODE + 1,
 			}),
 		).toThrow();
@@ -268,7 +268,7 @@ describe("storyProgressSchema", () => {
 describe("stateSchema", () => {
 	it("accepts a valid state with children record and sessions array", () => {
 		const state = {
-			children: { winni: validChild },
+			children: { reader: validChild },
 			sessions: [storedSession],
 		};
 
@@ -284,7 +284,7 @@ describe("stateSchema", () => {
 
 	it("rejects a state with an invalid child entry", () => {
 		const state = {
-			children: { winni: { ...validChild, target_wpm: 0 } },
+			children: { reader: { ...validChild, target_wpm: 0 } },
 			sessions: [],
 		};
 

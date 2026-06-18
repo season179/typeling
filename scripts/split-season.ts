@@ -20,7 +20,7 @@ import { chooseEpisodeSplit } from "../src/lib/audio/reslice";
 import { seasonSchema } from "../src/lib/schemas/season";
 import { checkStoryText } from "../src/lib/storyTextPolicy";
 
-const DEFAULT_FILES = ["seasons/winni-s1.json", "seasons/zack-s1.json"];
+const DEFAULT_FILES = ["seasons/rainbow-door-s1.json", "seasons/pixel-garden-s1.json"];
 
 const argv = process.argv.slice(2);
 const dryRun = argv.includes("--dry-run");

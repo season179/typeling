@@ -96,7 +96,7 @@ export function extractAudioData(response: GeminiAudioResponse): string {
 
 /**
  * Derive the metadata output path from the WAV output path.
- * e.g. "data/audio/zack-s1-e0.wav" → "data/audio/zack-s1-e0.meta.json"
+ * e.g. "data/audio/pixel-garden-s1-e0.wav" → "data/audio/pixel-garden-s1-e0.meta.json"
  */
 export function metaPath(wavPath: string): string {
 	return wavPath.replace(/\.wav$/, ".meta.json");

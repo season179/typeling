@@ -1,5 +1,5 @@
 {
-  "slug": "winni-s1",
+  "slug": "rainbow-door-s1",
   "name": "Rainbow Fixture",
   "theme": "rainbow unicorn",
   "episodes": [

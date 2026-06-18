@@ -149,7 +149,7 @@ describe("generateWav", () => {
 		await generateWav({
 			response: fixture,
 			outputPath: wavPath,
-			season: "zack-s1",
+			season: "pixel-garden-s1",
 			episodeIdx: 0,
 			model: "gemini-3.1-flash-tts-preview",
 			transcriptHash:
@@ -181,7 +181,7 @@ describe("generateWav", () => {
 		await generateWav({
 			response: fixture,
 			outputPath: wavPath,
-			season: "zack-s1",
+			season: "pixel-garden-s1",
 			episodeIdx: 0,
 			model: "gemini-3.1-flash-tts-preview",
 			transcriptHash,
@@ -192,7 +192,7 @@ describe("generateWav", () => {
 		const metaRaw = await readFile(metaFilePath, "utf-8");
 		const meta = JSON.parse(metaRaw);
 
-		expect(meta.source_season).toBe("zack-s1");
+		expect(meta.source_season).toBe("pixel-garden-s1");
 		expect(meta.episode_idx).toBe(0);
 		expect(meta.model).toBe("gemini-3.1-flash-tts-preview");
 		expect(meta.selected_voices).toEqual(DEFAULT_VOICE_CHOICES);
@@ -208,7 +208,7 @@ describe("generateWav", () => {
 		await generateWav({
 			response: fixture,
 			outputPath: wavPath,
-			season: "zack-s1",
+			season: "pixel-garden-s1",
 			episodeIdx: 1,
 			model: "gemini-3.1-flash-tts-preview",
 			voiceChoices: customVoices,
@@ -230,7 +230,7 @@ describe("generateWav", () => {
 			generateWav({
 				response: badResponse,
 				outputPath: outputPath("test-missing-data"),
-				season: "zack-s1",
+				season: "pixel-garden-s1",
 				episodeIdx: 0,
 				model: "gemini-3.1-flash-tts-preview",
 				transcriptHash: "aaa",
@@ -255,7 +255,7 @@ describe("generateWav", () => {
 			generateWav({
 				response: badResponse,
 				outputPath: outputPath("test-bad-base64"),
-				season: "zack-s1",
+				season: "pixel-garden-s1",
 				episodeIdx: 0,
 				model: "gemini-3.1-flash-tts-preview",
 				transcriptHash: "aaa",
@@ -273,7 +273,7 @@ describe("generateWav", () => {
 		await generateWav({
 			response: fixture,
 			outputPath: wavPath,
-			season: "zack-s1",
+			season: "pixel-garden-s1",
 			episodeIdx: 0,
 			model: "gemini-3.1-flash-tts-preview",
 			transcriptHash:
@@ -289,8 +289,8 @@ describe("generateWav", () => {
 
 describe("metaPath", () => {
 	it("replaces .wav with .meta.json", () => {
-		expect(metaPath("data/audio/zack-s1-e0.wav")).toBe(
-			"data/audio/zack-s1-e0.meta.json",
+		expect(metaPath("data/audio/pixel-garden-s1-e0.wav")).toBe(
+			"data/audio/pixel-garden-s1-e0.meta.json",
 		);
 	});
 

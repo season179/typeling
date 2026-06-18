@@ -1,9 +1,8 @@
 import { Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { z } from "zod";
-import seedStateData from "../../data/state.seed.json";
-import winniSeasonData from "../../seasons/winni-s1.json";
-import zackSeasonData from "../../seasons/zack-s1.json";
+import pixelGardenSeasonData from "../../seasons/pixel-garden-s1.json";
+import rainbowDoorSeasonData from "../../seasons/rainbow-door-s1.json";
 import { graduationStatus } from "../lib/graduation";
 import { rolling3Wpm } from "../lib/rolling3";
 import { seasonSchema } from "../lib/schemas/season";
@@ -86,12 +85,10 @@ function stripClientSessionIdentity(body: unknown): unknown {
 	return copy;
 }
 
-const realChildNames = Object.values(seedStateData.children).map((child) =>
-	child.name.trim(),
-);
-const bundledSeasons: Season[] = [winniSeasonData, zackSeasonData].map(
-	(season) => seasonSchema.parse(season),
-);
+const bundledSeasons: Season[] = [
+	rainbowDoorSeasonData,
+	pixelGardenSeasonData,
+].map((season) => seasonSchema.parse(season));
 
 type OpenEpisode = {
 	progress: StoryProgress;
@@ -431,7 +428,7 @@ function adminStoryViolationCode(violation: StoryTextViolation): string {
 }
 
 function assertAdminStoryText(text: string): void {
-	const violation = checkStoryText(text, { forbiddenNames: realChildNames });
+	const violation = checkStoryText(text);
 	if (violation) {
 		throw new AdminAccessError(adminStoryViolationCode(violation), 422);
 	}

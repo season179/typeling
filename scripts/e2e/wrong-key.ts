@@ -3,7 +3,7 @@
  * End-to-end wrong-key isolation test using agent-browser.
  *
  * Flow:
- *  1. Open /, click a child (Winni).
+ *  1. Open /, click the story card.
  *  2. Read the next expected character.
  *  3. Dispatch a wrong key via KeyboardEvent.
  *  4. Assert: cursorIdx did NOT advance (snapshot the typed-region length; should remain unchanged).
@@ -14,7 +14,7 @@
  * Assumes the dev server is running on http://localhost:5173.
  */
 
-import { copyFileSync, existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 // ---------------------------------------------------------------------------
@@ -24,7 +24,30 @@ import { join } from "node:path";
 const ROOT = join(import.meta.dir, "..", "..");
 const BASE_URL = "http://localhost:5173";
 const STATE_PATH = join(ROOT, "data", "state.json");
-const SEED_PATH = join(ROOT, "data", "state.seed.json");
+
+// The legacy file-store seed (data/state.seed.json) was removed; inline a
+// neutral deterministic seed so this localhost script stays self-contained.
+const SEED_STATE = {
+  children: {
+    "rainbow-door-s1": {
+      name: "The Rainbow Door",
+      theme: "rainbow",
+      target_wpm: 15,
+      active_season: "rainbow-door-s1",
+      current_episode: 0,
+      current_session_id: null,
+    },
+    "pixel-garden-s1": {
+      name: "Pixel's Science Garden",
+      theme: "science",
+      target_wpm: 18,
+      active_season: "pixel-garden-s1",
+      current_episode: 0,
+      current_session_id: null,
+    },
+  },
+  sessions: [],
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -112,16 +135,16 @@ async function main() {
   }
 
   // Always start from seed so the test is deterministic.
-  copyFileSync(SEED_PATH, STATE_PATH);
+  writeFileSync(STATE_PATH, `${JSON.stringify(SEED_STATE, null, 2)}\n`);
 
   try {
     // 1. Open the app ------------------------------------------------------
     console.log("1. Opening app …");
     await run("open", BASE_URL);
 
-    // 2. Click Winni's card ------------------------------------------------
-    console.log("2. Clicking Winni's card …");
-    await run("find", "text", "Winni", "click");
+    // 2. Click the story card ----------------------------------------------
+    console.log("2. Clicking the story card …");
+    await run("find", "text", "The Rainbow Door", "click");
 
     // 3. Wait for the episode runner to appear -----------------------------
     console.log("3. Waiting for episode runner …");

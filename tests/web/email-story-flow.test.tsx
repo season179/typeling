@@ -20,7 +20,7 @@ const progressPayload = {
 	user,
 	stories: [
 		{
-			slug: "winni-s1-test",
+			slug: "rainbow-door-s1-test",
 			name: "Test Rainbow Story",
 			theme: "rainbow-unicorn",
 			total_episodes: 14,
@@ -32,7 +32,7 @@ const progressPayload = {
 				{
 					id: "session-1",
 					email: "season@example.com",
-					season_slug: "winni-s1-test",
+					season_slug: "rainbow-door-s1-test",
 					episode_idx: 0,
 					wpm: 18,
 					char_count: 50,
@@ -85,7 +85,7 @@ describe("email-scoped story web flow", () => {
 				fireEvent.click(getByRole("button", { name: "Start" }));
 
 				await waitFor(() => {
-					expect(history.at(-1)).toBe("/play/winni-s1-test");
+					expect(history.at(-1)).toBe("/play/rainbow-door-s1-test");
 				});
 			},
 		);
@@ -103,13 +103,13 @@ describe("email-scoped story web flow", () => {
 						{ headers: { "content-type": "application/json" } },
 					);
 				}
-				if (url === "/api/stories/winni-s1-test/current-episode") {
+				if (url === "/api/stories/rainbow-door-s1-test/current-episode") {
 					return new Response(
 						JSON.stringify({
 							text: "abc",
 							episode_idx: 0,
 							current_episode: 0,
-							season_slug: "winni-s1-test",
+							season_slug: "rainbow-door-s1-test",
 							total_episodes: 14,
 						}),
 						{ headers: { "content-type": "application/json" } },
@@ -118,7 +118,7 @@ describe("email-scoped story web flow", () => {
 				return new Response("not found", { status: 404 });
 			},
 			async () => {
-				const { hook } = memoryLocation({ path: "/play/winni-s1-test" });
+				const { hook } = memoryLocation({ path: "/play/rainbow-door-s1-test" });
 				const { getByTestId } = render(
 					<Router hook={hook}>
 						<Route path="/play/:storySlug" component={PlayEpisode} />
@@ -129,7 +129,7 @@ describe("email-scoped story web flow", () => {
 					expect(getByTestId("cursor-char").textContent).toBe("a");
 				});
 				expect(requested).toContain(
-					"/api/stories/winni-s1-test/current-episode",
+					"/api/stories/rainbow-door-s1-test/current-episode",
 				);
 				expect(requested).toContain("/api/me");
 			},
@@ -146,7 +146,7 @@ describe("email-scoped story web flow", () => {
 			},
 			async () => {
 				const { hook, history } = memoryLocation({
-					path: "/play/winni-s1-test/complete/0",
+					path: "/play/rainbow-door-s1-test/complete/0",
 					record: true,
 				});
 				const { getByRole, getByText } = render(
@@ -167,7 +167,7 @@ describe("email-scoped story web flow", () => {
 				fireEvent.click(getByRole("button", { name: /start next/i }));
 
 				await waitFor(() => {
-					expect(history.at(-1)).toBe("/play/winni-s1-test");
+					expect(history.at(-1)).toBe("/play/rainbow-door-s1-test");
 				});
 			},
 		);

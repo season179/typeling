@@ -3,13 +3,13 @@
  * End-to-end idle handling test using agent-browser.
  *
  * Flow:
- *  1. Open the app, click Winni, start episode 0.
+ *  1. Open the app, click the story card, start episode 0.
  *  2. Type the first 10 chars.
  *  3. Sleep 8 seconds (>5s idle threshold, which is 5000ms).
  *  4. Type the next 10 chars.
  *  5. Type the rest of the episode in chunks (same approach as happy-path).
  *  6. Wait for the completion page.
- *  7. Query GET /api/children/winni/sessions for the just-saved session.
+ *  7. Query GET /api/children/rainbow-door-s1/sessions for the just-saved session.
  *  8. Assert: session.active_ms falls within a documented tolerance band that
  *     proves the ~8s idle gap was excluded.
  *
@@ -17,7 +17,7 @@
  * Assumes the dev server is running on http://localhost:5173.
  */
 
-import { copyFileSync, existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 // ---------------------------------------------------------------------------
@@ -27,8 +27,31 @@ import { join } from "node:path";
 const ROOT = join(import.meta.dir, "..", "..");
 const BASE_URL = "http://localhost:5173";
 const STATE_PATH = join(ROOT, "data", "state.json");
-const SEED_PATH = join(ROOT, "data", "state.seed.json");
-const SEASON_PATH = join(ROOT, "seasons", "winni-s1.json");
+const SEASON_PATH = join(ROOT, "seasons", "rainbow-door-s1.json");
+
+// The legacy file-store seed (data/state.seed.json) was removed; inline a
+// neutral deterministic seed so this localhost script stays self-contained.
+const SEED_STATE = {
+  children: {
+    "rainbow-door-s1": {
+      name: "The Rainbow Door",
+      theme: "rainbow",
+      target_wpm: 15,
+      active_season: "rainbow-door-s1",
+      current_episode: 0,
+      current_session_id: null,
+    },
+    "pixel-garden-s1": {
+      name: "Pixel's Science Garden",
+      theme: "science",
+      target_wpm: 18,
+      active_season: "pixel-garden-s1",
+      current_episode: 0,
+      current_session_id: null,
+    },
+  },
+  sessions: [],
+};
 
 // Chunk the episode text so WPM stays ≤ MAX_WPM (1000).
 // 867 chars / 5 chars-per-word = 173.4 "words".
@@ -143,7 +166,7 @@ async function main() {
   }
 
   // Always start from seed so the test is deterministic.
-  copyFileSync(SEED_PATH, STATE_PATH);
+  writeFileSync(STATE_PATH, `${JSON.stringify(SEED_STATE, null, 2)}\n`);
 
   try {
     const episodeText = getEpisodeText();
@@ -155,9 +178,9 @@ async function main() {
     console.log("1. Opening app …");
     await run("open", BASE_URL);
 
-    // 2. Click Winni's card ------------------------------------------------
-    console.log("2. Clicking Winni's card …");
-    await run("find", "text", "Winni", "click");
+    // 2. Click the story card ----------------------------------------------
+    console.log("2. Clicking the story card …");
+    await run("find", "text", "The Rainbow Door", "click");
 
     // 3. Wait for the episode runner to appear -----------------------------
     console.log("3. Waiting for episode runner …");
@@ -194,9 +217,9 @@ async function main() {
 
     // 9. Assert URL ------------------------------------------------------
     const url = (await run("get", "url")).trim();
-    if (!url.includes("/play/winni/complete/0")) {
+    if (!url.includes("/play/rainbow-door-s1/complete/0")) {
       throw new Error(
-        `Expected URL to contain /play/winni/complete/0, got: ${url}`,
+        `Expected URL to contain /play/rainbow-door-s1/complete/0, got: ${url}`,
       );
     }
     console.log(`   URL: ${url} ✓`);
@@ -207,7 +230,7 @@ async function main() {
     let sessions: Array<Record<string, unknown>> = [];
     for (let attempt = 1; attempt <= 5; attempt++) {
       const sessionsRes = await fetch(
-        `${BASE_URL}/api/children/winni/sessions`,
+        `${BASE_URL}/api/children/rainbow-door-s1/sessions`,
       );
       if (!sessionsRes.ok) {
         throw new Error(`Sessions API returned ${sessionsRes.status}`);

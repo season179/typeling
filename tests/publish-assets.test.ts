@@ -33,7 +33,7 @@ const SEASONS_DIR = join(TMP, "seasons");
 const AUDIO_DIR = join(TMP, "data", "audio");
 
 /** Sorted keys for the audio test fixture files. */
-const ALL_KEYS = ["audio/winni-s1/e0/chapter.wav"];
+const ALL_KEYS = ["audio/rainbow-door-s1/e0/chapter.wav"];
 
 /** Publish with default test fixtures, overriding only specific opts. */
 function publish(
@@ -50,10 +50,10 @@ function publish(
 describe("publishAssets", () => {
 	beforeAll(async () => {
 		await mkdir(SEASONS_DIR, { recursive: true });
-		await mkdir(join(AUDIO_DIR, "winni-s1", "e0"), { recursive: true });
-		await writeFile(join(SEASONS_DIR, "winni-s1.json"), '{"slug":"winni-s1"}');
+		await mkdir(join(AUDIO_DIR, "rainbow-door-s1", "e0"), { recursive: true });
+		await writeFile(join(SEASONS_DIR, "rainbow-door-s1.json"), '{"slug":"rainbow-door-s1"}');
 		await writeFile(
-			join(AUDIO_DIR, "winni-s1", "e0", "chapter.wav"),
+			join(AUDIO_DIR, "rainbow-door-s1", "e0", "chapter.wav"),
 			"fake-audio",
 		);
 	});
@@ -79,10 +79,10 @@ describe("publishAssets", () => {
 	it("ignores changed season JSON because story text now seeds D1", async () => {
 		const s = fakeStore();
 		await publish(s);
-		await writeFile(join(SEASONS_DIR, "winni-s1.json"), '{"changed":true}');
+		await writeFile(join(SEASONS_DIR, "rainbow-door-s1.json"), '{"changed":true}');
 		const result = await publish(s);
 		expect(result.uploaded).toEqual([]);
-		expect(result.skipped).toEqual(["audio/winni-s1/e0/chapter.wav"]);
+		expect(result.skipped).toEqual(["audio/rainbow-door-s1/e0/chapter.wav"]);
 	});
 
 	it("dry-run performs zero writes for audio uploads", async () => {

@@ -3,7 +3,7 @@ import type { ServerBindings } from "../../../src/server/stores";
 import { fetch } from "../../../src/server/index.ts";
 
 const LOCAL_URL =
-	"http://127.0.0.1:3001/api/admin/seasons/winni-s1/episodes/0/audio";
+	"http://127.0.0.1:3001/api/admin/seasons/rainbow-door-s1/episodes/0/audio";
 
 const postGenerate = (
 	env: Partial<ServerBindings> = {},
@@ -24,7 +24,7 @@ describe("POST /api/admin/.../audio gating", () => {
 	it("rejects non-local hosts before any config check", async () => {
 		const res = await postGenerate(
 			fullConfig,
-			"https://typeling.example.com/api/admin/seasons/winni-s1/episodes/0/audio",
+			"https://typeling.example.com/api/admin/seasons/rainbow-door-s1/episodes/0/audio",
 		);
 		expect(res.status).toBe(403);
 		expect(await res.json()).toEqual({ error: "AdminLocalOnly" });

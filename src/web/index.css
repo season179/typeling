@@ -121,7 +121,7 @@
 		linear-gradient(140deg, var(--game-bg-a), var(--game-bg-b) 58%, #efffea);
 }
 
-.theme-zack {
+.theme-science {
 	--game-bg-a: #dff8ff;
 	--game-bg-b: #d9e5ff;
 	--game-bg-c: #bff7da;
@@ -614,12 +614,12 @@
 	background: rgba(37, 32, 51, 0.58);
 }
 
-.theme-zack .hero-token {
+.theme-science .hero-token {
 	border-radius: 1.1rem;
 }
 
-.theme-zack .hero-token::before,
-.theme-zack .hero-token::after {
+.theme-science .hero-token::before,
+.theme-science .hero-token::after {
 	top: -13%;
 	width: 0.38rem;
 	height: 0.9rem;
@@ -840,7 +840,7 @@
 	box-shadow: 0 14px 28px var(--game-shadow);
 }
 
-.zack-card .child-token {
+.science-card .child-token {
 	border-radius: 0.8rem;
 	background: linear-gradient(135deg, #2288ff, #20d6a1);
 }

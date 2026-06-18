@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useParams } from "wouter";
 import { getProgress } from "./api";
+import { themeForStory } from "./storyTheme";
 
 interface ChapterMapProps {
 	storySlug: string;
@@ -18,18 +19,6 @@ function chapterCellClass(isCurrent: boolean, isCompleted: boolean) {
 		return `${base} bg-green-400 text-white`;
 	}
 	return `${base} border-2 border-gray-300 text-gray-400`;
-}
-
-function themeForComplete(storySlug: string | undefined, storyTheme: string) {
-	const themeText = `${storySlug ?? ""} ${storyTheme}`.toLowerCase();
-	if (
-		themeText.includes("zack") ||
-		themeText.includes("science") ||
-		themeText.includes("robot")
-	) {
-		return "zack";
-	}
-	return "winni";
 }
 
 export function ChapterMap({
@@ -146,7 +135,7 @@ export default function CompleteEpisode() {
 		? 0
 		: Math.max(0, Math.min(rawIdx, totalEpisodes - 1));
 	const episodeNumber = completedIdx + 1;
-	const theme = themeForComplete(storySlug, storyTheme);
+	const theme = themeForStory(storySlug, storyTheme);
 
 	return (
 		<main

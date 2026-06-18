@@ -41,7 +41,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # runtime state
 data/*
 !data/.gitkeep
-!data/state.seed.json
 seasons/*.json.bak
 .commandcode/
 graphify-out/

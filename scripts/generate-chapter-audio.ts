@@ -3,8 +3,8 @@
  *
  * Usage:
  *   bun run scripts/generate-chapter-audio.ts --season <slug> --episode-idx <n>
- *   bun run scripts/generate-chapter-audio.ts --season winni-s1 --episode-idx 0 --transcript data/audio/winni-s1-e0-styled-transcript.txt
- *   bun run scripts/generate-chapter-audio.ts --season zack-s1 --episode-idx 0 --output data/audio/zack-s1-e0.wav
+ *   bun run scripts/generate-chapter-audio.ts --season rainbow-door-s1 --episode-idx 0 --transcript data/audio/rainbow-door-s1-e0-styled-transcript.txt
+ *   bun run scripts/generate-chapter-audio.ts --season pixel-garden-s1 --episode-idx 0 --output data/audio/pixel-garden-s1-e0.wav
  *
  * Requires GEMINI_API_KEY in the environment.
  * Retries transient missing-audio responses as warned in the Gemini docs.
@@ -52,7 +52,7 @@ async function main() {
 	// ── Parse args ──────────────────────────────────────────────────
 
 	if (!values.season) {
-		throw new CliError("--season is required (e.g. --season zack-s1)");
+		throw new CliError("--season is required (e.g. --season pixel-garden-s1)");
 	}
 	if (!values["episode-idx"]) {
 		throw new CliError("--episode-idx is required (e.g. --episode-idx 0)");

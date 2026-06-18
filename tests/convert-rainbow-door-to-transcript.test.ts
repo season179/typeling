@@ -7,27 +7,27 @@ const TEST_DIR = join(import.meta.dir, "..");
 const EXTRACT_SCRIPT = join(TEST_DIR, "scripts", "extract-audio-source.ts");
 const CONVERT_SCRIPT = join(TEST_DIR, "scripts", "convert-to-transcript.ts");
 const OUTPUT_DIR = join(TEST_DIR, "data", "audio");
-const TRANSCRIPT_FILE = join(OUTPUT_DIR, "winni-s1-e0-transcript.txt");
+const TRANSCRIPT_FILE = join(OUTPUT_DIR, "rainbow-door-s1-e0-transcript.txt");
 
 const SCRIPT_ARGS = [
 	"--source",
-	"data/audio/winni-s1-e0-source.txt",
+	"data/audio/rainbow-door-s1-e0-source.txt",
 	"--output",
-	"data/audio/winni-s1-e0-transcript.txt",
+	"data/audio/rainbow-door-s1-e0-transcript.txt",
 ];
 
 function runConvert(args: string[]) {
 	return runScript(CONVERT_SCRIPT, args, TEST_DIR);
 }
 
-async function ensureWinniSourceArtifact() {
+async function ensureRainbowDoorSourceArtifact() {
 	const { exitCode, stderr } = await runScript(
 		EXTRACT_SCRIPT,
 		[
 			"--season",
-			"seasons/winni-s1.json",
+			"seasons/rainbow-door-s1.json",
 			"--output",
-			"data/audio/winni-s1-e0-source.txt",
+			"data/audio/rainbow-door-s1-e0-source.txt",
 			"--episode-idx",
 			"0",
 		],
@@ -35,15 +35,15 @@ async function ensureWinniSourceArtifact() {
 	);
 	if (exitCode !== 0) {
 		throw new Error(
-			`Failed to create Winni source artifact (exit ${exitCode}): ${stderr}`,
+			`Failed to create Rainbow Door source artifact (exit ${exitCode}): ${stderr}`,
 		);
 	}
 }
 
-describe("convert-winni-to-transcript", () => {
+describe("convert-rainbow-door-to-transcript", () => {
 	beforeAll(async () => {
 		await mkdir(OUTPUT_DIR, { recursive: true });
-		await ensureWinniSourceArtifact();
+		await ensureRainbowDoorSourceArtifact();
 	});
 
 	afterAll(async () => {
@@ -54,7 +54,7 @@ describe("convert-winni-to-transcript", () => {
 		}
 	});
 
-	it("writes a speaker-labelled transcript artifact for Winni", async () => {
+	it("writes a speaker-labelled transcript artifact for the Rainbow Door season", async () => {
 		const { exitCode, stderr } = await runConvert(SCRIPT_ARGS);
 
 		expect(exitCode).toBe(0);
@@ -69,9 +69,9 @@ describe("convert-winni-to-transcript", () => {
 		}
 	});
 
-	it("produces an artifact whose name clearly distinguishes Winni from Zack", () => {
-		expect(TRANSCRIPT_FILE).toContain("winni");
-		expect(TRANSCRIPT_FILE).not.toContain("zack");
+	it("produces an artifact whose name clearly distinguishes Rainbow Door from Pixel's Science Garden", () => {
+		expect(TRANSCRIPT_FILE).toContain("rainbow-door");
+		expect(TRANSCRIPT_FILE).not.toContain("pixel-garden");
 	});
 
 	it("output contains both speakers Storyteller and Character", async () => {
@@ -133,7 +133,7 @@ describe("convert-winni-to-transcript", () => {
 	it("fails with clear message when source file is missing", async () => {
 		const { exitCode, stderr } = await runConvert([
 			"--source",
-			"data/audio/winni-nonexistent.txt",
+			"data/audio/rainbow-door-nonexistent.txt",
 			"--output",
 			"data/audio/test-out.txt",
 		]);

@@ -1,6 +1,6 @@
 # Typeling Agent Guidelines
 
-Typeling is a typing-as-story-time app for Winni and Zack. Keep the product small and personal: story unlocks are the reward, WPM is tracked quietly, and kid-facing mistakes are not counted.
+Typeling is a typing-as-story-time app for two young readers. Keep the product small and personal: story unlocks are the reward, WPM is tracked quietly, and kid-facing mistakes are not counted.
 
 The source of truth is:
 

@@ -28,67 +28,67 @@ describe("saveDraft / loadDraft / clearDraft", () => {
   });
 
   it("round-trip: save then load returns the same draft", () => {
-    saveDraft("winni", "winni-s1", 0, draft);
-    const loaded = loadDraft("winni", "winni-s1", 0);
+    saveDraft("reader-a", "rainbow-door-s1", 0, draft);
+    const loaded = loadDraft("reader-a", "rainbow-door-s1", 0);
     expect(loaded).toEqual(draft);
   });
 
   it("loadDraft returns null when no entry exists", () => {
-    const result = loadDraft("winni", "winni-s1", 99);
+    const result = loadDraft("reader-a", "rainbow-door-s1", 99);
     expect(result).toBeNull();
   });
 
   it("loadDraft returns null when JSON fails to parse", () => {
-    window.localStorage.setItem(keyFor("winni", "winni-s1", 5), "not-json");
-    const result = loadDraft("winni", "winni-s1", 5);
+    window.localStorage.setItem(keyFor("reader-a", "rainbow-door-s1", 5), "not-json");
+    const result = loadDraft("reader-a", "rainbow-door-s1", 5);
     expect(result).toBeNull();
   });
 
   it("loadDraft removes the corrupt entry from localStorage", () => {
-    window.localStorage.setItem(keyFor("winni", "winni-s1", 5), "not-json");
-    loadDraft("winni", "winni-s1", 5);
-    expect(window.localStorage.getItem(keyFor("winni", "winni-s1", 5))).toBeNull();
+    window.localStorage.setItem(keyFor("reader-a", "rainbow-door-s1", 5), "not-json");
+    loadDraft("reader-a", "rainbow-door-s1", 5);
+    expect(window.localStorage.getItem(keyFor("reader-a", "rainbow-door-s1", 5))).toBeNull();
   });
 
   it("clearDraft removes the entry so loadDraft returns null", () => {
-    saveDraft("zack", "zack-s1", 2, draft);
-    expect(loadDraft("zack", "zack-s1", 2)).not.toBeNull();
-    clearDraft("zack", "zack-s1", 2);
-    expect(loadDraft("zack", "zack-s1", 2)).toBeNull();
+    saveDraft("reader-b", "pixel-garden-s1", 2, draft);
+    expect(loadDraft("reader-b", "pixel-garden-s1", 2)).not.toBeNull();
+    clearDraft("reader-b", "pixel-garden-s1", 2);
+    expect(loadDraft("reader-b", "pixel-garden-s1", 2)).toBeNull();
   });
 
   it("drafts for different children are isolated", () => {
-    saveDraft("winni", "winni-s1", 0, draft);
-    saveDraft("zack", "zack-s1", 0, { ...draft, cursorIdx: 10 });
-    expect(loadDraft("winni", "winni-s1", 0)?.cursorIdx).toBe(5);
-    expect(loadDraft("zack", "zack-s1", 0)?.cursorIdx).toBe(10);
+    saveDraft("reader-a", "rainbow-door-s1", 0, draft);
+    saveDraft("reader-b", "pixel-garden-s1", 0, { ...draft, cursorIdx: 10 });
+    expect(loadDraft("reader-a", "rainbow-door-s1", 0)?.cursorIdx).toBe(5);
+    expect(loadDraft("reader-b", "pixel-garden-s1", 0)?.cursorIdx).toBe(10);
   });
 
   it("drafts for different episodeIdx are isolated", () => {
-    saveDraft("winni", "winni-s1", 0, draft);
-    saveDraft("winni", "winni-s1", 1, { ...draft, cursorIdx: 3 });
-    expect(loadDraft("winni", "winni-s1", 0)?.cursorIdx).toBe(5);
-    expect(loadDraft("winni", "winni-s1", 1)?.cursorIdx).toBe(3);
+    saveDraft("reader-a", "rainbow-door-s1", 0, draft);
+    saveDraft("reader-a", "rainbow-door-s1", 1, { ...draft, cursorIdx: 3 });
+    expect(loadDraft("reader-a", "rainbow-door-s1", 0)?.cursorIdx).toBe(5);
+    expect(loadDraft("reader-a", "rainbow-door-s1", 1)?.cursorIdx).toBe(3);
   });
 
   it("drafts for different seasonSlug are isolated", () => {
-    saveDraft("winni", "winni-s1", 0, draft);
-    saveDraft("winni", "winni-s2", 0, { ...draft, cursorIdx: 7 });
-    expect(loadDraft("winni", "winni-s1", 0)?.cursorIdx).toBe(5);
-    expect(loadDraft("winni", "winni-s2", 0)?.cursorIdx).toBe(7);
+    saveDraft("reader-a", "rainbow-door-s1", 0, draft);
+    saveDraft("reader-a", "rainbow-door-s2", 0, { ...draft, cursorIdx: 7 });
+    expect(loadDraft("reader-a", "rainbow-door-s1", 0)?.cursorIdx).toBe(5);
+    expect(loadDraft("reader-a", "rainbow-door-s2", 0)?.cursorIdx).toBe(7);
   });
 
   it("round-trips lastKeystrokeAt null", () => {
     const withNull = { ...draft, lastKeystrokeAt: null };
-    saveDraft("winni", "winni-s1", 0, withNull);
-    const loaded = loadDraft("winni", "winni-s1", 0);
+    saveDraft("reader-a", "rainbow-door-s1", 0, withNull);
+    const loaded = loadDraft("reader-a", "rainbow-door-s1", 0);
     expect(loaded?.lastKeystrokeAt).toBeNull();
   });
 
   it("save overwrites existing draft for the same key", () => {
-    saveDraft("winni", "winni-s1", 0, draft);
-    saveDraft("winni", "winni-s1", 0, { ...draft, cursorIdx: 99 });
-    const loaded = loadDraft("winni", "winni-s1", 0);
+    saveDraft("reader-a", "rainbow-door-s1", 0, draft);
+    saveDraft("reader-a", "rainbow-door-s1", 0, { ...draft, cursorIdx: 99 });
+    const loaded = loadDraft("reader-a", "rainbow-door-s1", 0);
     expect(loaded?.cursorIdx).toBe(99);
   });
 });

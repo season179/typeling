@@ -229,7 +229,7 @@ describe("EpisodeRunner", () => {
 		}) as typeof fetch;
 
 		const { hook, history } = memoryLocation({
-			path: "/play/winni-story",
+			path: "/play/rainbow-story",
 			record: true,
 		});
 
@@ -239,9 +239,9 @@ describe("EpisodeRunner", () => {
 					<Route path="/play/:storySlug">
 						<EpisodeRunner
 							episodeText="ab"
-							storySlug="winni-story"
-							draftOwnerId="winni@example.com"
-							seasonSlug="winni-s1"
+							storySlug="rainbow-story"
+							draftOwnerId="reader@example.com"
+							seasonSlug="rainbow-door-s1"
 							episodeIdx={0}
 						/>
 					</Route>
@@ -275,7 +275,7 @@ describe("EpisodeRunner", () => {
 
 			expect(fetchBody).toMatchObject({
 				id: expect.any(String) as string,
-				season_slug: "winni-s1",
+				season_slug: "rainbow-door-s1",
 				episode_idx: 0,
 				wpm: expect.any(Number) as number,
 				char_count: 2,
@@ -287,7 +287,7 @@ describe("EpisodeRunner", () => {
 			// Navigation should have happened
 			await waitFor(() => {
 				expect(history[history.length - 1]).toBe(
-					"/play/winni-story/complete/0",
+					"/play/rainbow-story/complete/0",
 				);
 			});
 		} finally {
@@ -301,7 +301,7 @@ describe("EpisodeRunner", () => {
 			Promise.resolve(new Response("{}", { status: 400 }))) as unknown as typeof fetch;
 
 		const { hook, history } = memoryLocation({
-			path: "/play/winni-story",
+			path: "/play/rainbow-story",
 			record: true,
 		});
 
@@ -311,9 +311,9 @@ describe("EpisodeRunner", () => {
 					<Route path="/play/:storySlug">
 						<EpisodeRunner
 							episodeText="a"
-							storySlug="winni-story"
-							draftOwnerId="winni@example.com"
-							seasonSlug="winni-s1"
+							storySlug="rainbow-story"
+							draftOwnerId="reader@example.com"
+							seasonSlug="rainbow-door-s1"
 							episodeIdx={0}
 						/>
 					</Route>
@@ -338,7 +338,7 @@ describe("EpisodeRunner", () => {
 
 			// Navigation should NOT have happened
 			expect(history.length).toBe(1);
-			expect(history[0]).toBe("/play/winni-story");
+			expect(history[0]).toBe("/play/rainbow-story");
 		} finally {
 			globalThis.fetch = originalFetch;
 		}
@@ -352,7 +352,7 @@ describe("EpisodeRunner", () => {
 			return Promise.resolve(new Response("{}", { status: 200 }));
 		}) as typeof fetch;
 
-		const { hook } = memoryLocation({ path: "/play/winni-story" });
+		const { hook } = memoryLocation({ path: "/play/rainbow-story" });
 
 		try {
 			const { getByTestId } = render(
@@ -360,9 +360,9 @@ describe("EpisodeRunner", () => {
 					<Route path="/play/:storySlug">
 						<EpisodeRunner
 							episodeText="a"
-							storySlug="winni-story"
-							draftOwnerId="winni@example.com"
-							seasonSlug="winni-s1"
+							storySlug="rainbow-story"
+							draftOwnerId="reader@example.com"
+							seasonSlug="rainbow-door-s1"
 							episodeIdx={0}
 						/>
 					</Route>

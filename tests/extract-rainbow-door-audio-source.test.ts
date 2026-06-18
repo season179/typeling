@@ -5,15 +5,15 @@ import { runScript } from "./lib/run-script";
 
 const TEST_DIR = join(import.meta.dir, "..");
 const SCRIPT = join(TEST_DIR, "scripts", "extract-audio-source.ts");
-const SEASON_PATH = join(TEST_DIR, "seasons", "winni-s1.json");
+const SEASON_PATH = join(TEST_DIR, "seasons", "rainbow-door-s1.json");
 const OUTPUT_DIR = join(TEST_DIR, "data", "audio");
-const OUTPUT_FILE = join(OUTPUT_DIR, "winni-s1-e0-source.txt");
+const OUTPUT_FILE = join(OUTPUT_DIR, "rainbow-door-s1-e0-source.txt");
 
 const SCRIPT_ARGS = [
 	"--season",
-	"seasons/winni-s1.json",
+	"seasons/rainbow-door-s1.json",
 	"--output",
-	"data/audio/winni-s1-e0-source.txt",
+	"data/audio/rainbow-door-s1-e0-source.txt",
 	"--episode-idx",
 	"0",
 ];
@@ -22,7 +22,7 @@ function runExtract(args: string[]) {
 	return runScript(SCRIPT, args, TEST_DIR);
 }
 
-describe("extract-winni-audio-source", () => {
+describe("extract-rainbow-door-audio-source", () => {
 	beforeAll(async () => {
 		await mkdir(OUTPUT_DIR, { recursive: true });
 	});
@@ -35,12 +35,12 @@ describe("extract-winni-audio-source", () => {
 		}
 	});
 
-	it("extracts Winni episode 0 text into a clearly named artifact", async () => {
+	it("extracts Rainbow Door episode 0 text into a clearly named artifact", async () => {
 		const { exitCode, stdout, stderr } = await runExtract(SCRIPT_ARGS);
 
 		expect(exitCode).toBe(0);
 		expect(stderr).toBe("");
-		expect(stdout).toContain("winni-s1-e0-source.txt");
+		expect(stdout).toContain("rainbow-door-s1-e0-source.txt");
 
 		const seasonRaw = await readFile(SEASON_PATH, "utf-8");
 		const season = JSON.parse(seasonRaw);
@@ -51,12 +51,12 @@ describe("extract-winni-audio-source", () => {
 		expect(artifactText).toBe(episode?.text);
 	});
 
-	it("produces an artifact whose name clearly distinguishes Winni from Zack", () => {
-		expect(OUTPUT_FILE).toContain("winni");
-		expect(OUTPUT_FILE).not.toContain("zack");
+	it("produces an artifact whose name clearly distinguishes Rainbow Door from Pixel's Science Garden", () => {
+		expect(OUTPUT_FILE).toContain("rainbow-door");
+		expect(OUTPUT_FILE).not.toContain("pixel-garden");
 	});
 
-	it("does not modify the Winni season file", async () => {
+	it("does not modify the Rainbow Door season file", async () => {
 		const beforeContent = await readFile(SEASON_PATH, "utf-8");
 		const beforeStat = await stat(SEASON_PATH);
 
@@ -80,7 +80,7 @@ describe("extract-winni-audio-source", () => {
 		expect(text).toContain("rainbow");
 	});
 
-	it("fails with clear message when Winni season file is missing", async () => {
+	it("fails with clear message when the season file is missing", async () => {
 		const { exitCode, stderr } = await runExtract([
 			"--season",
 			"seasons/nonexistent.json",

@@ -12,7 +12,7 @@
  * Usage:
  *   bun run scripts/reslice-episodes.ts            # verify only (no writes)
  *   bun run scripts/reslice-episodes.ts --write    # write halves into data/audio
- *   bun run scripts/reslice-episodes.ts --write winni-s1
+ *   bun run scripts/reslice-episodes.ts --write rainbow-door-s1
  *
  * After --write, publish to R2 with `bun run scripts/publish-assets.ts`
  * (needs R2 credentials). Old build intermediates (-transcript.txt,
@@ -39,7 +39,7 @@ const STALE_INTERMEDIATE_EXT = [
 const argv = process.argv.slice(2);
 const write = argv.includes("--write");
 const slugArgs = argv.filter((arg) => !arg.startsWith("--"));
-const slugs = slugArgs.length > 0 ? slugArgs : ["winni-s1", "zack-s1"];
+const slugs = slugArgs.length > 0 ? slugArgs : ["rainbow-door-s1", "pixel-garden-s1"];
 const generatedAt = new Date().toISOString();
 
 const baseName = (slug: string, idx: number) => `${slug}-e${idx}`;

@@ -13,13 +13,13 @@ function renderMap(props: {
 	storySlug?: string;
 }) {
 	const { hook, history } = memoryLocation({
-		path: "/play/winni-s1/complete/0",
+		path: "/play/rainbow-door-s1/complete/0",
 		record: true,
 	});
 	const result = render(
 		<Router hook={hook}>
 			<ChapterMap
-				storySlug={props.storySlug ?? "winni-s1"}
+				storySlug={props.storySlug ?? "rainbow-door-s1"}
 				totalEpisodes={props.totalEpisodes}
 				completedUpTo={props.completedUpTo}
 			/>
@@ -71,6 +71,6 @@ describe("ChapterMap", () => {
 		const cells = getAllByTestId("chapter-cell");
 
 		fireEvent.click(cells[7] as HTMLButtonElement);
-		expect(history.at(-1)).toBe("/play/winni-s1/episode/7");
+		expect(history.at(-1)).toBe("/play/rainbow-door-s1/episode/7");
 	});
 });

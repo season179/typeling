@@ -10,6 +10,7 @@ import {
 import EpisodeRunner from "./EpisodeRunner";
 import { clearDraft } from "./episodeRunner/autosave";
 import StoryAudioPlayer from "./StoryAudioPlayer";
+import { themeForStory } from "./storyTheme";
 
 interface ChapterPickerProps {
 	storySlug: string;
@@ -25,13 +26,6 @@ interface StoryReaderProps {
 	totalEpisodes: number;
 	text: string;
 	onTypeAgain: () => void;
-}
-
-function themeForStory(storySlug: string): "winni" | "zack" {
-	return storySlug.toLowerCase().includes("zack") ||
-		storySlug.toLowerCase().includes("science")
-		? "zack"
-		: "winni";
 }
 
 function chapterStatus(
@@ -250,7 +244,7 @@ export default function PlayEpisode() {
 
 	if (loading) {
 		return (
-			<main className="typeling-game flex min-h-screen items-center justify-center theme-winni">
+			<main className="typeling-game flex min-h-screen items-center justify-center theme-rainbow">
 				<div className="loading-card">Loading the next chapter...</div>
 			</main>
 		);
@@ -258,7 +252,7 @@ export default function PlayEpisode() {
 
 	if (error) {
 		return (
-			<main className="typeling-game flex min-h-screen items-center justify-center theme-zack">
+			<main className="typeling-game flex min-h-screen items-center justify-center theme-science">
 				<div className="loading-card">Error: {error}</div>
 			</main>
 		);

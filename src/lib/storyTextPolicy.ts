@@ -5,7 +5,7 @@ import { contentBlacklist } from "./contentBlacklist";
  * A single reason a piece of story text is not acceptable for kids.
  *
  * `charset` carries the offending position/char, `blacklist` the matched
- * terms, and `forbidden-name` the real name that leaked into the text.
+ * terms, and `forbidden-name` the forbidden name that leaked into the text.
  */
 export type StoryTextViolation =
 	| { kind: "charset"; position: number; char: string }
@@ -16,18 +16,18 @@ export type StoryTextViolation =
  * How a forbidden name is matched against the text.
  *
  * `word` (the default) matches only whole words, so "Beach" is not flagged
- * because a child is named "Bea" — the right call for human-edited admin text.
- * `substring` flags any occurrence, including a real name embedded in a longer
- * word ("Winnie" contains "Winni"); the generation pipeline uses it so an LLM
- * cannot smuggle a real name in by extending it.
+ * because a protagonist is named "Bea" — the right call for human-edited admin
+ * text. `substring` flags any occurrence, including a name embedded in a longer
+ * word ("Samantha" contains "Sam"); the generation pipeline uses it so an LLM
+ * cannot smuggle a name in by extending it.
  */
 export type NameMatchMode = "word" | "substring";
 
 export interface StoryTextPolicyOptions {
 	/**
-	 * Real names that must not appear in kid-facing text. The build pipeline
-	 * passes the single protagonist's name; the admin editor passes every
-	 * known real child name.
+	 * Names that must not appear in kid-facing text. The generation pipeline
+	 * passes the single protagonist's own name so the model cannot echo it back
+	 * into the prose. Defaults to none.
 	 */
 	forbiddenNames?: readonly string[];
 	/**

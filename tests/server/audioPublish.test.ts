@@ -12,7 +12,7 @@ import {
 } from "../../src/server/audioPublish";
 import { InMemoryAssetStore } from "../../src/server/stores";
 
-const SEASON = "winni-s1-pub";
+const SEASON = "rainbow-door-s1-pub";
 const EPISODE_IDX = 0;
 const EPISODE_TEXT = "Luma saw a rainbow path in the sunny garden.";
 const PUBLISHER_URL = "http://127.0.0.1:8765";

@@ -2,11 +2,11 @@
 
 Status: draft
 Owner: Season
-Audience: Winni and Zack (Windows machine)
+Audience: the kids (Windows machine)
 
 ## Problem
 
-Right now Winni and Zack can only play Typeling when Dad's Mac is on and running `bun run dev`. They're on Windows, so they can't reach the app on their own. We want the kids to open Typeling like any other website, from any browser, whenever they want.
+Right now the kids can only play Typeling when Dad's Mac is on and running `bun run dev`. They're on Windows, so they can't reach the app on their own. We want the kids to open Typeling like any other website, from any browser, whenever they want.
 
 ## Solution
 
@@ -42,7 +42,7 @@ Audio comes after story content because it reuses the same episode text hashes b
 
 ### Step 4 — Replace `data/state.json` with a Durable Object
 
-The file that tracks "Winni is on episode 3" can't live on disk anymore. It moves into a Durable Object — Cloudflare's tiny per-app database with a single writer and strong consistency, which is what the current file-based scheme effectively gives us. The same `readState` / `mutateState(fn)` shape from `src/server/state.ts` is preserved so route handlers don't change.
+The file that tracks "a reader is on episode 3" can't live on disk anymore. It moves into a Durable Object — Cloudflare's tiny per-app database with a single writer and strong consistency, which is what the current file-based scheme effectively gives us. The same `readState` / `mutateState(fn)` shape from `src/server/state.ts` is preserved so route handlers don't change.
 
 This is the riskiest correctness change (idempotent sessions, mismatch 409s, current-episode rules), so it goes after R2 is solid — that way the Durable Object is the only moving part when you debug it.
 
@@ -58,7 +58,7 @@ Up to this point you've been doing manual `wrangler r2 object put`s. Now codify 
 
 ### Step 6 — Add a login gate
 
-Turn on Cloudflare Access with an email allowlist (Dad, Winni, Zack). Configured in the Cloudflare dashboard, no code. Once on, the URL prompts for an email and only the three allowed addresses can reach the Worker.
+Turn on Cloudflare Access with an email allowlist (Dad and the kids). Configured in the Cloudflare dashboard, no code. Once on, the URL prompts for an email and only the three allowed addresses can reach the Worker.
 
 This is a safety gate, not a finishing touch — turn it on *before* you share any URL with the kids, even a throwaway `workers.dev` one.
 
@@ -90,7 +90,7 @@ Four scopes, all hitting observable behaviour, none hitting Cloudflare internals
 
 ## Out of scope
 
-- Anything beyond Winni and Zack (multi-tenant, third-child UI).
+- Anything beyond the two kids (multi-tenant, third-child UI).
 - Server-side mid-episode save, PIN gate, replay, iPad work, eval automation, backup rotation.
 - Generating audio from inside the Worker.
 - Server-side rendering of the React app.

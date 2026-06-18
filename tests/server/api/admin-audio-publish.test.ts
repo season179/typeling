@@ -8,7 +8,7 @@ import type {
 import type { WordTimingSidecar } from "../../../src/lib/wordTimings";
 
 const LOCAL_URL =
-	"http://127.0.0.1:3001/api/admin/seasons/winni-s1/episodes/0/audio/publish";
+	"http://127.0.0.1:3001/api/admin/seasons/rainbow-door-s1/episodes/0/audio/publish";
 
 const postPublish = (
 	env: Partial<ServerBindings> = {},
@@ -29,7 +29,7 @@ describe("POST /api/admin/.../audio/publish gating", () => {
 	it("rejects non-local hosts before any config check", async () => {
 		const res = await postPublish(
 			fullConfig,
-			"https://typeling.example.com/api/admin/seasons/winni-s1/episodes/0/audio/publish",
+			"https://typeling.example.com/api/admin/seasons/rainbow-door-s1/episodes/0/audio/publish",
 		);
 		expect(res.status).toBe(403);
 		expect(await res.json()).toEqual({ error: "AdminLocalOnly" });
@@ -62,11 +62,11 @@ describe("POST /api/admin/.../audio/publish gating", () => {
 // real R2 upload and returns the success body the orchestrator expects.
 function buildSidecar(audioHash: string, textHash: string): WordTimingSidecar {
 	return {
-		seasonSlug: "winni-s1",
+		seasonSlug: "rainbow-door-s1",
 		episodeIdx: 0,
-		audioPath: "audio/winni-s1-e0.wav",
-		sourceTextPath: "d1://seasons/winni-s1/episodes/0",
-		rawAlignmentPath: "aligner://winni-s1-e0.qwen-align",
+		audioPath: "audio/rainbow-door-s1-e0.wav",
+		sourceTextPath: "d1://seasons/rainbow-door-s1/episodes/0",
+		rawAlignmentPath: "aligner://rainbow-door-s1-e0.qwen-align",
 		audioHash,
 		textHash,
 		alignerModel: "test-aligner",
@@ -148,7 +148,7 @@ describe("POST /api/admin/.../audio/publish happy path", () => {
 
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({
-			season_slug: "winni-s1",
+			season_slug: "rainbow-door-s1",
 			episode: {
 				idx: 0,
 				publish: {
@@ -161,7 +161,7 @@ describe("POST /api/admin/.../audio/publish happy path", () => {
 		});
 
 		expect(lastRequest).toEqual({
-			season: "winni-s1",
+			season: "rainbow-door-s1",
 			episodeIdx: "0",
 			expectedAudioHash: AUDIO_HASH,
 			audioBytes: 4,

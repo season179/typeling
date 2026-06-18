@@ -4,9 +4,9 @@ import { join } from "node:path";
 
 const TEST_DIR = join(import.meta.dir, "..");
 const SCRIPT = join(TEST_DIR, "scripts", "extract-audio-source.ts");
-const SEASON_PATH = join(TEST_DIR, "seasons", "zack-s1.json");
+const SEASON_PATH = join(TEST_DIR, "seasons", "pixel-garden-s1.json");
 const OUTPUT_DIR = join(TEST_DIR, "data", "audio");
-const OUTPUT_FILE = join(OUTPUT_DIR, "zack-s1-e0-source.txt");
+const OUTPUT_FILE = join(OUTPUT_DIR, "pixel-garden-s1-e0-source.txt");
 
 async function runScript(args: string[]): Promise<{
   exitCode: number;
@@ -41,8 +41,8 @@ describe("extract-audio-source", () => {
 
   it("extracts episode 0 text into a clearly named artifact", async () => {
     const { exitCode, stdout, stderr } = await runScript([
-      "--season", "seasons/zack-s1.json",
-      "--output", "data/audio/zack-s1-e0-source.txt",
+      "--season", "seasons/pixel-garden-s1.json",
+      "--output", "data/audio/pixel-garden-s1-e0-source.txt",
       "--episode-idx", "0",
     ]);
 
@@ -75,7 +75,7 @@ describe("extract-audio-source", () => {
 
   it("fails with clear message when episode idx is not found", async () => {
     const { exitCode, stderr } = await runScript([
-      "--season", "seasons/zack-s1.json",
+      "--season", "seasons/pixel-garden-s1.json",
       "--output", "data/audio/test-out.txt",
       "--episode-idx", "999",
     ]);
@@ -114,8 +114,8 @@ describe("extract-audio-source", () => {
 
     // Run extraction
     const { exitCode } = await runScript([
-      "--season", "seasons/zack-s1.json",
-      "--output", "data/audio/zack-s1-e0-source.txt",
+      "--season", "seasons/pixel-garden-s1.json",
+      "--output", "data/audio/pixel-garden-s1-e0-source.txt",
       "--episode-idx", "0",
     ]);
     expect(exitCode).toBe(0);

@@ -3,10 +3,27 @@ import { mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const TEST_DIR = join(import.meta.dir, "..");
-const OUTPUT_PATH = join(TEST_DIR, "seasons", "winni-s1-fixture-test.json");
+const OUTPUT_PATH = join(TEST_DIR, "seasons", "rainbow-door-s1-fixture-test.json");
 const STATE_PATH = join(TEST_DIR, "data", "state.test.json");
-const SEED_PATH = join(TEST_DIR, "data", "state.seed.json");
 const SCRIPT = join(TEST_DIR, "scripts", "gen-season.ts");
+
+// Self-contained neutral state (the committed data/state.seed.json was removed).
+// gen-season looks children up by id; this child's name must stay absent from
+// the fixture text, and target_wpm 15 matches the fixture's word budget.
+const STATE_FIXTURE = {
+	children: {
+		reader: {
+			name: "Reader",
+			theme: "rainbow",
+			target_wpm: 15,
+			active_season: "rainbow-door-s1",
+			current_episode: 0,
+			current_session_id: null,
+		},
+	},
+	sessions: [],
+};
+const STATE_JSON = `${JSON.stringify(STATE_FIXTURE, null, 2)}\n`;
 
 async function runGen(args: string[]): Promise<{
 	exitCode: number;
@@ -29,7 +46,7 @@ async function runGen(args: string[]): Promise<{
 
 describe("gen-season (fixture mode)", () => {
 	beforeAll(async () => {
-		await writeFile(STATE_PATH, await readFile(SEED_PATH));
+		await writeFile(STATE_PATH, STATE_JSON);
 	});
 
 	afterAll(async () => {
@@ -52,9 +69,9 @@ describe("gen-season (fixture mode)", () => {
 
 		const { exitCode, stderr } = await runGen([
 			"--child",
-			"winni",
+			"reader",
 			"--slug",
-			"winni-s1-fixture-test",
+			"rainbow-door-s1-fixture-test",
 			"--fixture",
 			"fixtures/sample-season.txt",
 		]);
@@ -64,7 +81,7 @@ describe("gen-season (fixture mode)", () => {
 
 		const raw = await readFile(OUTPUT_PATH, "utf-8");
 		const parsed = JSON.parse(raw);
-		expect(parsed.slug).toBe("winni-s1");
+		expect(parsed.slug).toBe("rainbow-door-s1");
 		expect(parsed.name).toBe("Rainbow Fixture");
 		expect(parsed.episodes.length).toBe(14);
 
@@ -81,9 +98,9 @@ describe("gen-season (fixture mode)", () => {
 	])("fails with $error on $fixture", async ({ fixture, error, extra }) => {
 		const { exitCode, stderr } = await runGen([
 			"--child",
-			"winni",
+			"reader",
 			"--slug",
-			"winni-s1",
+			"rainbow-door-s1",
 			"--fixture",
 			`fixtures/${fixture}`,
 		]);
@@ -98,7 +115,7 @@ describe("gen-season (fixture mode)", () => {
 			"--child",
 			"nonexistent",
 			"--slug",
-			"winni-s1",
+			"rainbow-door-s1",
 			"--fixture",
 			"fixtures/sample-season.txt",
 		]);
@@ -117,9 +134,9 @@ describe("gen-season (fixture mode)", () => {
 
 		const { exitCode, stderr } = await runGen([
 			"--child",
-			"winni",
+			"reader",
 			"--slug",
-			"winni-s1",
+			"rainbow-door-s1",
 			"--fixture",
 			"fixtures/sample-season.txt",
 		]);
@@ -128,6 +145,6 @@ describe("gen-season (fixture mode)", () => {
 		expect(stderr).toContain("[StateParseError]");
 
 		// Restore state file for subsequent tests
-		await writeFile(STATE_PATH, await readFile(SEED_PATH));
+		await writeFile(STATE_PATH, STATE_JSON);
 	});
 });

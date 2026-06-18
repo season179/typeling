@@ -4,6 +4,7 @@ import type { UserProfile } from "../lib/schemas/state";
 import { getProgress, type ProgressStory } from "./api";
 import { authClient } from "./authClient";
 import { clearStaleDrafts } from "./episodeRunner/autosave";
+import { themeForStory } from "./storyTheme";
 
 export default function App() {
 	const [, navigate] = useLocation();
@@ -67,7 +68,7 @@ export default function App() {
 
 	if (loading) {
 		return (
-			<main className="typeling-game flex min-h-screen items-center justify-center theme-winni">
+			<main className="typeling-game flex min-h-screen items-center justify-center theme-rainbow">
 				<div className="loading-card">Loading story keys...</div>
 			</main>
 		);
@@ -75,7 +76,7 @@ export default function App() {
 
 	if (error) {
 		return (
-			<main className="typeling-game flex min-h-screen items-center justify-center theme-zack">
+			<main className="typeling-game flex min-h-screen items-center justify-center theme-science">
 				<div className="loading-card">Error: {error}</div>
 			</main>
 		);
@@ -83,7 +84,7 @@ export default function App() {
 
 	if (needsSignIn) {
 		return (
-			<main className="typeling-game flex min-h-screen items-center justify-center theme-winni">
+			<main className="typeling-game flex min-h-screen items-center justify-center theme-rainbow">
 				<div className="loading-card flex flex-col items-center gap-4 text-center">
 					<h1 className="home-title text-2xl font-bold">Typeling</h1>
 					<p className="text-sm text-stone-500">
@@ -103,7 +104,7 @@ export default function App() {
 
 	if (stories.length === 0) {
 		return (
-			<main className="typeling-game flex min-h-screen items-center justify-center theme-winni">
+			<main className="typeling-game flex min-h-screen items-center justify-center theme-rainbow">
 				<p className="text-lg text-gray-500">No stories available yet.</p>
 			</main>
 		);
@@ -114,7 +115,7 @@ export default function App() {
 	};
 
 	return (
-		<main className="home-world typeling-game flex min-h-screen flex-col items-center justify-center gap-6 p-8 theme-winni">
+		<main className="home-world typeling-game flex min-h-screen flex-col items-center justify-center gap-6 p-8 theme-rainbow">
 			<div className="game-sky" aria-hidden="true">
 				<div className="moon-or-planet" />
 				<div className="drift-shape drift-shape-a" />
@@ -144,15 +145,13 @@ export default function App() {
 			</header>
 			<div className="child-select flex flex-wrap justify-center gap-4">
 				{stories.map((story) => {
-					const isZack =
-						story.slug.toLowerCase().includes("zack") ||
-						story.theme.toLowerCase().includes("science") ||
-						story.theme.toLowerCase().includes("robot");
+					const isScience =
+						themeForStory(story.slug, story.theme) === "science";
 					return (
 						<div
 							key={story.slug}
 							className={`child-card rounded-lg border-2 border-gray-200 p-6 text-left transition-all hover:border-blue-400 hover:shadow-md ${
-								isZack ? "zack-card" : "winni-card"
+								isScience ? "science-card" : "rainbow-card"
 							}`}
 						>
 							<span className="child-token" aria-hidden="true" />

@@ -9,7 +9,7 @@ import { fetch } from "../../../src/server/index.ts";
 import { fakeD1StoryDatabase } from "../../lib/fakeD1Story";
 
 const fixtureSeason = {
-	slug: "winni-s1-admin",
+	slug: "rainbow-door-s1-admin",
 	name: "Test Rainbow Story",
 	theme: "rainbow-unicorn",
 	episodes: Array.from({ length: 14 }, (_, i) => ({
@@ -77,7 +77,7 @@ const getAdminStories = (url = "http://127.0.0.1:3001/api/admin/stories") =>
 const updateEpisode = (text: string) =>
 	fetch(
 		new Request(
-			"http://127.0.0.1:3001/api/admin/seasons/winni-s1-admin/episodes/0",
+			"http://127.0.0.1:3001/api/admin/seasons/rainbow-door-s1-admin/episodes/0",
 			{
 				method: "PUT",
 				headers: { "content-type": "application/json" },
@@ -89,14 +89,14 @@ const updateEpisode = (text: string) =>
 const getAdminAudioFile = () =>
 	fetch(
 		new Request(
-			"http://127.0.0.1:3001/api/admin/seasons/winni-s1-admin/episodes/0/audio/file",
+			"http://127.0.0.1:3001/api/admin/seasons/rainbow-door-s1-admin/episodes/0/audio/file",
 		),
 	);
 
 const getAdminCaptions = () =>
 	fetch(
 		new Request(
-			"http://127.0.0.1:3001/api/admin/seasons/winni-s1-admin/episodes/0/audio/captions.vtt",
+			"http://127.0.0.1:3001/api/admin/seasons/rainbow-door-s1-admin/episodes/0/audio/captions.vtt",
 		),
 	);
 
@@ -149,7 +149,7 @@ describe("admin API", () => {
 		expect(res.status).toBe(200);
 		const body = await res.json();
 		expect(body.admin.access).toBe("local-only");
-		expect(body.stories[0].slug).toBe("winni-s1-admin");
+		expect(body.stories[0].slug).toBe("rainbow-door-s1-admin");
 		expect(body.stories[0].episodes[0]).toMatchObject({
 			idx: 0,
 			word_count: 9,
@@ -193,7 +193,7 @@ describe("admin API", () => {
 
 		const res = await fetch(
 			new Request(
-				"http://127.0.0.1:3001/api/admin/seasons/winni-s1-admin/episodes/0",
+				"http://127.0.0.1:3001/api/admin/seasons/rainbow-door-s1-admin/episodes/0",
 				{
 					method: "PUT",
 					headers: { "content-type": "application/json" },
@@ -211,19 +211,6 @@ describe("admin API", () => {
 		expect(storyDb.episodeTextHash(fixtureSeason.slug, 0)).toBe(
 			sha256(nextText),
 		);
-	});
-
-	it("rejects story text with real child names before writing", async () => {
-		await writeSeason();
-
-		const res = await updateEpisode("Winni found a rainbow gate.");
-
-		expect(res.status).toBe(422);
-		expect(await res.json()).toEqual({ error: "RealChildNameInStory" });
-		const saved = await Bun.file(
-			join(seasonsDir, `${fixtureSeason.slug}.json`),
-		).json();
-		expect(saved.episodes[0].text).toBe(fixtureSeason.episodes[0]!.text);
 	});
 
 	it("serves admin audio without using child chapter locks", async () => {

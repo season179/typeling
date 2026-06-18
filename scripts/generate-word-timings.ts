@@ -3,7 +3,7 @@
  *
  * Usage:
  *   bun run scripts/generate-word-timings.ts
- *   bun run scripts/generate-word-timings.ts --season zack-s1 --episode-idx 0
+ *   bun run scripts/generate-word-timings.ts --season pixel-garden-s1 --episode-idx 0
  */
 
 import { join } from "node:path";
@@ -44,7 +44,7 @@ interface ArtifactPaths {
 }
 
 async function main(): Promise<void> {
-	const season = values.season ?? "zack-s1";
+	const season = values.season ?? "pixel-garden-s1";
 	const episodeIdx = parseEpisodeIdx(values["episode-idx"] ?? "0");
 	const baseName = `${season}-e${episodeIdx}`;
 	const paths = resolveArtifactPaths(baseName);

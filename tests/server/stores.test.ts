@@ -26,7 +26,7 @@ const devIdentity = {
 };
 
 const fixtureSeason = {
-	slug: "winni-s1-test",
+	slug: "rainbow-door-s1-test",
 	name: "Test Rainbow Story",
 	theme: "pink unicorn",
 	episodes: Array.from({ length: 14 }, (_, i) => ({
@@ -64,7 +64,7 @@ const user = {
 
 const validSessionBody = {
 	id: "test-session-1",
-	season_slug: "winni-s1-test",
+	season_slug: "rainbow-door-s1-test",
 	episode_idx: 0,
 	wpm: 12,
 	char_count: 50,
@@ -127,7 +127,7 @@ describe("D1StoryStore", () => {
 
 		await expect(store.listStories()).resolves.toEqual([
 			{
-				slug: "winni-s1-test",
+				slug: "rainbow-door-s1-test",
 				name: "Test Rainbow Story",
 				theme: "pink unicorn",
 				total_episodes: 14,
@@ -144,7 +144,7 @@ describe("D1StoryStore", () => {
 
 		const season = await store.readSeason(fixtureSeason.slug);
 
-		expect(season.slug).toBe("winni-s1-test");
+		expect(season.slug).toBe("rainbow-door-s1-test");
 		expect(season.name).toBe("Test Rainbow Story");
 		expect(season.episodes).toHaveLength(14);
 		expect(season.episodes.map((episode) => episode.idx)).toEqual(

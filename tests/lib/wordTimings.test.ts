@@ -10,11 +10,11 @@ import { pcmToWavBuffer } from "../../src/lib/wav";
 
 const WAV_BYTES = pcmToWavBuffer(new Uint8Array(24000 * 2 * 2));
 const BASE_SIDECAR_INPUT: BuildWordTimingSidecarInput = {
-	seasonSlug: "zack-s1",
+	seasonSlug: "pixel-garden-s1",
 	episodeIdx: 0,
-	audioPath: "data/audio/zack-s1-e0.wav",
-	sourceTextPath: "data/audio/zack-s1-e0-source.txt",
-	rawAlignmentPath: "data/audio/zack-s1-e0.qwen-align.raw.txt",
+	audioPath: "data/audio/pixel-garden-s1-e0.wav",
+	sourceTextPath: "data/audio/pixel-garden-s1-e0-source.txt",
+	rawAlignmentPath: "data/audio/pixel-garden-s1-e0.qwen-align.raw.txt",
 	sourceText: "In a cosy",
 	rawAlignment: `
 [0.00s - 0.88s] In
@@ -29,7 +29,7 @@ const BASE_SIDECAR_INPUT: BuildWordTimingSidecarInput = {
 describe("word timings", () => {
 	it("parses Qwen alignment output while ignoring progress logs", () => {
 		const words = parseQwenAlignment(`
-Loading audio: data/audio/zack-s1-e0.wav
+Loading audio: data/audio/pixel-garden-s1-e0.wav
 Aligning...
 [0.00s - 0.88s] In
 [1.04s - 1.04s] a

@@ -9,7 +9,7 @@ const adminPayload = {
 	admin: { access: "local-only" },
 	stories: [
 		{
-			slug: "winni-s1-test",
+			slug: "rainbow-door-s1-test",
 			name: "Test Rainbow Story",
 			theme: "rainbow-unicorn",
 			episodes: [
@@ -42,7 +42,7 @@ describe("AdminView", () => {
 				return Promise.resolve(
 					new Response(
 						JSON.stringify({
-							season_slug: "winni-s1-test",
+							season_slug: "rainbow-door-s1-test",
 							episode: {
 								idx: 0,
 								text: "Luma found a brass key.",
