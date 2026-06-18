@@ -14,7 +14,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
 import OpenAI from "openai";
-import { buildStylePrompt } from "./style-transcript-prompt";
+import { buildStylePrompt } from "../src/lib/styleTranscriptPrompt";
+import { validateStyledTranscript } from "../src/lib/styleTranscript";
 
 const ROOT = join(import.meta.dir, "..");
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
@@ -60,71 +61,6 @@ class LLMResponseError extends StyleTranscriptError {
 	constructor(message: string) {
 		super(message);
 		this.name = "LLMResponseError";
-	}
-}
-
-class StyleValidationError extends StyleTranscriptError {
-	constructor(message: string) {
-		super(message);
-		this.name = "StyleValidationError";
-	}
-}
-
-/**
- * Validate that the styled transcript output meets all the requirements
- * for a valid bedtime TTS script: a Gemini-style "Make Storyteller sound…"
- * preamble followed by speaker-labelled transcript lines with optional
- * [audio tags].
- */
-function validateStyledTranscript(output: string): void {
-	if (output.trim().length === 0) {
-		throw new StyleValidationError("Styled transcript is empty.");
-	}
-
-	const lines = output.split("\n");
-
-	// Must have at least a preamble and one transcript line
-	if (lines.length < 2) {
-		throw new StyleValidationError(
-			"Styled transcript too short. Expected a TTS preamble and at least one transcript line.",
-		);
-	}
-
-	const firstNonEmpty = lines.find((l) => l.trim().length > 0) ?? "";
-
-	if (
-		!firstNonEmpty.toLowerCase().includes("make storyteller") &&
-		!firstNonEmpty.toLowerCase().includes("storyteller sound")
-	) {
-		throw new StyleValidationError(
-			"Styled transcript missing TTS preamble on the first line. " +
-				'The preamble should start with something like "Make Storyteller sound…"',
-		);
-	}
-
-	// Collect transcript lines (after preamble, lines with speaker prefix)
-	const transcriptLines = lines.filter((l) =>
-		/^(Storyteller|Character): /i.test(l.trim()),
-	);
-
-	if (transcriptLines.length === 0) {
-		throw new StyleValidationError(
-			"No speaker-labelled transcript lines found. Expected lines starting with 'Storyteller: ' or 'Character: '.",
-		);
-	}
-
-	// Must have both speakers (the regex already guarantees only valid speaker labels)
-	const hasStoryteller = transcriptLines.some((l) =>
-		/^Storyteller: /i.test(l.trim()),
-	);
-	const hasCharacter = transcriptLines.some((l) =>
-		/^Character: /i.test(l.trim()),
-	);
-
-	if (!hasStoryteller || !hasCharacter) {
-		throw new StyleValidationError(
-			"Styled transcript must contain both Storyteller and Character speaker lines.",
-		);
 	}
 }
 

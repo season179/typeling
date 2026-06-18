@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { z } from "zod";
 import seedStateData from "../../data/state.seed.json";
 import winniSeasonData from "../../seasons/winni-s1.json";
@@ -18,6 +19,7 @@ import {
 	checkStoryText,
 	type StoryTextViolation,
 } from "../lib/storyTextPolicy";
+import { AudioGenerationError, generateEpisodeAudio } from "./audioGeneration";
 import { isAuthConfigured, makeAuth } from "./auth";
 import {
 	DEFAULT_AUDIO_DIR,
@@ -115,7 +117,7 @@ class EpisodeAccessError extends HttpError {
 }
 
 class AdminAccessError extends HttpError {
-	constructor(code: string, status: 400 | 403 | 404 | 409 | 422) {
+	constructor(code: string, status: 400 | 403 | 404 | 409 | 422 | 503) {
 		super(code, status);
 		this.name = "AdminAccessError";
 	}
@@ -297,9 +299,19 @@ async function requireUser(
 	return getProgressStore(env).upsertUser(identity);
 }
 
+function normalizeHostname(hostname: string): string {
+	const lower = hostname.toLowerCase();
+	// `new URL("http://[::1]:8765").hostname` yields the bracketed literal
+	// "[::1]"; strip the brackets so IPv6 loopback matches the unbracketed
+	// "::1" entry in LOCAL_ADMIN_HOSTNAMES.
+	return lower.startsWith("[") && lower.endsWith("]")
+		? lower.slice(1, -1)
+		: lower;
+}
+
 function isLocalAdminHostname(hostname: string | null | undefined): boolean {
 	if (!hostname) return false;
-	const normalized = hostname.toLowerCase();
+	const normalized = normalizeHostname(hostname);
 	return (
 		LOCAL_ADMIN_HOSTNAMES.has(normalized) || normalized.endsWith(".localhost")
 	);
@@ -328,6 +340,51 @@ function assertLocalDiskAdmin(env: ServerBindings): void {
 function assertStoryWriteAllowed(env: ServerBindings): void {
 	if (env.STORY_DB || env.STORY_STORE) return;
 	assertLocalDiskAdmin(env);
+}
+
+interface AudioGenerationConfig {
+	geminiApiKey: string;
+	openRouterApiKey: string;
+	alignerUrl: string;
+}
+
+function isAudioGenerationEnabled(env: ServerBindings): boolean {
+	const flag = env.ADMIN_AUDIO_GENERATION_ENABLED?.trim().toLowerCase();
+	return flag === "1" || flag === "true" || flag === "yes";
+}
+
+function assertAudioGenerationEnabled(env: ServerBindings): void {
+	// Checked BEFORE any secret is read: when the feature flag is off the route
+	// never touches GEMINI_API_KEY / OPENROUTER_API_KEY. The flag lives in
+	// .dev.vars only, so this route is inert in production.
+	if (!isAudioGenerationEnabled(env)) {
+		throw new AdminAccessError("AudioGenerationDisabled", 403);
+	}
+}
+
+function isLoopbackUrl(raw: string): boolean {
+	let url: URL;
+	try {
+		url = new URL(raw);
+	} catch {
+		return false;
+	}
+	return LOCAL_ADMIN_HOSTNAMES.has(normalizeHostname(url.hostname));
+}
+
+function readAudioGenerationConfig(env: ServerBindings): AudioGenerationConfig {
+	const geminiApiKey = env.GEMINI_API_KEY?.trim();
+	const openRouterApiKey = env.OPENROUTER_API_KEY?.trim();
+	const alignerUrl = env.ALIGNER_URL?.trim();
+	if (!geminiApiKey || !openRouterApiKey || !alignerUrl) {
+		throw new AdminAccessError("AudioGenerationNotConfigured", 503);
+	}
+	// Defence in depth: the aligner is a local-only service. Never let the
+	// Worker POST generated audio to a non-loopback address.
+	if (!isLoopbackUrl(alignerUrl)) {
+		throw new AdminAccessError("AlignerUrlNotLoopback", 403);
+	}
+	return { geminiApiKey, openRouterApiKey, alignerUrl };
 }
 
 function adminStoryViolationCode(violation: StoryTextViolation): string {
@@ -638,6 +695,57 @@ app.get(
 	},
 );
 
+app.post("/api/admin/seasons/:slug/episodes/:episodeIdx/audio", async (c) => {
+	assertLocalAdminRequest(c.req.raw);
+	// Gate on the feature flag before reading any secrets.
+	assertAudioGenerationEnabled(c.env);
+	const { geminiApiKey, openRouterApiKey, alignerUrl } =
+		readAudioGenerationConfig(c.env);
+
+	const slug = c.req.param("slug");
+	const episodeIdx = parseEpisodeIdx(c.req.param("episodeIdx"));
+	const storyStore = getStoryStore(c.env);
+	const season = await storyStore.readSeason(slug);
+	const episode = season.episodes[episodeIdx];
+	if (!episode) {
+		throw new AdminAccessError("EpisodeNotFound", 404);
+	}
+
+	const assetStore = getAssetStore(c.env);
+	try {
+		await generateEpisodeAudio({
+			seasonSlug: season.slug,
+			episodeIdx,
+			episodeText: episode.text,
+			geminiApiKey,
+			openRouterApiKey,
+			alignerUrl,
+			assetStore,
+		});
+	} catch (error) {
+		if (error instanceof AudioGenerationError) {
+			return c.json(
+				{ error: error.code, detail: error.message },
+				error.status as ContentfulStatusCode,
+			);
+		}
+		throw error;
+	}
+
+	return c.json({
+		episode: {
+			idx: episodeIdx,
+			audio: await loadAdminAudioStatus(
+				assetStore,
+				season,
+				episodeIdx,
+				episode.text,
+			),
+		},
+		season_slug: season.slug,
+	});
+});
+
 app.get("/api/stories/:storySlug/current-episode", async (c) => {
 	const user = await requireUser(c.req.raw, c.env);
 	const season = await getStoryStore(c.env).readSeason(
@@ -822,7 +930,11 @@ function isServerBindings(value: unknown): value is ServerBindings {
 			"STORY_STORE" in value ||
 			"PROGRESS_STORE" in value ||
 			"ASSETS_BUCKET" in value ||
-			"IDENTITY" in value)
+			"IDENTITY" in value ||
+			"ADMIN_AUDIO_GENERATION_ENABLED" in value ||
+			"ALIGNER_URL" in value ||
+			"GEMINI_API_KEY" in value ||
+			"OPENROUTER_API_KEY" in value)
 	);
 }
 

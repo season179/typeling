@@ -1,48 +1,12 @@
 /**
- * style-transcript-prompt.ts — Prompt template for styling a two-speaker
+ * styleTranscriptPrompt.ts — Prompt template for styling a two-speaker
  * transcript into a bedtime TTS performance script for Gemini.
  *
  * The preamble is a short "Make Storyteller sound…" instruction; the body
  * uses `Storyteller:` / `Character:` speaker labels and `[bracket]` mood tags.
  * Gemini consumes this format directly.
  *
- * ## Review workflow for Season
- *
- * After the text model returns a styled transcript, review these points
- * before sending it to TTS:
- *
- * 1. **Story meaning preserved** — Read the styled transcript side-by-side
- *    with the original. No sentences should be added, removed, or reworded.
- *    The only additions should be [audio tags] in square brackets.
- *
- * 2. **No new plot events** — Check that every story beat matches the
- *    original transcript. If the model invented a new detail or reaction,
- *    remove it.
- *
- * 3. **British English intact** — Spot-check spellings like "colour",
- *    "favourite", "centre", "realise". The model must not Americanise them.
- *
- * 4. **Warm, kid-safe tone** — Read it aloud in your head. Every line should
- *    feel cosy, gentle, and appropriate for a 7–10 year old at bedtime.
- *    No creepy, sarcastic, or tense delivery.
- *
- * 5. **Only Storyteller and Character** — Grep for unexpected speaker labels.
- *    The transcript must only have `Storyteller:` and `Character:` lines.
- *
- * 6. **Audio tags are sparse and readable** — Tags like [softly], [gently],
- *    [warmly], [excitedly], [curiously] should appear only where they add
- *    real value. If every other word has a tag, it's too much. If a tag
- *    looks confusing or wrong, delete it.
- *
- * 7. **Preamble present and on-target** — There must be a short instruction
- *    block before the transcript along the lines of "Make Storyteller sound…".
- *
- * 8. **No stray instruction text in the transcript** — The transcript lines
- *    after the preamble must contain only the spoken words and audio tags.
- *    If you see instructions, scene descriptions, or director's notes mixed
- *    into the transcript, remove them.
- *
- * This module does not call any network API. It only exports prompt text.
+ * Pure: no network, no fs, no Bun — safe to import in the Worker.
  */
 
 export interface StylePromptInputs {

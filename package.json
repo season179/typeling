@@ -4,7 +4,8 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "bun run db:migrate:local && PORTLESS_TLD=dev bun run dev:proxy && TYPELING_CLOUDFLARE=1 PORTLESS_TLD=dev portless typeling vite --host 127.0.0.1",
+    "dev": "bun run db:migrate:local && PORTLESS_TLD=dev bun run dev:proxy && concurrently --kill-others-on-fail --names aligner,web 'bun run dev:aligner' 'TYPELING_CLOUDFLARE=1 PORTLESS_TLD=dev portless typeling vite --host 127.0.0.1'",
+    "dev:aligner": "bun run scripts/aligner-server.ts",
     "dev:proxy": "portless proxy start --https",
     "dev:direct": "concurrently --kill-others --names api,web 'PORT=${SERVER_PORT:-3001} bun --watch src/server/index.ts' 'SERVER_URL=http://127.0.0.1:${SERVER_PORT:-3001} vite --host 127.0.0.1 --port 5173 --strictPort'",
     "dev:cloud": "TYPELING_CLOUDFLARE=1 vite --host 127.0.0.1",

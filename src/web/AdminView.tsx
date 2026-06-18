@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
-import { getAdminStories, putAdminEpisode } from "./api";
+import { getAdminStories, postAdminEpisodeAudio, putAdminEpisode } from "./api";
 
 type AdminAudioStatus =
 	| {
@@ -37,6 +37,41 @@ interface AdminResponse {
 interface AdminEpisodeUpdateResponse {
 	season_slug: string;
 	episode: AdminEpisode;
+}
+
+interface AdminAudioGenerateResponse {
+	season_slug: string;
+	episode: { idx: number; audio: AdminAudioStatus };
+}
+
+// Friendly text for each AudioGenerationError code the route can return.
+const AUDIO_ERROR_MESSAGES: Record<string, string> = {
+	AudioGenerationDisabled:
+		"Audio generation is turned off (set ADMIN_AUDIO_GENERATION_ENABLED).",
+	AudioGenerationNotConfigured:
+		"Set GEMINI_API_KEY, OPENROUTER_API_KEY and ALIGNER_URL in .dev.vars.",
+	AlignerUrlNotLoopback: "ALIGNER_URL must be a loopback address.",
+	StyleAuthFailed: "OpenRouter rejected the API key.",
+	StyleFailed: "The styling step failed.",
+	StylePreservationFailed:
+		"Styling changed the story words, so generation was stopped.",
+	TtsAuthFailed: "Gemini rejected the API key.",
+	TtsFailed: "Text-to-speech failed.",
+	TtsNoAudio: "Text-to-speech returned no audio.",
+	AlignerUnreachable: "The local aligner is not running. Is `bun run dev` up?",
+	AlignFailed: "Forced alignment failed.",
+	AlignmentMismatch: "Alignment did not match the story text.",
+	VerificationFailed: "The generated audio failed verification.",
+};
+
+function audioErrorMessage(
+	code: string | undefined,
+	detail: string | undefined,
+	status: number,
+): string {
+	const friendly =
+		(code && AUDIO_ERROR_MESSAGES[code]) || code || `HTTP ${status}`;
+	return detail ? `${friendly} (${detail})` : friendly;
 }
 
 const AUDIO_LABELS: Record<AdminAudioStatus["status"], string> = {
@@ -84,6 +119,9 @@ export default function AdminView() {
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [saveMessage, setSaveMessage] = useState<string | null>(null);
+	const [generating, setGenerating] = useState(false);
+	const [audioError, setAudioError] = useState<string | null>(null);
+	const [audioMessage, setAudioMessage] = useState<string | null>(null);
 
 	useEffect(() => {
 		const controller = new AbortController();
@@ -141,6 +179,8 @@ export default function AdminView() {
 		}
 		setDraftText(selectedEpisode.text);
 		setSaveMessage(null);
+		setAudioError(null);
+		setAudioMessage(null);
 	}, [selectedEpisode]);
 
 	const saveEpisode = async () => {
@@ -183,6 +223,55 @@ export default function AdminView() {
 			setError(err instanceof Error ? err.message : "Failed to save");
 		} finally {
 			setSaving(false);
+		}
+	};
+
+	const generateAudio = async () => {
+		if (!selectedStory || !selectedEpisode) return;
+
+		try {
+			setGenerating(true);
+			setAudioError(null);
+			setAudioMessage(null);
+			const res = await postAdminEpisodeAudio(
+				selectedStory.slug,
+				selectedEpisode.idx,
+			);
+			if (!res.ok) {
+				const body = (await res.json().catch(() => null)) as {
+					error?: string;
+					detail?: string;
+				} | null;
+				throw new Error(
+					audioErrorMessage(body?.error, body?.detail, res.status),
+				);
+			}
+
+			const updated: AdminAudioGenerateResponse = await res.json();
+			setData((current) => {
+				if (!current) return current;
+				return {
+					...current,
+					stories: current.stories.map((story) => {
+						if (story.slug !== selectedStory.slug) return story;
+						return {
+							...story,
+							episodes: story.episodes.map((episode) =>
+								episode.idx === updated.episode.idx
+									? { ...episode, audio: updated.episode.audio }
+									: episode,
+							),
+						};
+					}),
+				};
+			});
+			setAudioMessage("Audio generated");
+		} catch (err) {
+			setAudioError(
+				err instanceof Error ? err.message : "Failed to generate audio",
+			);
+		} finally {
+			setGenerating(false);
 		}
 	};
 
@@ -423,6 +512,36 @@ export default function AdminView() {
 										{selectedEpisode.audio.error}
 									</p>
 								)}
+
+								<div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-stone-100 pt-4">
+									<div className="min-h-5 text-sm">
+										{audioError && (
+											<p className="text-rose-700">{audioError}</p>
+										)}
+										{audioMessage && (
+											<p className="font-semibold text-emerald-700">
+												{audioMessage}
+											</p>
+										)}
+										{isDirty && !audioError && !audioMessage && (
+											<p className="text-stone-500">
+												Save the story before generating audio.
+											</p>
+										)}
+									</div>
+									<button
+										type="button"
+										className="rounded-md bg-stone-900 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-stone-700 disabled:cursor-not-allowed disabled:bg-stone-300"
+										disabled={isDirty || generating || saving}
+										onClick={generateAudio}
+									>
+										{generating
+											? "Generating…"
+											: selectedEpisode.audio.status === "missing"
+												? "Generate audio"
+												: "Regenerate audio"}
+									</button>
+								</div>
 							</section>
 						</div>
 					)}
