@@ -122,8 +122,7 @@ describe("GET /api/parent/family", () => {
 	});
 
 	it("returns 403 with ParentViewOnly when the signed-in account is not allowlisted", async () => {
-		const stores = await seedReaders();
-		const { res, body } = await fetchFamilyAs(ava, stores);
+		const { res, body } = await fetchFamilyAs(ava);
 		expect(res.status).toBe(403);
 		expect(body).toEqual({ error: "ParentViewOnly" });
 	});
