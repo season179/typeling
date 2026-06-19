@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useParams } from "wouter";
+import type { Session } from "../lib/schemas/state";
 import { getProgress } from "./api";
 import { themeForStory } from "./storyTheme";
 
@@ -69,6 +70,7 @@ export default function CompleteEpisode() {
 	const [storyName, setStoryName] = useState<string | null>(null);
 	const [storyTheme, setStoryTheme] = useState<string>("");
 	const [totalEpisodes, setTotalEpisodes] = useState<number>(0);
+	const [recentSessions, setRecentSessions] = useState<Session[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
@@ -97,6 +99,7 @@ export default function CompleteEpisode() {
 				setStoryName(story.name);
 				setStoryTheme(story.theme);
 				setTotalEpisodes(story.total_episodes);
+				setRecentSessions(story.recent_sessions);
 			} catch (err) {
 				if (!controller.signal.aborted) {
 					setError(err instanceof Error ? err.message : "Failed to load");
@@ -137,6 +140,17 @@ export default function CompleteEpisode() {
 	const episodeNumber = completedIdx + 1;
 	const theme = themeForStory(storySlug, storyTheme);
 
+	// The session for the chapter just finished is the most recent one for this
+	// episode (recent_sessions arrives newest-first), so its WPM is the speed to
+	// celebrate here.
+	const justSession = recentSessions.find(
+		(s) => s.episode_idx === completedIdx,
+	);
+	const justWpm = justSession ? Math.round(justSession.wpm) : null;
+	// A whole-episode active time of zero rounds to 0 WPM; "0 words per minute —
+	// brilliant!" reads as a glitch, so only celebrate a real, positive speed.
+	const showWpm = justWpm !== null && justWpm > 0;
+
 	return (
 		<main
 			data-testid="complete-episode"
@@ -156,24 +170,49 @@ export default function CompleteEpisode() {
 					Episode {episodeNumber} complete!
 				</h1>
 				{storyName && <p className="text-xl text-gray-600">{storyName}</p>}
+				{showWpm && (
+					<div className="complete-speed" data-testid="complete-wpm">
+						<span className="complete-speed-icon" aria-hidden="true">
+							🚀
+						</span>
+						<span className="complete-speed-figures">
+							<strong>{justWpm}</strong>
+							<span className="complete-speed-label">
+								words per minute — brilliant!
+							</span>
+						</span>
+					</div>
+				)}
 				<ChapterMap
 					storySlug={storySlug}
 					totalEpisodes={totalEpisodes}
 					completedUpTo={completedIdx}
 				/>
-				{completedIdx === totalEpisodes - 1 ? (
-					<p className="season-finale text-2xl font-bold text-purple-600 animate-bounce">
-						You finished the whole season!
-					</p>
-				) : (
+				<div className="complete-actions">
 					<button
 						type="button"
-						className="start-next rounded-lg bg-blue-500 px-6 py-3 text-lg font-semibold text-white hover:bg-blue-600 transition-colors"
-						onClick={() => navigate(`/play/${storySlug}`)}
+						data-testid="listen-story"
+						className="listen-story rounded-lg bg-amber-500 px-6 py-3 text-lg font-semibold text-white hover:bg-amber-600 transition-colors"
+						onClick={() =>
+							navigate(`/play/${storySlug}/episode/${completedIdx}`)
+						}
 					>
-						Start next
+						🎧 Listen to this chapter
 					</button>
-				)}
+					{completedIdx === totalEpisodes - 1 ? (
+						<p className="season-finale text-2xl font-bold text-purple-600 animate-bounce">
+							You finished the whole season!
+						</p>
+					) : (
+						<button
+							type="button"
+							className="start-next rounded-lg bg-blue-500 px-6 py-3 text-lg font-semibold text-white hover:bg-blue-600 transition-colors"
+							onClick={() => navigate(`/play/${storySlug}`)}
+						>
+							Start next
+						</button>
+					)}
+				</div>
 			</section>
 		</main>
 	);

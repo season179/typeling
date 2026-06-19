@@ -99,6 +99,41 @@
 	animation: gentle-pulse 1.2s ease-in-out infinite;
 }
 
+@keyframes wpm-pop-up {
+	0% {
+		transform: scale(0.85) translateY(4px);
+	}
+	55% {
+		transform: scale(1.22) translateY(-3px);
+	}
+	100% {
+		transform: scale(1) translateY(0);
+	}
+}
+
+@keyframes wpm-settle {
+	0% {
+		transform: scale(1.06);
+	}
+	50% {
+		transform: scale(0.96);
+	}
+	100% {
+		transform: scale(1);
+	}
+}
+
+@keyframes wpm-cue-rise {
+	from {
+		opacity: 0;
+		transform: translateY(6px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
 .typeling-game {
 	--game-bg-a: #fff1fb;
 	--game-bg-b: #dff7ff;
@@ -111,6 +146,7 @@
 	--game-primary: #f45fc4;
 	--game-secondary: #51c7f3;
 	--game-accent: #ffcf38;
+	--game-up: #2fbf6b;
 	--game-shadow: rgba(71, 35, 96, 0.18);
 	position: fixed;
 	inset: 0;
@@ -130,6 +166,7 @@
 	--game-primary: #2288ff;
 	--game-secondary: #20d6a1;
 	--game-accent: #ffe14a;
+	--game-up: #19c089;
 	--game-shadow: rgba(22, 61, 94, 0.2);
 }
 
@@ -433,9 +470,9 @@
 	position: relative;
 	z-index: 4;
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) 8.75rem;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 0.95fr) 8.75rem;
 	gap: 0.75rem;
-	width: min(58rem, calc(100% - 2rem));
+	width: min(64rem, calc(100% - 2rem));
 	margin: calc(var(--chapter-picker-h, 3.8rem) + 0.9rem) auto 0;
 }
 
@@ -501,6 +538,97 @@
 .key-panel strong {
 	min-width: 3.25rem;
 	text-align: left;
+}
+
+.wpm-panel {
+	gap: 0.55rem;
+	transition:
+		border-color 220ms ease,
+		box-shadow 220ms ease,
+		background 220ms ease;
+}
+
+.wpm-readout {
+	display: flex;
+	align-items: center;
+	gap: 0.45rem;
+	min-width: 0;
+}
+
+.wpm-icon {
+	font-size: 1.35rem;
+	line-height: 1;
+}
+
+.wpm-figures {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	min-width: 0;
+}
+
+.wpm-figures strong {
+	font-size: 1.45rem;
+	line-height: 1.05;
+	font-variant-numeric: tabular-nums;
+}
+
+.wpm-cue {
+	font-size: 0.62rem;
+	font-weight: 900;
+	letter-spacing: 0.02em;
+	text-transform: uppercase;
+	white-space: nowrap;
+	color: var(--game-muted);
+	animation: wpm-cue-rise 0.4s ease-out both;
+}
+
+/* Speeding up — celebrate. */
+.wpm-up {
+	border-color: color-mix(in srgb, var(--game-up) 55%, var(--game-border));
+	box-shadow:
+		0 16px 46px var(--game-shadow),
+		0 0 22px color-mix(in srgb, var(--game-up) 45%, transparent);
+}
+.wpm-up .wpm-figures strong {
+	color: var(--game-up);
+}
+.wpm-up .wpm-cue {
+	color: var(--game-up);
+}
+.wpm-up .wpm-readout {
+	animation: wpm-pop-up 0.5s ease-out both;
+}
+
+/* Holding pace — calm, warm glow. */
+.wpm-steady {
+	box-shadow:
+		0 16px 46px var(--game-shadow),
+		0 0 18px color-mix(in srgb, var(--game-accent) 42%, transparent);
+}
+.wpm-steady .wpm-figures strong {
+	color: var(--game-ink);
+}
+
+/* Easing off — gentle and encouraging, never a failure signal. */
+.wpm-down {
+	box-shadow:
+		0 16px 46px var(--game-shadow),
+		0 0 16px color-mix(in srgb, var(--game-secondary) 40%, transparent);
+}
+.wpm-down .wpm-figures strong {
+	color: var(--game-secondary);
+}
+.wpm-down .wpm-cue {
+	color: color-mix(in srgb, var(--game-secondary) 80%, var(--game-ink));
+}
+.wpm-down .wpm-readout {
+	animation: wpm-settle 0.55s ease-in-out both;
+}
+
+/* Warming up — neutral until there are enough keystrokes to judge. */
+.wpm-warmup .wpm-figures strong {
+	color: var(--game-muted);
 }
 
 .playfield {
@@ -774,6 +902,58 @@
 	font-weight: 950;
 }
 
+.complete-speed {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.6rem;
+	margin: 0.8rem auto 0.2rem;
+	padding: 0.55rem 1.15rem;
+	border: 1px solid var(--game-border);
+	border-radius: 999px;
+	background: color-mix(
+		in srgb,
+		var(--game-accent) 24%,
+		var(--game-panel-strong)
+	);
+	box-shadow: 0 12px 30px var(--game-shadow);
+}
+
+.complete-speed-icon {
+	font-size: 1.65rem;
+	line-height: 1;
+}
+
+.complete-speed-figures {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	line-height: 1.05;
+}
+
+.complete-speed-figures strong {
+	font-size: 1.7rem;
+	font-weight: 950;
+	color: var(--game-ink);
+	font-variant-numeric: tabular-nums;
+}
+
+.complete-speed-label {
+	font-size: 0.62rem;
+	font-weight: 900;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--game-muted);
+}
+
+.complete-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: center;
+	gap: 0.75rem;
+	margin-top: 0.4rem;
+}
+
 .chapter-map {
 	display: flex;
 	flex-wrap: wrap;
@@ -895,8 +1075,13 @@
 		margin-top: calc(var(--chapter-picker-h, 3.45rem) + 0.9rem);
 	}
 
+	.wpm-panel,
 	.key-panel {
 		grid-column: 1 / -1;
+	}
+
+	.wpm-panel {
+		justify-content: center;
 	}
 
 	.key-panel strong {

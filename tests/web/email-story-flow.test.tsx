@@ -149,7 +149,7 @@ describe("email-scoped story web flow", () => {
 					path: "/play/rainbow-door-s1-test/complete/0",
 					record: true,
 				});
-				const { getByRole, getByText } = render(
+				const { getByRole, getByTestId, getByText } = render(
 					<Router hook={hook}>
 						<Route
 							path="/play/:storySlug/complete/:episodeIdx"
@@ -162,12 +162,50 @@ describe("email-scoped story web flow", () => {
 				await waitFor(() => {
 					expect(getByText(/episode 1 complete/i)).toBeDefined();
 					expect(getByText("Test Rainbow Story")).toBeDefined();
+					// The speed from the chapter just finished is celebrated here.
+					expect(getByTestId("complete-wpm").textContent).toContain("18");
 				});
 
 				fireEvent.click(getByRole("button", { name: /start next/i }));
 
 				await waitFor(() => {
 					expect(history.at(-1)).toBe("/play/rainbow-door-s1-test");
+				});
+			},
+		);
+	});
+
+	it("lets the kid listen to the chapter they just finished", async () => {
+		await withMockFetch(
+			(url) => {
+				expect(url).toBe("/api/progress");
+				return new Response(JSON.stringify(progressPayload), {
+					headers: { "content-type": "application/json" },
+				});
+			},
+			async () => {
+				const { hook, history } = memoryLocation({
+					path: "/play/rainbow-door-s1-test/complete/0",
+					record: true,
+				});
+				const { getByTestId } = render(
+					<Router hook={hook}>
+						<Route
+							path="/play/:storySlug/complete/:episodeIdx"
+							component={CompleteEpisode}
+						/>
+						<Route path="/play/:storySlug/episode/:episodeIdx">Reader</Route>
+					</Router>,
+				);
+
+				await waitFor(() => {
+					expect(getByTestId("listen-story")).toBeDefined();
+				});
+
+				fireEvent.click(getByTestId("listen-story"));
+
+				await waitFor(() => {
+					expect(history.at(-1)).toBe("/play/rainbow-door-s1-test/episode/0");
 				});
 			},
 		);

@@ -94,6 +94,45 @@ describe("EpisodeRunner", () => {
 		});
 	});
 
+	it("shows live speed: warms up, then displays a number and a non-warmup trend", async () => {
+		const { getByTestId } = renderWithRouter(
+			<EpisodeRunner {...defaultProps} episodeText="abcdefgh" />,
+		);
+
+		await waitFor(() => {
+			expect(getByTestId("cursor-idx").textContent).toBe("0");
+		});
+
+		// Before any typing, speed is warming up (placeholder, neutral trend).
+		expect(getByTestId("live-wpm").textContent).toBe("…");
+		expect(
+			getByTestId("live-wpm").closest(".wpm-panel")?.className,
+		).toContain("wpm-warmup");
+
+		// Type correct characters with small real gaps so the window has
+		// non-zero spans (synchronous dispatch would all share one timestamp).
+		for (const key of ["a", "b", "c", "d", "e", "f"]) {
+			act(() => {
+				document.dispatchEvent(
+					new KeyboardEvent("keydown", {
+						key,
+						bubbles: true,
+					}) as unknown as Event,
+				);
+			});
+			await new Promise((r) => setTimeout(r, 8));
+		}
+
+		await waitFor(() => {
+			expect(getByTestId("cursor-idx").textContent).toBe("6");
+			// Speed now shows a concrete number and has left the warmup state.
+			expect(getByTestId("live-wpm").textContent).toMatch(/^\d+$/);
+			const cls = getByTestId("live-wpm").closest(".wpm-panel")?.className ?? "";
+			expect(cls).not.toContain("wpm-warmup");
+			expect(cls).toMatch(/wpm-(up|steady|down)/);
+		});
+	});
+
 	it("renders typed region dimmed and untyped region with full contrast", () => {
 		const { getByTestId } = renderWithRouter(
 			<EpisodeRunner {...defaultProps} episodeText="Hello" />,

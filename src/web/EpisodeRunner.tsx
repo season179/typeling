@@ -11,6 +11,11 @@ import { sentenceBoundaries } from "../lib/sentenceBoundaries";
 import { wpmFromCharsAndMs } from "../lib/wpm";
 import { postSession } from "./api";
 import { clearDraft, loadDraft, saveDraft } from "./episodeRunner/autosave";
+import {
+	initialLiveWpmState,
+	liveWpmReducer,
+	type WpmTrend,
+} from "./episodeRunner/liveWpm";
 import { episodeRunnerReducer as cursorReducer } from "./episodeRunner/reducer";
 import { episodeRunnerReducer as sessionReducer } from "./episodeRunnerReducer";
 import { themeForStory } from "./storyTheme";
@@ -60,6 +65,29 @@ function cursorLetterClass(isFlashing: boolean) {
 	return `${base} border-amber-400 text-stone-800 cursor-glow`;
 }
 
+// Kid-facing speed feedback: always encouraging. Speeding up is celebrated,
+// easing off stays gentle and positive — never a failure signal.
+function speedCue(
+	trend: WpmTrend,
+	justBeatBest: boolean,
+): {
+	icon: string;
+	word: string;
+} {
+	switch (trend) {
+		case "up":
+			return justBeatBest
+				? { icon: "🚀", word: "New best!" }
+				: { icon: "🚀", word: "Zoom!" };
+		case "steady":
+			return { icon: "✨", word: "Nice!" };
+		case "down":
+			return { icon: "🌱", word: "Keep going!" };
+		default:
+			return { icon: "💫", word: "" };
+	}
+}
+
 export default function EpisodeRunner({
 	episodeText,
 	storySlug,
@@ -81,6 +109,14 @@ export default function EpisodeRunner({
 		flashUntil: null,
 		startedAt: null,
 	});
+
+	// Live, kid-facing typing speed. Separate from the canonical lifetime WPM
+	// submitted on completion — this one reads a recent window so it stays
+	// lively and can react with encouraging effects.
+	const [liveWpm, liveWpmDispatch] = useReducer(
+		liveWpmReducer,
+		initialLiveWpmState,
+	);
 
 	const cursorRef = useRef(cursor.cursorIdx);
 	cursorRef.current = cursor.cursorIdx;
@@ -105,6 +141,9 @@ export default function EpisodeRunner({
 					lastKeystrokeAt: draft.lastKeystrokeAt,
 				},
 			});
+			// The live-speed window is ephemeral and not persisted; rebuild it
+			// fresh from the next keystrokes rather than from the restored draft.
+			liveWpmDispatch({ type: "RESET" });
 		} else {
 			sessionDispatch({ type: "INIT", sessionId: crypto.randomUUID() });
 		}
@@ -120,6 +159,7 @@ export default function EpisodeRunner({
 		const onVisibilityChange = () => {
 			if (document.visibilityState === "hidden") {
 				cursorDispatch({ type: "BLUR" });
+				liveWpmDispatch({ type: "RESET" });
 			}
 		};
 		document.addEventListener("visibilitychange", onVisibilityChange);
@@ -134,13 +174,20 @@ export default function EpisodeRunner({
 			if (e.key === " ") {
 				e.preventDefault();
 			}
+			const now = Date.now();
+			const expected = episodeText[cursorRef.current] ?? "";
 			cursorDispatch({
 				type: "KEY_DOWN",
 				key: e.key,
-				expected: episodeText[cursorRef.current] ?? "",
-				now: Date.now(),
+				expected,
+				now,
 				repeat: e.repeat,
 			});
+			// Feed only correct, non-repeat keystrokes into the live-speed
+			// window (mirrors the reducer's `correct` rule); mistakes never count.
+			if (!e.repeat && e.key === expected) {
+				liveWpmDispatch({ type: "TICK", now });
+			}
 		};
 		const onPaste = (e: ClipboardEvent) => {
 			e.preventDefault();
@@ -302,6 +349,9 @@ export default function EpisodeRunner({
 	const expectedKey = labelForKey(cursorCharInSentence);
 	const cursorChar = cursorDisplayChar(cursorCharInSentence);
 
+	const speedCueData = speedCue(liveWpm.trend, liveWpm.justBeatBest);
+	const speedDisplay = liveWpm.wpm > 0 ? Math.round(liveWpm.wpm) : "…";
+
 	// Completed sentence text content for the story-so-far area
 	const completedTexts = useMemo(
 		() => completedSentences.map((s) => episodeText.slice(s.start, s.end)),
@@ -376,6 +426,26 @@ export default function EpisodeRunner({
 						<div className="chapter-rail" aria-hidden="true">
 							<span style={{ width: `${progressPercent}%` }} />
 						</div>
+					</div>
+					<div className={`hud-panel wpm-panel wpm-${liveWpm.trend}`}>
+						<span className="hud-label">Speed</span>
+						{/* Remount on a trend change *or* a fresh personal best so the
+						    pop replays for a new best even while the trend stays "up"
+						    (best only climbs on a genuine post-warmup best). */}
+						<span
+							className="wpm-readout"
+							key={`${liveWpm.trend}:${Math.round(liveWpm.best)}`}
+						>
+							<span className="wpm-icon" aria-hidden="true">
+								{speedCueData.icon}
+							</span>
+							<span className="wpm-figures">
+								<strong data-testid="live-wpm">{speedDisplay}</strong>
+								<span className="wpm-cue" aria-hidden="true">
+									{speedCueData.word || " "}
+								</span>
+							</span>
+						</span>
 					</div>
 					{!allDone && (
 						<div className="hud-panel key-panel">
