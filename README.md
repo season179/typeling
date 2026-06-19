@@ -1,6 +1,8 @@
 # typeling
 
-Typing-as-story-time app. Server is Hono on `127.0.0.1`; frontend is React 19 + Vite + Tailwind.
+Typing-as-story-time app for two young readers. Story unlocks are the reward, WPM is tracked quietly, and kid-facing mistakes are not counted.
+
+The whole app is a single Hono Worker (`src/server/index.ts`, `export default { fetch }`) that runs inside the Cloudflare Workers runtime and serves both the JSON API (`/api/*`) and the React 19 + Vite + Tailwind SPA from one origin. Persistence is Cloudflare D1 (`typeling-content`, bound as `STORY_DB`); episode audio lives in R2 (`typeling-prod-assets`, bound as `ASSETS_BUCKET`). Identity is Better Auth Google sign-in at `/api/auth/*`, normalised to a lowercase email; progress and WPM are email-scoped.
 
 ## Install
 
@@ -8,15 +10,41 @@ Typing-as-story-time app. Server is Hono on `127.0.0.1`; frontend is React 19 + 
 bun install
 ```
 
+Local Worker secrets live in `.dev.vars` (gitignored). At minimum you need the Better Auth and Google OAuth keys for sign-in to work — see [Secrets](#secrets).
+
 ## Dev server
 
 ```bash
 bun run dev
 ```
 
-Runs the full Portless HTTPS stack: Hono at `https://typeling-api.localhost` and Vite at `https://typeling.localhost`. Use `bun run dev:direct` for the plain `127.0.0.1` fallback (override Hono with `SERVER_PORT`).
+This applies local D1 migrations, starts the Portless HTTPS proxy (`PORTLESS_TLD=dev`), the forced-alignment aligner service, and Vite under the Cloudflare Workers runtime (`TYPELING_CLOUDFLARE=1`). API and frontend are served from a single origin: **https://typeling.dev**.
 
-Local content and progress live in Cloudflare D1 (`typeling-content`). `bun run dev` applies the local migrations automatically; seed story content with `bun run db:seed:local`.
+The TLD is `.dev`, not `.localhost`, because Google OAuth rejects `*.localhost` redirect URIs. There is no localhost auth fallback — you sign in with Google even in dev. (Tests and overrides inject identity through the `IDENTITY` binding instead.)
+
+Seed story content into local D1 once the server is up (the app and `/admin` read content from D1, not from `seasons/*.json`):
+
+```bash
+bun run db:seed:local       # seed story content into local D1
+bun run assets:seed:local   # optional: seed episode audio into local R2
+```
+
+Use `bun run dev:direct` only for the plain-`127.0.0.1` fallback that skips the Workers runtime: a Bun server on `SERVER_PORT` (default `3001`) plus Vite on `5173` proxying `/api`. Without the `STORY_DB` binding it uses in-memory stores, so it is only useful for quick non-D1, non-auth checks.
+
+### Secrets
+
+`.dev.vars` holds the local Worker secrets (set with `wrangler secret` in production):
+
+| Variable | Purpose |
+|---|---|
+| `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET` | Better Auth session configuration. |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google sign-in. |
+| `GEMINI_API_KEY` | Gemini multi-speaker TTS (audio generation). |
+| `OPENROUTER_API_KEY` | Transcript styling during audio generation. |
+| `ALIGNER_URL` | Loopback URL of the forced-alignment service used by `/admin` audio generation. |
+| `ADMIN_AUDIO_GENERATION_ENABLED`, `ADMIN_AUDIO_PUBLISH_ENABLED` | Feature flags for the `/admin` audio tools. |
+
+The `/parent` dashboard is gated by a `parent_viewers` allowlist table managed from local via `wrangler`; every Google account is otherwise treated as a reader.
 
 ## End-to-end tests
 
@@ -135,17 +163,19 @@ Full Gemini API reference: <https://ai.google.dev/gemini-api/docs/speech-generat
 
 ## Cloudflare deployment
 
-Typeling can deploy to Cloudflare Workers. The same Hono app runs inside a Worker with Durable Object state and R2 storage.
+The same Hono Worker that backs local dev is what ships to production — no separate server. State is Cloudflare D1 (`STORY_DB`, database `typeling-content`) and R2 (`ASSETS_BUCKET`, bucket `typeling-prod-assets`); see `wrangler.jsonc` for the bindings.
 
 | Command | What it does |
 | --- | --- |
-| `bun run dev:cloud` | Local Workers runtime via the Cloudflare Vite plugin. No Bun server needed. |
+| `bun run dev:cloud` | Local Workers runtime via the Cloudflare Vite plugin on plain `127.0.0.1` (no Portless HTTPS proxy). |
 | `bun run deploy` | Build the SPA and deploy to Cloudflare (`vite build && wrangler deploy`). Requires `wrangler login`. |
+| `bun run db:migrate:remote` | Apply the numbered `migrations/*.sql` to the production D1 database. |
 
 **Which dev mode should I use?**
 
-- **`bun run dev` (Portless)** — default for everyday development and kid testing. Runs the real Bun server with `data/state.json`.
-- **`bun run dev:cloud`** — use when testing Worker-specific behaviour (Durable Objects, R2 bindings) before a deploy.
+- **`bun run dev` (Portless)** — default for everyday development and kid testing. Runs the Workers runtime at `https://typeling.dev` with real D1 + R2 bindings, so Google sign-in works.
+- **`bun run dev:cloud`** — the same Workers runtime on plain `127.0.0.1`, for quick Worker checks when you do not need the HTTPS proxy or OAuth redirect.
+- **`bun run dev:direct`** — non-Workers fallback: a plain Bun server plus a Vite proxy, with in-memory stores. No D1, no R2, no auth.
 - **`bun run deploy`** — ship to production on Cloudflare.
 
 Full details: [`docs/cloudflare-deploy-plan.md`](docs/cloudflare-deploy-plan.md).
@@ -154,12 +184,18 @@ Full details: [`docs/cloudflare-deploy-plan.md`](docs/cloudflare-deploy-plan.md)
 
 | Script | What it does |
 | --- | --- |
-| `bun run dev` | Portless HTTPS stack: Hono at `https://typeling-api.localhost`, Vite at `https://typeling.localhost`. |
+| `bun run dev` | Full dev stack: D1 migrations + Portless HTTPS + aligner + Vite under the Workers runtime, served at `https://typeling.dev`. |
 | `bun run dev:proxy` | Ensure the standard HTTPS Portless proxy is running. |
-| `bun run dev:direct` | Hono on `127.0.0.1:3001`, Vite on `127.0.0.1:5173`; override Hono with `SERVER_PORT`. |
-| `bun run dev:cloud` | Local Cloudflare Workers dev via Vite plugin. |
+| `bun run dev:aligner` | Run the forced-alignment loopback service used by `/admin` audio generation. |
+| `bun run dev:direct` | Non-Workers fallback: Bun server on `127.0.0.1:3001` (override with `SERVER_PORT`), Vite on `127.0.0.1:5173` proxying `/api`. |
+| `bun run dev:cloud` | Local Cloudflare Workers dev via the Vite plugin on plain `127.0.0.1`. |
 | `bun run deploy` | Build SPA and deploy to Cloudflare. |
-| `bun run server` | Hono API server only. |
+| `bun run db:migrate:local` | Apply `migrations/*.sql` to the local D1 database. |
+| `bun run db:migrate:remote` | Apply `migrations/*.sql` to the production D1 database. |
+| `bun run db:seed:local` | Seed story content into local D1. |
+| `bun run assets:seed:local` | Seed episode audio into local R2. |
+| `bun run audio:publish` | Publish episode audio to R2. |
+| `bun run server` | Hono app via `Bun.serve` only (no Vite, no Workers runtime). |
 | `bun run web` | Vite dev server only. |
 | `bun run lint` | Biome check on `src/`. |
 | `bun run format` | Biome format-write on `src/`. |
