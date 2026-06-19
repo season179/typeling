@@ -7,7 +7,7 @@ import {
 } from "./api";
 import { authClient } from "./authClient";
 import Sparkline from "./Sparkline";
-import { themeForStory } from "./storyTheme";
+import { type StoryTheme, themeForStory } from "./storyTheme";
 
 const STATUS_MAP: Record<
 	GraduationStatus,
@@ -27,7 +27,7 @@ const STATUS_MAP: Record<
 	},
 };
 
-const ACCENT: Record<string, string> = {
+const ACCENT: Record<StoryTheme, string> = {
 	rainbow: "#f45fc4",
 	science: "#2288ff",
 };
@@ -79,8 +79,7 @@ function StoryCard({
 	story: ReaderStoryProgress;
 	now: number;
 }) {
-	const accent =
-		ACCENT[themeForStory(story.slug, story.theme)] ?? ACCENT.rainbow;
+	const accent = ACCENT[themeForStory(story.slug, story.theme)];
 	const totals = story.totals;
 	const last10 = story.recent_sessions;
 

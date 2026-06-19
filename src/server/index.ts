@@ -35,6 +35,7 @@ import type {
 	Season,
 	ServerBindings,
 	StoryStore,
+	StorySummary,
 } from "./stores";
 import {
 	D1ProgressStore,
@@ -558,6 +559,40 @@ app.get("/api/stories", async (c) => {
 	return c.json(await getStoryStore(c.env).listStories());
 });
 
+/** Group a reader's sessions by story slug in a single pass. */
+function groupSessionsByStory(sessions: Session[]): Map<string, Session[]> {
+	const byStory = new Map<string, Session[]>();
+	for (const session of sessions) {
+		const storySessions = byStory.get(session.season_slug) ?? [];
+		storySessions.push(session);
+		byStory.set(session.season_slug, storySessions);
+	}
+	return byStory;
+}
+
+/**
+ * The per-story progress shape shared by /api/progress and /api/parent/family.
+ * `storySessions` must already be scoped to this story (newest-first, as
+ * listSessions returns them). The parent dashboard layers extra lifetime stats
+ * on top of this base.
+ */
+function buildStoryProgress(
+	story: StorySummary,
+	storySessions: Session[],
+	currentEpisode: number,
+	targetWpm: number,
+) {
+	const rolling3 = rolling3Wpm(storySessions, { seasonSlug: story.slug });
+	return {
+		...story,
+		current_episode: currentEpisode,
+		target_wpm: targetWpm,
+		rolling3,
+		status: graduationStatus(rolling3, targetWpm),
+		recent_sessions: storySessions.slice(0, 10),
+	};
+}
+
 app.get("/api/progress", async (c) => {
 	const user = await requireUser(c.req.raw, c.env);
 	const [stories, progressRows, sessions] = await Promise.all([
@@ -568,29 +603,18 @@ app.get("/api/progress", async (c) => {
 	const progressByStory = new Map(
 		progressRows.map((progress) => [progress.season_slug, progress]),
 	);
-	const sessionsByStory = new Map<string, Session[]>();
-	for (const session of sessions) {
-		const storySessions = sessionsByStory.get(session.season_slug) ?? [];
-		storySessions.push(session);
-		sessionsByStory.set(session.season_slug, storySessions);
-	}
+	const sessionsByStory = groupSessionsByStory(sessions);
 
 	return c.json({
 		user,
-		stories: stories.map((story) => {
-			const storySessions = sessionsByStory.get(story.slug) ?? [];
-			const rolling3 = rolling3Wpm(storySessions, {
-				seasonSlug: story.slug,
-			});
-			return {
-				...story,
-				current_episode: progressByStory.get(story.slug)?.current_episode ?? 0,
-				target_wpm: user.target_wpm,
-				rolling3,
-				status: graduationStatus(rolling3, user.target_wpm),
-				recent_sessions: storySessions.slice(0, 10),
-			};
-		}),
+		stories: stories.map((story) =>
+			buildStoryProgress(
+				story,
+				sessionsByStory.get(story.slug) ?? [],
+				progressByStory.get(story.slug)?.current_episode ?? 0,
+				user.target_wpm,
+			),
+		),
 	});
 });
 
@@ -626,28 +650,23 @@ app.get("/api/parent/family", async (c) => {
 			const progressByStory = new Map(
 				progressRows.map((progress) => [progress.season_slug, progress]),
 			);
+			const sessionsByStory = groupSessionsByStory(sessions);
 			return {
 				email: user.email,
 				display_name: user.display_name,
 				target_wpm: user.target_wpm,
 				stories: stories.map((story) => {
-					const storySessions = sessions.filter(
-						(session) => session.season_slug === story.slug,
-					);
-					const rolling3 = rolling3Wpm(storySessions, {
-						seasonSlug: story.slug,
-					});
+					const storySessions = sessionsByStory.get(story.slug) ?? [];
 					return {
-						...story,
-						current_episode:
+						...buildStoryProgress(
+							story,
+							storySessions,
 							progressByStory.get(story.slug)?.current_episode ?? 0,
-						target_wpm: user.target_wpm,
-						rolling3,
-						status: graduationStatus(rolling3, user.target_wpm),
+							user.target_wpm,
+						),
 						totals: sessionTotals(storySessions),
 						trend: wpmTrend(storySessions),
 						last_active_at: lastActiveAt(storySessions),
-						recent_sessions: storySessions.slice(0, 10),
 					};
 				}),
 			};

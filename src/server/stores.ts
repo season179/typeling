@@ -515,7 +515,7 @@ export class D1ProgressStore implements ProgressStore {
 	async listUsers(): Promise<UserProfile[]> {
 		const rows = await this.#db
 			.prepare(
-				"SELECT email, display_name, name, access_subject, target_wpm FROM users",
+				"SELECT email, display_name, name, access_subject, target_wpm FROM users ORDER BY email ASC",
 			)
 			.all<D1UserRow>();
 		return (rows.results ?? []).map(userFromRow);
@@ -528,7 +528,7 @@ export class D1ProgressStore implements ProgressStore {
 			)
 			.bind(normalizeStoredEmail(email))
 			.first<{ present: number }>();
-		return row !== null;
+		return row != null;
 	}
 
 	async upsertUser(user: SignedInUser): Promise<UserProfile> {
