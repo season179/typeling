@@ -19,8 +19,14 @@ function s(overrides: Partial<Session>): Session {
 	};
 }
 
+const threeSessions = [
+	s({ id: "a", wpm: 10, active_ms: 30_000 }),
+	s({ id: "b", wpm: 20, active_ms: 60_000 }),
+	s({ id: "c", wpm: 30, active_ms: 90_000 }),
+];
+
 describe("sessionTotals", () => {
-	it("returns zeros and nulls for an empty list", () => {
+	it("returns zero count and null WPM stats when there are no sessions", () => {
 		expect(sessionTotals([])).toEqual({
 			count: 0,
 			total_active_ms: 0,
@@ -29,16 +35,20 @@ describe("sessionTotals", () => {
 		});
 	});
 
-	it("sums time and computes best/avg WPM", () => {
-		const totals = sessionTotals([
-			s({ id: "a", wpm: 10, active_ms: 30_000 }),
-			s({ id: "b", wpm: 20, active_ms: 60_000 }),
-			s({ id: "c", wpm: 30, active_ms: 90_000 }),
-		]);
-		expect(totals.count).toBe(3);
-		expect(totals.total_active_ms).toBe(180_000);
-		expect(totals.best_wpm).toBe(30);
-		expect(totals.avg_wpm).toBe(20);
+	it("counts every session in the list", () => {
+		expect(sessionTotals(threeSessions).count).toBe(3);
+	});
+
+	it("sums active_ms across all sessions", () => {
+		expect(sessionTotals(threeSessions).total_active_ms).toBe(180_000);
+	});
+
+	it("returns the highest WPM as best_wpm", () => {
+		expect(sessionTotals(threeSessions).best_wpm).toBe(30);
+	});
+
+	it("returns the mean WPM as avg_wpm", () => {
+		expect(sessionTotals(threeSessions).avg_wpm).toBe(20);
 	});
 });
 
@@ -52,7 +62,7 @@ describe("wpmTrend", () => {
 		expect(trend).toEqual([10, 20, 30]);
 	});
 
-	it("keeps only the most recent `limit` sessions", () => {
+	it("keeps only the most recent sessions up to the limit", () => {
 		const sessions = Array.from({ length: 15 }, (_, i) =>
 			s({
 				id: `s${i}`,
@@ -64,13 +74,13 @@ describe("wpmTrend", () => {
 		expect(trend).toEqual([12, 13, 14]);
 	});
 
-	it("is empty for no sessions", () => {
+	it("returns an empty trend when there are no sessions", () => {
 		expect(wpmTrend([])).toEqual([]);
 	});
 });
 
 describe("lastActiveAt", () => {
-	it("returns the most recent finished_at", () => {
+	it("returns the latest finished_at timestamp regardless of list order", () => {
 		expect(
 			lastActiveAt([
 				s({ id: "a", finished_at: "2026-06-01T10:00:00.000Z" }),
@@ -80,7 +90,7 @@ describe("lastActiveAt", () => {
 		).toBe("2026-06-05T10:00:00.000Z");
 	});
 
-	it("is null for no sessions", () => {
+	it("returns null last-active when there are no sessions", () => {
 		expect(lastActiveAt([])).toBeNull();
 	});
 });
