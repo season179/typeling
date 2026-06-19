@@ -514,7 +514,12 @@
 	width: min(64rem, 100%);
 	margin: 0 auto;
 	overflow: hidden;
-	padding: 1rem clamp(1rem, 4vw, 2rem) clamp(1.2rem, 4vw, 2rem);
+	/* The hero token and finish gate are anchored to the bottom of the
+	   quest-scene and rise taller than that row, so they overflow upwards. The
+	   top padding keeps that overflow clear of the HUD above (the gate caps at
+	   5.2rem on desktop); the 1fr story row absorbs the extra space, the typing
+	   stage is untouched. Mobile uses a smaller value where the gate is shorter. */
+	padding: 2.85rem clamp(1rem, 4vw, 2rem) clamp(1.2rem, 4vw, 2rem);
 }
 
 .quest-scene {
@@ -861,6 +866,9 @@
 
 	.playfield {
 		grid-template-rows: minmax(3.4rem, 4rem) minmax(0, 1fr) auto;
+		/* The gate is much shorter here, so it needs far less top clearance
+		   than desktop — reclaim that space for the short mobile viewport. */
+		padding-top: 1.25rem;
 		padding-bottom: 0.85rem;
 	}
 
