@@ -58,7 +58,12 @@ const familyPayload = {
 					target_wpm: 15,
 					rolling3: null,
 					status: "no sessions yet",
-					totals: { count: 0, total_active_ms: 0, best_wpm: null, avg_wpm: null },
+					totals: {
+						count: 0,
+						total_active_ms: 0,
+						best_wpm: null,
+						avg_wpm: null,
+					},
 					trend: [],
 					last_active_at: null,
 					recent_sessions: [],
@@ -69,32 +74,76 @@ const familyPayload = {
 };
 
 function stubFetch(response: Response) {
-	globalThis.fetch = (() => Promise.resolve(response)) as unknown as typeof fetch;
+	globalThis.fetch = (() =>
+		Promise.resolve(response)) as unknown as typeof fetch;
+}
+
+async function renderLoadedParentView() {
+	const original = globalThis.fetch;
+	stubFetch(
+		new Response(JSON.stringify(familyPayload), {
+			headers: { "content-type": "application/json" },
+		}),
+	);
+	try {
+		const view = render(<ParentView />);
+		await waitFor(() => view.getByText("Ava"));
+		return {
+			view,
+			restoreFetch: () => {
+				globalThis.fetch = original;
+			},
+		};
+	} catch (error) {
+		globalThis.fetch = original;
+		throw error;
+	}
 }
 
 describe("ParentView", () => {
-	it("renders every reader with their stats", async () => {
-		const original = globalThis.fetch;
-		stubFetch(
-			new Response(JSON.stringify(familyPayload), {
-				headers: { "content-type": "application/json" },
-			}),
-		);
+	it("lists each reader with display name, email, and target WPM", async () => {
+		const { view, restoreFetch } = await renderLoadedParentView();
 		try {
-			const { getByText, getAllByText } = render(<ParentView />);
-			await waitFor(() => getByText("Ava"));
+			const { getByText, getAllByText } = view;
 			expect(getByText("Ben")).toBeDefined();
-			// Both readers list the same story.
-			expect(getAllByText("Test Rainbow Story").length).toBe(2);
-			// Ava's graduated badge and a completed session WPM are shown.
-			expect(getByText("graduated")).toBeDefined();
+			expect(
+				getByText("2 readers · who did what across every story"),
+			).toBeDefined();
 			expect(getByText("ava@example.com · target 15 WPM")).toBeDefined();
+			expect(getByText("ben@example.com · target 15 WPM")).toBeDefined();
+			expect(getAllByText("Test Rainbow Story").length).toBe(2);
 		} finally {
-			globalThis.fetch = original;
+			restoreFetch();
 		}
 	});
 
-	it("shows a parents-only message on 403", async () => {
+	it("shows graduated on a story card when rolling-3 meets the target WPM", async () => {
+		const { view, restoreFetch } = await renderLoadedParentView();
+		try {
+			const { container, getByText, getByRole } = view;
+			expect(getByText("graduated")).toBeDefined();
+			expect(container.textContent).toContain("Rolling 3:");
+			expect(
+				getByRole("img", { name: "WPM trend across 3 sessions" }),
+			).toBeDefined();
+			expect(container.textContent).toContain("0:30");
+		} finally {
+			restoreFetch();
+		}
+	});
+
+	it("shows no sessions yet and an empty session log when a reader has none", async () => {
+		const { view, restoreFetch } = await renderLoadedParentView();
+		try {
+			const { getByText } = view;
+			expect(getByText("no sessions yet")).toBeDefined();
+			expect(getByText("No sessions completed yet.")).toBeDefined();
+		} finally {
+			restoreFetch();
+		}
+	});
+
+	it("shows the parent allowlist message when the API returns 403", async () => {
 		const original = globalThis.fetch;
 		stubFetch(new Response("{}", { status: 403 }));
 		try {
