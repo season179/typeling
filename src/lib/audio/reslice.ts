@@ -17,8 +17,6 @@ import { checkSidecarMatchesEpisodeText } from "./sidecarMatch";
  * two shorter episodes at a sentence-final boundary, slicing the mono PCM at the
  * sample for the cut time. Re-using the existing word timings means zero TTS and
  * zero re-alignment. Worker-portable: bytes + JSON only.
- *
- * @see docs/episode-split-and-admin-generation-plan.md §1.4
  */
 
 const RIFF_HEADER_SIZE = 12;

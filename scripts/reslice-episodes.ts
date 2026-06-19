@@ -19,8 +19,6 @@
  * -styled-transcript.txt, .meta.json, .qwen-align.raw.txt) for the touched base
  * names are removed under --write since they cannot be regenerated here and
  * would otherwise publish as stale.
- *
- * @see docs/episode-split-and-admin-generation-plan.md §1.4, §1.10c, §1.10g
  */
 import { unlink } from "node:fs/promises";
 import { join } from "node:path";

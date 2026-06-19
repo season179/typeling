@@ -150,7 +150,7 @@ bun run scripts/reslice-episodes.ts --write               # write the new .wav /
 bun run scripts/reslice-episodes.ts --write rainbow-door-s1      # limit to one season
 ```
 
-Every half is run through the exact serve-time `EpisodeAudioStale` check (`src/lib/audio/sidecarMatch.ts`) before anything is written. Under `--write`, stale build intermediates (`-transcript.txt`, `-styled-transcript.txt`, `.meta.json`, `.qwen-align.raw.txt`) for the touched episodes are removed, since they cannot be regenerated here and would otherwise publish as stale. Publish the new halves to R2 afterwards with `bun run scripts/publish-assets.ts`. See `docs/episode-split-and-admin-generation-plan.md` §1.4.
+Every half is run through the exact serve-time `EpisodeAudioStale` check (`src/lib/audio/sidecarMatch.ts`) before anything is written. Under `--write`, stale build intermediates (`-transcript.txt`, `-styled-transcript.txt`, `.meta.json`, `.qwen-align.raw.txt`) for the touched episodes are removed, since they cannot be regenerated here and would otherwise publish as stale. Publish the new halves to R2 afterwards with `bun run scripts/publish-assets.ts` (see `docs/r2-keys.md` for key layout).
 
 ### Gemini TTS notes
 
@@ -178,7 +178,7 @@ The same Hono Worker that backs local dev is what ships to production — no sep
 - **`bun run dev:direct`** — non-Workers fallback: a plain Bun server plus a Vite proxy, with in-memory stores. No D1, no R2, no auth.
 - **`bun run deploy`** — ship to production on Cloudflare.
 
-Full details: [`docs/cloudflare-deploy-plan.md`](docs/cloudflare-deploy-plan.md).
+Bindings: `wrangler.jsonc`. R2 key layout: [`docs/r2-keys.md`](docs/r2-keys.md).
 
 ## Scripts
 

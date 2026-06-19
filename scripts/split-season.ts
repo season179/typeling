@@ -13,8 +13,6 @@
  * With no files, processes the two real seasons. The `*-test.json` fixtures are
  * single-sentence-per-episode toys with no interior boundary to cut on (and are
  * not loaded by the app or any test), so they are left at their original shape.
- *
- * @see docs/episode-split-and-admin-generation-plan.md §1.3, §1.10b
  */
 import { chooseEpisodeSplit } from "../src/lib/audio/reslice";
 import { seasonSchema } from "../src/lib/schemas/season";
