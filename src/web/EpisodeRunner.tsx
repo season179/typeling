@@ -411,7 +411,7 @@ export default function EpisodeRunner({
 							{completedTexts.map((text, i) => (
 								<p
 									key={completedSentences[i]?.start ?? i}
-									className="animate-fade-slide-up font-serif text-base leading-relaxed text-stone-400 sm:text-lg"
+									className="animate-fade-slide-up font-serif text-xl leading-relaxed text-stone-400 sm:text-2xl"
 								>
 									{text}
 								</p>
@@ -421,7 +421,7 @@ export default function EpisodeRunner({
 								sentences.slice(completedSentences.length).map((s, i) => (
 									<p
 										key={s.start}
-										className="animate-fade-slide-up font-serif text-base leading-relaxed text-stone-400 sm:text-lg"
+										className="animate-fade-slide-up font-serif text-xl leading-relaxed text-stone-400 sm:text-2xl"
 										style={{ animationDelay: `${i * 0.08}s` }}
 									>
 										{episodeText.slice(s.start, s.end)}
