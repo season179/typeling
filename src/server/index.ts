@@ -28,6 +28,7 @@ import {
 	DEFAULT_SEASONS_DIR,
 	HOSTNAME,
 } from "./config";
+import { readIdentityFromEnv } from "./devIdentity";
 import { HttpError } from "./httpError";
 import type {
 	AssetStore,
@@ -82,7 +83,6 @@ function stripClientSessionIdentity(body: unknown): unknown {
 
 	const copy = { ...(body as Record<string, unknown>) };
 	delete copy.signed_in_user;
-	delete copy.child_id;
 	delete copy.email;
 	return copy;
 }
@@ -1109,9 +1109,11 @@ export function fetch(request: Request, envOrServer?: unknown) {
 
 if (import.meta.main) {
 	const port = readPort();
+	const identity = readIdentityFromEnv();
+	const bindings: ServerBindings = identity ? { IDENTITY: identity } : {};
 
 	Bun.serve({
-		fetch,
+		fetch: (request) => fetch(request, bindings),
 		hostname: HOSTNAME,
 		port,
 	});

@@ -11,7 +11,6 @@ function makeSession(
 ) {
 	return {
 		id: crypto.randomUUID(),
-		child_id: "test-child",
 		season_slug: "test-season",
 		episode_idx: 0,
 		wpm: 10,

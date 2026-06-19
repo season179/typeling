@@ -17,7 +17,7 @@ import {
 	type WpmTrend,
 } from "./episodeRunner/liveWpm";
 import { episodeRunnerReducer as cursorReducer } from "./episodeRunner/reducer";
-import { episodeRunnerReducer as sessionReducer } from "./episodeRunnerReducer";
+import { sessionReducer } from "./sessionReducer";
 import { themeForStory } from "./storyTheme";
 
 interface EpisodeRunnerProps {

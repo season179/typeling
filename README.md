@@ -48,13 +48,19 @@ The `/parent` dashboard is gated by a `parent_viewers` allowlist table managed f
 
 ## End-to-end tests
 
-E2E tests live in `scripts/e2e/` and use `agent-browser` (not Playwright).
+E2E tests live in `scripts/e2e/` and use `agent-browser` (not Playwright). They target the **`dev:direct` fallback** on `http://127.0.0.1:5173`, not the canonical `https://typeling.dev` stack — auth is injected through the `TYPELING_IDENTITY` env var instead of Google sign-in.
 
 ```bash
-npm i -g agent-browser && agent-browser install
+bun add -g agent-browser && agent-browser install
 ```
 
-Start the dev server in one terminal, then run a test in another:
+Start the dev server in one terminal:
+
+```bash
+TYPELING_IDENTITY='{"email":"e2e@typeling.dev","display_name":"E2E"}' bun run dev:direct
+```
+
+Run a test in another terminal:
 
 ```bash
 bun run e2e:happy-path   # story card → episode 0 → completion page → chapter map marks it completed
@@ -199,4 +205,4 @@ Bindings: `wrangler.jsonc`. R2 key layout: [`docs/r2-keys.md`](docs/r2-keys.md).
 | `bun run e2e:happy-path` | End-to-end happy path via agent-browser. |
 | `bun run e2e:wrong-key` | Wrong-key isolation test via agent-browser. |
 | `bun run e2e:idle` | End-to-end idle handling test via agent-browser. |
-| `bun run gen:season` | Generate a season JSON from prompts. |
+| `bun run gen:season` | Generate a season JSON (`--slug`, `--theme`, `--target-wpm`, `--forbidden-name`; optional `--fixture`). |

@@ -1031,12 +1031,12 @@
 	color: var(--game-ink);
 }
 
-.child-select {
+.story-select {
 	position: relative;
 	z-index: 1;
 }
 
-.child-card {
+.story-card {
 	position: relative;
 	width: min(18rem, calc(100vw - 3rem));
 	border-color: var(--game-border);
@@ -1045,11 +1045,11 @@
 	backdrop-filter: blur(16px);
 }
 
-.child-card:hover {
+.story-card:hover {
 	transform: translateY(-4px);
 }
 
-.child-token {
+.story-token {
 	display: block;
 	width: 3rem;
 	aspect-ratio: 1;
@@ -1064,7 +1064,7 @@
 	box-shadow: 0 14px 28px var(--game-shadow);
 }
 
-.science-card .child-token {
+.science-card .story-token {
 	border-radius: 0.8rem;
 	background: linear-gradient(135deg, #2288ff, #20d6a1);
 }

@@ -1,22 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import { MAX_CURRENT_EPISODE } from "../../../src/lib/schemas/season";
 import {
-	childSchema,
 	sessionSchema,
 	sessionSubmissionSchema,
-	stateSchema,
 	storyProgressSchema,
 	userProfileSchema,
 } from "../../../src/lib/schemas/state";
-
-const validChild = {
-	name: "Reader",
-	theme: "rainbow-unicorn",
-	target_wpm: 10,
-	active_season: "rainbow-door-season-01",
-	current_episode: 0,
-	current_session_id: null,
-};
 
 const validSession = {
 	id: "11111111-2222-3333-4444-555555555555",
@@ -34,58 +23,6 @@ const storedSession = {
 	email: "season@example.com",
 };
 
-describe("childSchema", () => {
-	it("accepts a valid child", () => {
-		expect(childSchema.parse(validChild)).toEqual(validChild);
-	});
-
-	it("accepts a string current_session_id and rejects a numeric one", () => {
-		expect(
-			childSchema.parse({ ...validChild, current_session_id: "abc-123" })
-				.current_session_id,
-		).toBe("abc-123");
-		expect(() =>
-			childSchema.parse({ ...validChild, current_session_id: 7 }),
-		).toThrow();
-	});
-
-	it("rejects current_episode below 0", () => {
-		expect(() =>
-			childSchema.parse({ ...validChild, current_episode: -1 }),
-		).toThrow();
-	});
-
-	it("rejects target_wpm below 1", () => {
-		expect(() => childSchema.parse({ ...validChild, target_wpm: 0 })).toThrow();
-	});
-
-	it("rejects fractional integer fields", () => {
-		expect(() =>
-			childSchema.parse({ ...validChild, target_wpm: 10.5 }),
-		).toThrow();
-		expect(() =>
-			childSchema.parse({ ...validChild, current_episode: 1.5 }),
-		).toThrow();
-	});
-
-	it("rejects empty strings for name/theme/active_season", () => {
-		expect(() => childSchema.parse({ ...validChild, name: "" })).toThrow();
-		expect(() => childSchema.parse({ ...validChild, theme: "" })).toThrow();
-		expect(() =>
-			childSchema.parse({ ...validChild, active_season: "" }),
-		).toThrow();
-	});
-
-	it("rejects current_episode above the max episode index", () => {
-		expect(() =>
-			childSchema.parse({
-				...validChild,
-				current_episode: MAX_CURRENT_EPISODE + 1,
-			}),
-		).toThrow();
-	});
-});
-
 describe("sessionSubmissionSchema", () => {
 	it("accepts a valid client-submitted session without identity", () => {
 		expect(sessionSubmissionSchema.parse(validSession)).toEqual(validSession);
@@ -94,7 +31,6 @@ describe("sessionSubmissionSchema", () => {
 	it("strips client-provided identity fields", () => {
 		const session = {
 			...validSession,
-			child_id: "reader",
 			email: "client@example.com",
 			signed_in_user: {
 				email: "season@example.com",
@@ -260,46 +196,6 @@ describe("storyProgressSchema", () => {
 				email: "season@example.com",
 				season_slug: "rainbow-door-season-01",
 				current_episode: MAX_CURRENT_EPISODE + 1,
-			}),
-		).toThrow();
-	});
-});
-
-describe("stateSchema", () => {
-	it("accepts a valid state with children record and sessions array", () => {
-		const state = {
-			children: { reader: validChild },
-			sessions: [storedSession],
-		};
-
-		expect(stateSchema.parse(state)).toEqual(state);
-	});
-
-	it("accepts an empty children record and empty sessions array", () => {
-		expect(stateSchema.parse({ children: {}, sessions: [] })).toEqual({
-			children: {},
-			sessions: [],
-		});
-	});
-
-	it("rejects a state with an invalid child entry", () => {
-		const state = {
-			children: { reader: { ...validChild, target_wpm: 0 } },
-			sessions: [],
-		};
-
-		expect(() => stateSchema.parse(state)).toThrow();
-	});
-
-	it("rejects a state missing the sessions key", () => {
-		expect(() => stateSchema.parse({ children: {} })).toThrow();
-	});
-
-	it("rejects an empty-string child id key", () => {
-		expect(() =>
-			stateSchema.parse({
-				children: { "": validChild },
-				sessions: [],
 			}),
 		).toThrow();
 	});

@@ -22,35 +22,25 @@ const fixtureSeason = {
 };
 
 let workDir: string;
-let stateFile: string;
 let seasonsDir: string;
 let audioDir: string;
-let originalStatePath: string | undefined;
 let originalSeasonsDir: string | undefined;
 let originalAudioDir: string | undefined;
 
 beforeEach(async () => {
 	workDir = await mkdtemp(join(tmpdir(), "typeling-admin-"));
-	stateFile = join(workDir, "state.json");
 	seasonsDir = join(workDir, "seasons");
 	audioDir = join(workDir, "audio");
 	await mkdir(seasonsDir, { recursive: true });
 	await mkdir(audioDir, { recursive: true });
 
-	originalStatePath = Bun.env.TYPELING_STATE_PATH;
 	originalSeasonsDir = Bun.env.TYPELING_SEASONS_DIR;
 	originalAudioDir = Bun.env.TYPELING_AUDIO_DIR;
-	Bun.env.TYPELING_STATE_PATH = stateFile;
 	Bun.env.TYPELING_SEASONS_DIR = seasonsDir;
 	Bun.env.TYPELING_AUDIO_DIR = audioDir;
 });
 
 afterEach(async () => {
-	if (originalStatePath === undefined) {
-		delete Bun.env.TYPELING_STATE_PATH;
-	} else {
-		Bun.env.TYPELING_STATE_PATH = originalStatePath;
-	}
 	if (originalSeasonsDir === undefined) {
 		delete Bun.env.TYPELING_SEASONS_DIR;
 	} else {

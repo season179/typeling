@@ -113,18 +113,18 @@ export default function App() {
 			<header className="text-center">
 				<h1 className="home-title text-3xl font-bold">Typeling</h1>
 			</header>
-			<div className="child-select flex flex-wrap justify-center gap-4">
+			<div className="story-select flex flex-wrap justify-center gap-4">
 				{stories.map((story) => {
 					const isScience =
 						themeForStory(story.slug, story.theme) === "science";
 					return (
 						<div
 							key={story.slug}
-							className={`child-card rounded-lg border-2 border-gray-200 p-6 text-left transition-all hover:border-blue-400 hover:shadow-md ${
+							className={`story-card rounded-lg border-2 border-gray-200 p-6 text-left transition-all hover:border-blue-400 hover:shadow-md ${
 								isScience ? "science-card" : "rainbow-card"
 							}`}
 						>
-							<span className="child-token" aria-hidden="true" />
+							<span className="story-token" aria-hidden="true" />
 							<span className="block text-xl font-semibold">{story.name}</span>
 							<span className="mt-2 block text-sm text-stone-500">
 								Chapter{" "}

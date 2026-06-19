@@ -4,8 +4,6 @@ import { join } from "node:path";
 import OpenAI from "openai";
 import type { z } from "zod";
 import { seasonSchema } from "../src/lib/schemas/season";
-import { readState } from "../src/server/state";
-import type { Child } from "../src/lib/schemas/state";
 import { asciiNormalize } from "../src/lib/asciiNormalize";
 import { usToBritish } from "../src/lib/usToBritish";
 import { CharsetError } from "../src/lib/assertCharset";
@@ -14,6 +12,12 @@ import { wordCountBudget } from "../src/lib/wordCountBudget";
 import { buildPrompt } from "./gen-season-prompt";
 
 type Season = z.infer<typeof seasonSchema>;
+
+interface SeasonProfile {
+	theme: string;
+	target_wpm: number;
+	forbidden_name: string;
+}
 
 export class SeasonFixtureError extends Error {
 	constructor(message: string) {
@@ -63,13 +67,13 @@ export class WordCountError extends Error {
 
 export class PersonalNameError extends Error {
 	readonly episodeIdx: number;
-	readonly childName: string;
+	readonly forbiddenName: string;
 
-	constructor(episodeIdx: number, childName: string) {
-		super(`Child name appears in episode ${episodeIdx}: ${childName}`);
+	constructor(episodeIdx: number, forbiddenName: string) {
+		super(`Forbidden name appears in episode ${episodeIdx}: ${forbiddenName}`);
 		this.name = "PersonalNameError";
 		this.episodeIdx = episodeIdx;
-		this.childName = childName;
+		this.forbiddenName = forbiddenName;
 	}
 }
 
@@ -105,32 +109,42 @@ const MAX_LLM_ATTEMPTS = 5;
 const { values } = parseArgs({
 	args: Bun.argv.slice(2),
 	options: {
-		child: { type: "string" },
 		slug: { type: "string" },
+		theme: { type: "string" },
+		"target-wpm": { type: "string" },
+		"forbidden-name": { type: "string" },
 		fixture: { type: "string" },
 	},
 	strict: true,
 });
 
-const childId = values.child;
 const slug = values.slug;
+const theme = values.theme;
+const targetWpmRaw = values["target-wpm"];
+const forbiddenName = values["forbidden-name"];
 const fixturePath = values.fixture;
 
-if (!childId || !slug) {
+if (!slug || !theme || !targetWpmRaw || !forbiddenName) {
 	console.error(
-		"Usage: gen-season --child <id> --slug <slug> [--fixture <path>]",
+		"Usage: gen-season --slug <slug> --theme <theme> --target-wpm <n> --forbidden-name <name> [--fixture <path>]",
 	);
 	process.exit(1);
 }
 
-const cid: string = childId;
-const slg: string = slug;
+const targetWpm = Number(targetWpmRaw);
+if (!Number.isInteger(targetWpm) || targetWpm < 1) {
+	console.error("--target-wpm must be a positive integer");
+	process.exit(1);
+}
 
-const statePath =
-	process.env.TYPELING_STATE_PATH ?? join(ROOT, "data", "state.json");
+const profile: SeasonProfile = {
+	theme,
+	target_wpm: targetWpm,
+	forbidden_name: forbiddenName,
+};
 
-function storyNameFromTheme(theme: string): string {
-	return theme
+function storyNameFromTheme(storyTheme: string): string {
+	return storyTheme
 		.split(/[^A-Za-z0-9]+/)
 		.filter(Boolean)
 		.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
@@ -155,7 +169,7 @@ async function loadFromFixture(path: string): Promise<unknown> {
 	}
 }
 
-async function loadFromLLM(child: Child): Promise<unknown> {
+async function loadFromLLM(seasonProfile: SeasonProfile): Promise<unknown> {
 	const apiKey = process.env.OPENROUTER_API_KEY;
 	if (!apiKey) {
 		throw new LLMTransportError(
@@ -164,8 +178,8 @@ async function loadFromLLM(child: Child): Promise<unknown> {
 	}
 
 	const prompt = buildPrompt({
-		theme: child.theme,
-		targetWpm: child.target_wpm,
+		theme: seasonProfile.theme,
+		targetWpm: seasonProfile.target_wpm,
 	});
 
 	const client = new OpenAI({
@@ -219,21 +233,21 @@ async function loadFromLLM(child: Child): Promise<unknown> {
 	});
 
 	return {
-		slug: slg,
-		name: storyNameFromTheme(child.theme),
-		theme: child.theme,
+		slug,
+		name: storyNameFromTheme(seasonProfile.theme),
+		theme: seasonProfile.theme,
 		episodes,
 	};
 }
 
-function validateSeason(raw: unknown, child: Child): Season {
+function validateSeason(raw: unknown, seasonProfile: SeasonProfile): Season {
 	const seasonResult = seasonSchema.safeParse(raw);
 	if (!seasonResult.success) {
 		throw new SeasonSchemaError(seasonResult.error.message);
 	}
 	const season = seasonResult.data;
 
-	const budget = wordCountBudget(child.target_wpm);
+	const budget = wordCountBudget(seasonProfile.target_wpm);
 
 	for (const episode of season.episodes) {
 		let text = episode.text;
@@ -242,7 +256,7 @@ function validateSeason(raw: unknown, child: Child): Season {
 		text = usToBritish(text);
 
 		const violation = checkStoryText(text, {
-			forbiddenNames: [child.name],
+			forbiddenNames: [seasonProfile.forbidden_name],
 			nameMatch: "substring",
 		});
 		if (violation) {
@@ -252,7 +266,7 @@ function validateSeason(raw: unknown, child: Child): Season {
 				case "blacklist":
 					throw new ContentBlacklistError(episode.idx, violation.terms);
 				case "forbidden-name":
-					throw new PersonalNameError(episode.idx, child.name);
+					throw new PersonalNameError(episode.idx, seasonProfile.forbidden_name);
 				default: {
 					const _exhaustive: never = violation;
 					throw _exhaustive;
@@ -287,13 +301,15 @@ function isRetryableGenerationError(err: unknown): boolean {
 	);
 }
 
-async function generateFromLLMWithRetries(child: Child): Promise<Season> {
+async function generateFromLLMWithRetries(
+	seasonProfile: SeasonProfile,
+): Promise<Season> {
 	let lastError: unknown;
 
 	for (let attempt = 1; attempt <= MAX_LLM_ATTEMPTS; attempt += 1) {
 		try {
-			const raw = await loadFromLLM(child);
-			return validateSeason(raw, child);
+			const raw = await loadFromLLM(seasonProfile);
+			return validateSeason(raw, seasonProfile);
 		} catch (err) {
 			if (!isRetryableGenerationError(err)) {
 				throw err;
@@ -314,19 +330,13 @@ async function generateFromLLMWithRetries(child: Child): Promise<Season> {
 }
 
 async function main() {
-	const state = await readState(statePath);
-	const child = state.children[cid];
-	if (!child) {
-		throw new SeasonFixtureError(`Child "${cid}" not found in state.json`);
-	}
-
 	const season = fixturePath
-		? validateSeason(await loadFromFixture(fixturePath), child)
-		: await generateFromLLMWithRetries(child);
+		? validateSeason(await loadFromFixture(fixturePath), profile)
+		: await generateFromLLMWithRetries(profile);
 
 	const output = JSON.stringify(season, null, 2);
-	await writeFile(join(ROOT, "seasons", `${slg}.json`), output);
-	console.log(`Wrote seasons/${slg}.json (${season.episodes.length} episodes)`);
+	await writeFile(join(ROOT, "seasons", `${slug}.json`), output);
+	console.log(`Wrote seasons/${slug}.json (${season.episodes.length} episodes)`);
 }
 
 main().catch((err) => {

@@ -215,3 +215,31 @@ describe("episodeRunnerReducer idle pause", () => {
 		expect(s.cursorIdx).toBe(3);
 	});
 });
+
+describe("episodeRunnerReducer startedAt", () => {
+	it("first keystroke sets startedAt", () => {
+		const next = episodeRunnerReducer(base, {
+			type: "KEY_DOWN",
+			key: "a",
+			expected: "a",
+			now: 1000,
+		});
+		expect(next.startedAt).toBe(1000);
+	});
+
+	it("startedAt persists through subsequent keystrokes", () => {
+		let state = episodeRunnerReducer(base, {
+			type: "KEY_DOWN",
+			key: "a",
+			expected: "a",
+			now: 1000,
+		});
+		state = episodeRunnerReducer(state, {
+			type: "KEY_DOWN",
+			key: "b",
+			expected: "b",
+			now: 2000,
+		});
+		expect(state.startedAt).toBe(1000);
+	});
+});

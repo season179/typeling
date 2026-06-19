@@ -1,29 +1,19 @@
-import { describe, expect, it, beforeAll, afterAll } from "bun:test";
+import { describe, expect, it, afterAll } from "bun:test";
 import { mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const TEST_DIR = join(import.meta.dir, "..");
 const OUTPUT_PATH = join(TEST_DIR, "seasons", "rainbow-door-s1-fixture-test.json");
-const STATE_PATH = join(TEST_DIR, "data", "state.test.json");
 const SCRIPT = join(TEST_DIR, "scripts", "gen-season.ts");
 
-// Self-contained neutral state (the committed data/state.seed.json was removed).
-// gen-season looks children up by id; this child's name must stay absent from
-// the fixture text, and target_wpm 15 matches the fixture's word budget.
-const STATE_FIXTURE = {
-	children: {
-		reader: {
-			name: "Reader",
-			theme: "rainbow",
-			target_wpm: 15,
-			active_season: "rainbow-door-s1",
-			current_episode: 0,
-			current_session_id: null,
-		},
-	},
-	sessions: [],
-};
-const STATE_JSON = `${JSON.stringify(STATE_FIXTURE, null, 2)}\n`;
+const PROFILE_ARGS = [
+	"--theme",
+	"rainbow",
+	"--target-wpm",
+	"15",
+	"--forbidden-name",
+	"Reader",
+];
 
 async function runGen(args: string[]): Promise<{
 	exitCode: number;
@@ -34,7 +24,7 @@ async function runGen(args: string[]): Promise<{
 		cwd: TEST_DIR,
 		stdout: "pipe",
 		stderr: "pipe",
-		env: { ...process.env, TYPELING_STATE_PATH: STATE_PATH },
+		env: process.env,
 	});
 	const [stdout, stderr] = await Promise.all([
 		new Response(proc.stdout).text(),
@@ -45,17 +35,11 @@ async function runGen(args: string[]): Promise<{
 }
 
 describe("gen-season (fixture mode)", () => {
-	beforeAll(async () => {
-		await writeFile(STATE_PATH, STATE_JSON);
-	});
-
 	afterAll(async () => {
-		for (const path of [OUTPUT_PATH, STATE_PATH]) {
-			try {
-				await rm(path);
-			} catch {
-				/* ignore */
-			}
+		try {
+			await rm(OUTPUT_PATH);
+		} catch {
+			/* ignore */
 		}
 	});
 
@@ -68,8 +52,7 @@ describe("gen-season (fixture mode)", () => {
 		}
 
 		const { exitCode, stderr } = await runGen([
-			"--child",
-			"reader",
+			...PROFILE_ARGS,
 			"--slug",
 			"rainbow-door-s1-fixture-test",
 			"--fixture",
@@ -97,8 +80,7 @@ describe("gen-season (fixture mode)", () => {
 		{ fixture: "bad-wordcount.txt", error: "WordCountError" },
 	])("fails with $error on $fixture", async ({ fixture, error, extra }) => {
 		const { exitCode, stderr } = await runGen([
-			"--child",
-			"reader",
+			...PROFILE_ARGS,
 			"--slug",
 			"rainbow-door-s1",
 			"--fixture",
@@ -110,41 +92,23 @@ describe("gen-season (fixture mode)", () => {
 		if (extra) expect(stderr).toContain(extra);
 	});
 
-	it("fails with SeasonFixtureError when child is not found", async () => {
+	it("fails with SeasonFixtureError when fixture path is missing", async () => {
 		const { exitCode, stderr } = await runGen([
-			"--child",
-			"nonexistent",
+			...PROFILE_ARGS,
 			"--slug",
 			"rainbow-door-s1",
 			"--fixture",
-			"fixtures/sample-season.txt",
+			"fixtures/does-not-exist.txt",
 		]);
 
 		expect(exitCode).toBe(1);
 		expect(stderr).toContain("[SeasonFixtureError]");
-		expect(stderr).toContain('"nonexistent" not found');
 	});
 
-	it("fails with StateParseError when state file is missing", async () => {
-		try {
-			await rm(STATE_PATH);
-		} catch {
-			/* ignore */
-		}
-
-		const { exitCode, stderr } = await runGen([
-			"--child",
-			"reader",
-			"--slug",
-			"rainbow-door-s1",
-			"--fixture",
-			"fixtures/sample-season.txt",
-		]);
+	it("fails when required profile flags are missing", async () => {
+		const { exitCode, stderr } = await runGen(["--slug", "rainbow-door-s1"]);
 
 		expect(exitCode).toBe(1);
-		expect(stderr).toContain("[StateParseError]");
-
-		// Restore state file for subsequent tests
-		await writeFile(STATE_PATH, STATE_JSON);
+		expect(stderr).toContain("Usage:");
 	});
 });

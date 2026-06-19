@@ -57,7 +57,7 @@ for a given episode is `{seasonSlug}-e{episodeIdx}` (zero-indexed).
 |-----------------------------------------|-----------------------------------------|--------------|
 | `audio/{seasonSlug}-e{episodeIdx}.wav`  | `data/audio/{seasonSlug}-e{episodeIdx}.wav` | `audio/wav` |
 
-Served by `GET /api/children/:id/episodes/:episodeIdx/audio/file`
+Served by `GET /api/stories/:storySlug/episodes/:episodeIdx/audio/file`
 as either a full `200` response or a ranged `206` response with
 `Content-Range`.
 
