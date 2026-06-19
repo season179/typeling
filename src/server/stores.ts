@@ -320,13 +320,44 @@ export interface ProgressStore {
 		seasonSlug: string,
 		episodeIdx: number,
 	): Promise<StoryProgress>;
+	/** Every known account. Used by the parent dashboard to list all readers. */
+	listUsers(): Promise<UserProfile[]>;
+	/**
+	 * Whether `email` is on the parent-viewer allowlist (the `parent_viewers`
+	 * table). Read-only: membership is managed out of band via local wrangler
+	 * commands, never through the app.
+	 */
+	isParentViewer(email: string): Promise<boolean>;
 }
 
 export class InMemoryProgressStore implements ProgressStore {
 	#users = new Map<string, UserProfile>();
 	#progress = new Map<string, StoryProgress>();
 	#sessions = new Map<string, Session>();
+	#parentViewers = new Set<string>();
 	#queue = Promise.resolve();
+
+	constructor(options?: { parentViewers?: string[] }) {
+		for (const email of options?.parentViewers ?? []) {
+			this.#parentViewers.add(normalizeStoredEmail(email));
+		}
+	}
+
+	/**
+	 * Test seam mirroring the production `parent_viewers` table, which is seeded
+	 * out of band via local wrangler commands rather than through the app.
+	 */
+	addParentViewer(email: string): void {
+		this.#parentViewers.add(normalizeStoredEmail(email));
+	}
+
+	async isParentViewer(email: string): Promise<boolean> {
+		return this.#parentViewers.has(normalizeStoredEmail(email));
+	}
+
+	async listUsers(): Promise<UserProfile[]> {
+		return [...this.#users.values()].map((user) => structuredClone(user));
+	}
 
 	async upsertUser(user: SignedInUser): Promise<UserProfile> {
 		return this.#mutate(() => {
@@ -479,6 +510,25 @@ export class D1ProgressStore implements ProgressStore {
 
 	constructor(db: D1DatabaseLike) {
 		this.#db = db;
+	}
+
+	async listUsers(): Promise<UserProfile[]> {
+		const rows = await this.#db
+			.prepare(
+				"SELECT email, display_name, name, access_subject, target_wpm FROM users",
+			)
+			.all<D1UserRow>();
+		return (rows.results ?? []).map(userFromRow);
+	}
+
+	async isParentViewer(email: string): Promise<boolean> {
+		const row = await this.#db
+			.prepare(
+				"SELECT 1 AS present FROM parent_viewers WHERE email = ? LIMIT 1",
+			)
+			.bind(normalizeStoredEmail(email))
+			.first<{ present: number }>();
+		return row !== null;
 	}
 
 	async upsertUser(user: SignedInUser): Promise<UserProfile> {

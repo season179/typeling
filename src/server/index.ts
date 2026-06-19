@@ -4,6 +4,7 @@ import { z } from "zod";
 import pixelGardenSeasonData from "../../seasons/pixel-garden-s1.json";
 import rainbowDoorSeasonData from "../../seasons/rainbow-door-s1.json";
 import { graduationStatus } from "../lib/graduation";
+import { lastActiveAt, sessionTotals, wpmTrend } from "../lib/readerStats";
 import { rolling3Wpm } from "../lib/rolling3";
 import { seasonSchema } from "../lib/schemas/season";
 import {
@@ -591,6 +592,70 @@ app.get("/api/progress", async (c) => {
 			};
 		}),
 	});
+});
+
+// Parent stats dashboard. Every Google account is a kid, so this aggregates
+// across ALL accounts and is gated by the `parent_viewers` allowlist (managed
+// only via local wrangler commands -- the app never writes it). 401 when not
+// signed in, 403 when the signed-in account is not an allowlisted viewer.
+app.get("/api/parent/family", async (c) => {
+	const viewer = await requireUser(c.req.raw, c.env);
+	const progressStore = getProgressStore(c.env);
+	if (!(await progressStore.isParentViewer(viewer.email))) {
+		throw new HttpError("ParentViewOnly", 403);
+	}
+
+	const [stories, users] = await Promise.all([
+		getStoryStore(c.env).listStories(),
+		progressStore.listUsers(),
+	]);
+
+	// Exclude parent-viewer accounts so a viewing parent isn't listed as an
+	// empty "reader" alongside the kids.
+	const readerFlags = await Promise.all(
+		users.map((user) => progressStore.isParentViewer(user.email)),
+	);
+	const readerUsers = users.filter((_, i) => !readerFlags[i]);
+
+	const readers = await Promise.all(
+		readerUsers.map(async (user) => {
+			const [progressRows, sessions] = await Promise.all([
+				progressStore.listStoryProgress(user.email),
+				progressStore.listSessions(user.email),
+			]);
+			const progressByStory = new Map(
+				progressRows.map((progress) => [progress.season_slug, progress]),
+			);
+			return {
+				email: user.email,
+				display_name: user.display_name,
+				target_wpm: user.target_wpm,
+				stories: stories.map((story) => {
+					const storySessions = sessions.filter(
+						(session) => session.season_slug === story.slug,
+					);
+					const rolling3 = rolling3Wpm(storySessions, {
+						seasonSlug: story.slug,
+					});
+					return {
+						...story,
+						current_episode:
+							progressByStory.get(story.slug)?.current_episode ?? 0,
+						target_wpm: user.target_wpm,
+						rolling3,
+						status: graduationStatus(rolling3, user.target_wpm),
+						totals: sessionTotals(storySessions),
+						trend: wpmTrend(storySessions),
+						last_active_at: lastActiveAt(storySessions),
+						recent_sessions: storySessions.slice(0, 10),
+					};
+				}),
+			};
+		}),
+	);
+
+	readers.sort((a, b) => a.display_name.localeCompare(b.display_name));
+	return c.json({ readers });
 });
 
 app.get("/api/admin/stories", async (c) => {

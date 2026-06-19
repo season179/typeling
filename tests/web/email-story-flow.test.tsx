@@ -211,11 +211,54 @@ describe("email-scoped story web flow", () => {
 		);
 	});
 
-	it("renders the signed-in progress page with recent sessions", async () => {
+	it("renders the parent dashboard with each reader's recent sessions", async () => {
+		const familyPayload = {
+			readers: [
+				{
+					email: "season@example.com",
+					display_name: "Season Saw",
+					target_wpm: 15,
+					stories: [
+						{
+							slug: "rainbow-door-s1-test",
+							name: "Test Rainbow Story",
+							theme: "rainbow-unicorn",
+							total_episodes: 14,
+							current_episode: 1,
+							target_wpm: 15,
+							rolling3: 18,
+							status: "graduated",
+							totals: {
+								count: 1,
+								total_active_ms: 60000,
+								best_wpm: 18,
+								avg_wpm: 18,
+							},
+							trend: [18],
+							last_active_at: new Date(Date.now() - 60000).toISOString(),
+							recent_sessions: [
+								{
+									id: "session-1",
+									email: "season@example.com",
+									season_slug: "rainbow-door-s1-test",
+									episode_idx: 0,
+									wpm: 18,
+									char_count: 50,
+									active_ms: 60000,
+									started_at: new Date(Date.now() - 120000).toISOString(),
+									finished_at: new Date(Date.now() - 60000).toISOString(),
+								},
+							],
+						},
+					],
+				},
+			],
+		};
+
 		await withMockFetch(
 			(url) => {
-				expect(url).toBe("/api/progress");
-				return new Response(JSON.stringify(progressPayload), {
+				expect(url).toBe("/api/parent/family");
+				return new Response(JSON.stringify(familyPayload), {
 					headers: { "content-type": "application/json" },
 				});
 			},
@@ -225,7 +268,7 @@ describe("email-scoped story web flow", () => {
 				await waitFor(() => {
 					expect(getByText("Story Progress")).toBeDefined();
 					expect(getByText("Test Rainbow Story")).toBeDefined();
-					expect(getByText("season@example.com")).toBeDefined();
+					expect(getByText(/season@example.com/)).toBeDefined();
 					expect(getAllByText("18").length).toBeGreaterThan(0);
 				});
 			},

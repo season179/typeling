@@ -1,4 +1,5 @@
 import type { GraduationStatus } from "../lib/graduation";
+import type { SessionTotals } from "../lib/readerStats";
 import type { Session, UserProfile } from "../lib/schemas/state";
 
 /**
@@ -27,6 +28,26 @@ export interface ProgressStory {
 export interface ProgressResponse {
 	user: UserProfile;
 	stories: ProgressStory[];
+}
+
+/** One story's progress for a single reader on the parent dashboard. */
+export interface ReaderStoryProgress extends ProgressStory {
+	totals: SessionTotals;
+	/** Recent session WPMs, oldest -> newest, for the sparkline. */
+	trend: number[];
+	last_active_at: string | null;
+}
+
+/** A single kid (Google account) and their progress across every story. */
+export interface ReaderProgress {
+	email: string;
+	display_name: string;
+	target_wpm: number;
+	stories: ReaderStoryProgress[];
+}
+
+export interface FamilyResponse {
+	readers: ReaderProgress[];
 }
 
 export interface EpisodeData {
@@ -77,6 +98,14 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
 
 export function getProgress(signal?: AbortSignal): Promise<ProgressResponse> {
 	return getJson<ProgressResponse>("/api/progress", signal);
+}
+
+/**
+ * The parent dashboard's all-kids feed. Throws `HTTP 401` when not signed in
+ * and `HTTP 403` when the signed-in account is not an allowlisted viewer.
+ */
+export function getFamily(signal?: AbortSignal): Promise<FamilyResponse> {
+	return getJson<FamilyResponse>("/api/parent/family", signal);
 }
 
 export function getCurrentEpisode(
