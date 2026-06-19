@@ -62,8 +62,6 @@ describe("repo hygiene", () => {
 		const readme = await Bun.file("README.md").text();
 		for (const command of [
 			"bun run dev",
-			"bun run server",
-			"bun run web",
 			"bun run lint",
 			"bun run format",
 			"bun test",

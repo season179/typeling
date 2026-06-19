@@ -14,18 +14,12 @@
     "db:seed:local": "bun run scripts/seed-story-d1.ts --local",
     "assets:seed:local": "bun run scripts/seed-assets-r2.ts --local",
     "audio:publish": "bun run scripts/publish-episode-audio.ts",
-    "server": "bun run src/server/index.ts",
-    "web": "vite",
     "lint": "biome check src/",
     "format": "biome format --write src/",
     "gen:season": "bun run scripts/gen-season.ts",
     "e2e:happy-path": "bun run scripts/e2e/happy-path.ts",
     "e2e:wrong-key": "bun run scripts/e2e/wrong-key.ts",
-    "e2e:idle": "bun run scripts/e2e/idle.ts",
-    "tts:pixel-garden-s1-e0": "bun run scripts/generate-chapter-audio.ts --season pixel-garden-s1 --episode-idx 0",
-    "audio:rainbow-door-s1-e0:extract": "bun run scripts/extract-audio-source.ts --season seasons/rainbow-door-s1.json --output data/audio/rainbow-door-s1-e0-source.txt --episode-idx 0",
-    "audio:rainbow-door-s1-e0:transcript": "bun run scripts/convert-to-transcript.ts --source data/audio/rainbow-door-s1-e0-source.txt --output data/audio/rainbow-door-s1-e0-transcript.txt",
-    "audio:pixel-garden-s1-e0:timings": "bun run scripts/generate-word-timings.ts"
+    "e2e:idle": "bun run scripts/e2e/idle.ts"
   },
   "dependencies": {
     "better-auth": "^1.6.14",

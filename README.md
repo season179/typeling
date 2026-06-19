@@ -129,8 +129,6 @@ After it finishes, the three artifacts worth inspecting are:
 
 Each step is also a standalone script under `scripts/` (`extract-audio-source.ts`, `convert-to-transcript.ts`, `style-transcript.ts`, `generate-chapter-audio.ts`, `generate-word-timings.ts`). Run any one with `--help` for its flags. The orchestrator is just a thin wrapper around them.
 
-The package.json shortcuts `tts:pixel-garden-s1-e0`, `audio:rainbow-door-s1-e0:extract`, `audio:rainbow-door-s1-e0:transcript`, and `audio:pixel-garden-s1-e0:timings` invoke individual steps for those specific season/episode pairs.
-
 ### Re-slicing episodes (no TTS, no alignment)
 
 When a season's episodes are split or re-cut (the 14→28 split, or regenerating one flat seam later), existing audio can be re-sliced from the original word timings instead of re-running TTS and forced alignment. The same `chooseEpisodeSplit` sentence-boundary logic drives both the text split and the audio cut, so the re-sliced `2i`/`2i+1` audio always matches the split `2i`/`2i+1` episode text.
@@ -195,8 +193,6 @@ Bindings: `wrangler.jsonc`. R2 key layout: [`docs/r2-keys.md`](docs/r2-keys.md).
 | `bun run db:seed:local` | Seed story content into local D1. |
 | `bun run assets:seed:local` | Seed episode audio into local R2. |
 | `bun run audio:publish` | Publish episode audio to R2. |
-| `bun run server` | Hono app via `Bun.serve` only (no Vite, no Workers runtime). |
-| `bun run web` | Vite dev server only. |
 | `bun run lint` | Biome check on `src/`. |
 | `bun run format` | Biome format-write on `src/`. |
 | `bun test` | Run the test suite. |
@@ -204,7 +200,3 @@ Bindings: `wrangler.jsonc`. R2 key layout: [`docs/r2-keys.md`](docs/r2-keys.md).
 | `bun run e2e:wrong-key` | Wrong-key isolation test via agent-browser. |
 | `bun run e2e:idle` | End-to-end idle handling test via agent-browser. |
 | `bun run gen:season` | Generate a season JSON from prompts. |
-| `bun run tts:pixel-garden-s1-e0` | Shortcut for `generate-chapter-audio.ts --season pixel-garden-s1 --episode-idx 0`. |
-| `bun run audio:rainbow-door-s1-e0:extract` | Step 1 for Rainbow Door episode 0. |
-| `bun run audio:rainbow-door-s1-e0:transcript` | Step 2 for Rainbow Door episode 0. |
-| `bun run audio:pixel-garden-s1-e0:timings` | Step 6 for Pixel's Science Garden episode 0. |
