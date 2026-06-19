@@ -1,6 +1,5 @@
 {
   "name": "typeling",
-  "module": "index.ts",
   "type": "module",
   "private": true,
   "scripts": {

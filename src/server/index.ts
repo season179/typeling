@@ -130,7 +130,7 @@ class AuthError extends HttpError {
 	}
 }
 
-export const app = new Hono<{ Bindings: ServerBindings }>();
+const app = new Hono<{ Bindings: ServerBindings }>();
 
 app.onError((error, c) => {
 	if (error instanceof HttpError) {

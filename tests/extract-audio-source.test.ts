@@ -40,7 +40,7 @@ describe("extract-audio-source", () => {
   });
 
   it("extracts episode 0 text into a clearly named artifact", async () => {
-    const { exitCode, stdout, stderr } = await runScript([
+    const { exitCode, stderr } = await runScript([
       "--season", "seasons/pixel-garden-s1.json",
       "--output", "data/audio/pixel-garden-s1-e0-source.txt",
       "--episode-idx", "0",

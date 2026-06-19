@@ -386,7 +386,7 @@ describe("EpisodeRunner", () => {
 	it("prevents double-fire of POST on completion", async () => {
 		const originalFetch = globalThis.fetch;
 		let fetchCount = 0;
-		globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+		globalThis.fetch = ((_input: RequestInfo | URL, _init?: RequestInit) => {
 			fetchCount++;
 			return Promise.resolve(new Response("{}", { status: 200 }));
 		}) as typeof fetch;
