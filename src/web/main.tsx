@@ -4,6 +4,7 @@ import { Route, Router } from "wouter";
 import AdminView from "./AdminView";
 import App from "./App";
 import CompleteEpisode from "./CompleteEpisode";
+import Greeting from "./Greeting";
 import ParentView from "./ParentView";
 import PlayEpisode from "./PlayEpisode";
 import "./index.css";
@@ -17,6 +18,7 @@ if (rootElement === null) {
 createRoot(rootElement).render(
 	<StrictMode>
 		<Router>
+			<Greeting />
 			<Route path="/" component={App} />
 			<Route path="/admin" component={AdminView} />
 			<Route path="/parent" component={ParentView} />

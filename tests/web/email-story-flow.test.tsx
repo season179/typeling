@@ -4,6 +4,7 @@ import { Route, Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 import App from "../../src/web/App";
 import CompleteEpisode from "../../src/web/CompleteEpisode";
+import Greeting from "../../src/web/Greeting";
 import ParentView from "../../src/web/ParentView";
 import PlayEpisode from "../../src/web/PlayEpisode";
 import { setupDom } from "./setup";
@@ -79,7 +80,6 @@ describe("email-scoped story web flow", () => {
 
 				await waitFor(() => {
 					expect(getByText("Test Rainbow Story")).toBeDefined();
-					expect(getByText("Season Saw")).toBeDefined();
 				});
 
 				fireEvent.click(getByRole("button", { name: "Start" }));
@@ -190,6 +190,47 @@ describe("email-scoped story web flow", () => {
 					expect(getByText("season@example.com")).toBeDefined();
 					expect(getAllByText("18").length).toBeGreaterThan(0);
 				});
+			},
+		);
+	});
+
+	it("greets the signed-in reader by first name from /api/me", async () => {
+		await withMockFetch(
+			(url) => {
+				expect(url).toBe("/api/me");
+				return new Response(JSON.stringify({ authenticated: true, user }), {
+					headers: { "content-type": "application/json" },
+				});
+			},
+			async () => {
+				const { getByText } = render(<Greeting />);
+
+				await waitFor(() => {
+					expect(getByText(/Hi, Season/)).toBeDefined();
+				});
+			},
+		);
+	});
+
+	it("renders no greeting when nobody is signed in", async () => {
+		let meRequested = false;
+		await withMockFetch(
+			(url) => {
+				if (url === "/api/me") meRequested = true;
+				return new Response(JSON.stringify({ authenticated: false }), {
+					headers: { "content-type": "application/json" },
+				});
+			},
+			async () => {
+				const { container, queryByText } = render(<Greeting />);
+
+				// Greeting renders null before the fetch resolves too, so asserting
+				// "absent" up front would pass vacuously. Wait until /api/me has
+				// actually been requested, then confirm the unauthenticated reply
+				// kept the greeting absent.
+				await waitFor(() => expect(meRequested).toBe(true));
+				expect(container.querySelector(".user-greeting")).toBeNull();
+				expect(queryByText(/Hi,/)).toBeNull();
 			},
 		);
 	});

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import type { UserProfile } from "../lib/schemas/state";
 import { getProgress, type ProgressStory } from "./api";
 import { authClient } from "./authClient";
 import { clearStaleDrafts } from "./episodeRunner/autosave";
@@ -9,7 +8,6 @@ import { themeForStory } from "./storyTheme";
 export default function App() {
 	const [, navigate] = useLocation();
 	const [stories, setStories] = useState<ProgressStory[]>([]);
-	const [signedInUser, setSignedInUser] = useState<UserProfile | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [needsSignIn, setNeedsSignIn] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -25,7 +23,6 @@ export default function App() {
 				const data = await getProgress(controller.signal);
 				if (!controller.signal.aborted) {
 					setStories(data.stories);
-					setSignedInUser(data.user);
 					clearStaleDrafts(
 						data.user.email,
 						data.stories.map((story) => story.slug),
@@ -55,15 +52,6 @@ export default function App() {
 
 	const handleSignIn = () => {
 		void authClient.signIn.social({ provider: "google", callbackURL: "/" });
-	};
-
-	const handleSignOut = () => {
-		// Reload regardless of outcome so the button always responds: on success
-		// the reload lands on the sign-in screen, and a failed sign-out re-checks
-		// the session rather than leaving the click with no visible effect.
-		void authClient.signOut().finally(() => {
-			window.location.reload();
-		});
 	};
 
 	if (loading) {
@@ -124,24 +112,6 @@ export default function App() {
 			</div>
 			<header className="text-center">
 				<h1 className="home-title text-3xl font-bold">Typeling</h1>
-				{signedInUser && (
-					<p className="mt-2 text-sm font-medium text-stone-500">
-						Signed in as{" "}
-						<span className="text-stone-700">{signedInUser.display_name}</span>
-						{signedInUser.display_name !== signedInUser.email && (
-							<span className="ml-2 text-stone-400">{signedInUser.email}</span>
-						)}
-					</p>
-				)}
-				{signedInUser && (
-					<button
-						type="button"
-						className="mt-2 text-xs font-semibold uppercase tracking-normal text-stone-400 underline transition-colors hover:text-stone-600"
-						onClick={handleSignOut}
-					>
-						Sign out
-					</button>
-				)}
 			</header>
 			<div className="child-select flex flex-wrap justify-center gap-4">
 				{stories.map((story) => {

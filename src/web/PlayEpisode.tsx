@@ -199,7 +199,17 @@ export default function PlayEpisode() {
 						: getEpisode(storySlug, episodeIdx, controller.signal),
 					getMe(controller.signal),
 				]);
-				setEpisode("complete" in nextEpisode ? null : nextEpisode);
+				if ("complete" in nextEpisode) {
+					// The whole story is finished, so the bare /play/:slug route has no
+					// "next" chapter to type. Land on the final chapter (shown in reader
+					// mode) instead of rendering a blank page; the chapter picker then
+					// lets the reader revisit any chapter. `replace` keeps this redirect
+					// out of the back-button history.
+					const lastIdx = Math.max(0, nextEpisode.total_episodes - 1);
+					navigate(`/play/${storySlug}/episode/${lastIdx}`, { replace: true });
+					return;
+				}
+				setEpisode(nextEpisode);
 				setDraftOwnerId(
 					currentUser.authenticated ? currentUser.user.email : "local",
 				);
@@ -216,7 +226,7 @@ export default function PlayEpisode() {
 
 		void load();
 		return () => controller.abort();
-	}, [storySlug, episodeIdx]);
+	}, [storySlug, episodeIdx, navigate]);
 
 	const handleReset = async () => {
 		if (!storySlug || !episode) return;
@@ -259,7 +269,13 @@ export default function PlayEpisode() {
 	}
 
 	if (!episode) {
-		return null;
+		// Only reached transiently while a finished story redirects to its last
+		// chapter — show the loading card rather than a blank page.
+		return (
+			<main className="typeling-game flex min-h-screen items-center justify-center theme-rainbow">
+				<div className="loading-card">Loading the next chapter...</div>
+			</main>
+		);
 	}
 
 	const isFinishedChapter = episode.episode_idx < episode.current_episode;
