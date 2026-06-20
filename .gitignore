@@ -43,5 +43,4 @@ data/*
 !data/.gitkeep
 seasons/*.json.bak
 .commandcode/
-graphify-out/
 codedb.snapshot
