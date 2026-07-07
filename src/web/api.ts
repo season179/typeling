@@ -96,6 +96,17 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
 	return (await res.json()) as T;
 }
 
+/**
+ * True when an error thrown by the JSON helpers means the request was rejected
+ * for want of a signed-in user (`HTTP 401`) — i.e. the session is missing or
+ * expired. Screens use this to send the reader to sign in rather than showing a
+ * raw error card. Kept beside the helper that produces the `HTTP <status>`
+ * string so the two never drift.
+ */
+export function isUnauthorized(err: unknown): boolean {
+	return err instanceof Error && err.message === "HTTP 401";
+}
+
 export function getProgress(signal?: AbortSignal): Promise<ProgressResponse> {
 	return getJson<ProgressResponse>("/api/progress", signal);
 }

@@ -5,6 +5,7 @@ import {
 	getCurrentEpisode,
 	getEpisode,
 	getMe,
+	isUnauthorized,
 	resetEpisode,
 } from "./api";
 import EpisodeRunner from "./EpisodeRunner";
@@ -215,6 +216,12 @@ export default function PlayEpisode() {
 				);
 			} catch (err) {
 				if (!controller.signal.aborted) {
+					// The session expired while the tab sat idle. Send the reader to
+					// the sign-in screen instead of stranding them on an error card.
+					if (isUnauthorized(err)) {
+						navigate("/", { replace: true });
+						return;
+					}
 					setError(err instanceof Error ? err.message : "Failed to load");
 				}
 			} finally {
@@ -240,6 +247,11 @@ export default function PlayEpisode() {
 
 		const res = await resetEpisode(storySlug, episode.episode_idx);
 		if (!res.ok) {
+			// An expired session on reset is the same story: sign in, don't error.
+			if (res.status === 401) {
+				navigate("/", { replace: true });
+				return;
+			}
 			setError(`Failed to reset chapter (${res.status})`);
 			return;
 		}

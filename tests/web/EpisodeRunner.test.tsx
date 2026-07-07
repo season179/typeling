@@ -383,6 +383,55 @@ describe("EpisodeRunner", () => {
 		}
 	});
 
+	it("redirects to sign-in when the session expired on completion (401)", async () => {
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (() =>
+			Promise.resolve(
+				new Response("{}", { status: 401 }),
+			)) as unknown as typeof fetch;
+
+		const { hook, history } = memoryLocation({
+			path: "/play/rainbow-story",
+			record: true,
+		});
+
+		try {
+			const { getByTestId, queryByTestId } = render(
+				<Router hook={hook}>
+					<Route path="/play/:storySlug">
+						<EpisodeRunner
+							episodeText="a"
+							storySlug="rainbow-story"
+							draftOwnerId="reader@example.com"
+							seasonSlug="rainbow-door-s1"
+							episodeIdx={0}
+						/>
+					</Route>
+					<Route path="/">signed out</Route>
+				</Router>,
+			);
+
+			await waitFor(() => {
+				expect(getByTestId("cursor-idx").textContent).toBe("0");
+			});
+
+			act(() => {
+				document.dispatchEvent(
+					new KeyboardEvent("keydown", { key: "a", bubbles: true }) as unknown as Event,
+				);
+			});
+
+			// The expired session sends the reader to sign in rather than surfacing
+			// a silent, dead-end error.
+			await waitFor(() => {
+				expect(history.at(-1)).toBe("/");
+			});
+			expect(queryByTestId("session-error")).toBeNull();
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
 	it("prevents double-fire of POST on completion", async () => {
 		const originalFetch = globalThis.fetch;
 		let fetchCount = 0;

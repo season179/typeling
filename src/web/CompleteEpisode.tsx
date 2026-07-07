@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useParams } from "wouter";
 import type { Session } from "../lib/schemas/state";
-import { getProgress } from "./api";
+import { getProgress, isUnauthorized } from "./api";
 import { themeForStory } from "./storyTheme";
 
 interface ChapterMapProps {
@@ -102,6 +102,12 @@ export default function CompleteEpisode() {
 				setRecentSessions(story.recent_sessions);
 			} catch (err) {
 				if (!controller.signal.aborted) {
+					// An expired session here means the reader must sign in again
+					// before we can celebrate — redirect rather than show an error.
+					if (isUnauthorized(err)) {
+						navigate("/", { replace: true });
+						return;
+					}
 					setError(err instanceof Error ? err.message : "Failed to load");
 				}
 			} finally {
@@ -115,7 +121,7 @@ export default function CompleteEpisode() {
 		return () => {
 			controller.abort();
 		};
-	}, [storySlug]);
+	}, [storySlug, navigate]);
 
 	if (loading) {
 		return (

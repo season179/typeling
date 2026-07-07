@@ -291,6 +291,10 @@ export default function EpisodeRunner({
 					navTimerRef.current = setTimeout(() => {
 						navigate(`/play/${storySlug}/complete/${episodeIdx}`);
 					}, 600);
+				} else if (res.status === 401) {
+					// The session expired while the child typed. Send them to sign in;
+					// the draft is left intact so their progress restores afterwards.
+					navigate("/", { replace: true });
 				} else {
 					setError(`Failed to save session (${res.status})`);
 				}

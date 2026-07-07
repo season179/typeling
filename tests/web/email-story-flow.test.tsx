@@ -136,6 +136,42 @@ describe("email-scoped story web flow", () => {
 		);
 	});
 
+	it("redirects to sign-in when the session expired before an episode loads", async () => {
+		await withMockFetch(
+			(url) => {
+				// The session has expired: /api/me reports signed-out and the episode
+				// endpoint answers 401, exactly as the Worker's requireUser guard does.
+				if (url === "/api/me") {
+					return new Response(JSON.stringify({ authenticated: false }), {
+						headers: { "content-type": "application/json" },
+					});
+				}
+				return new Response(
+					JSON.stringify({ error: "AuthenticationRequired" }),
+					{ status: 401, headers: { "content-type": "application/json" } },
+				);
+			},
+			async () => {
+				const { hook, history } = memoryLocation({
+					path: "/play/rainbow-door-s1-test",
+					record: true,
+				});
+				render(
+					<Router hook={hook}>
+						<Route path="/play/:storySlug" component={PlayEpisode} />
+						<Route path="/">signed out</Route>
+					</Router>,
+				);
+
+				// Instead of stranding the reader on an "Error: HTTP 401" card, the
+				// screen sends them to the sign-in route.
+				await waitFor(() => {
+					expect(history.at(-1)).toBe("/");
+				});
+			},
+		);
+	});
+
 	it("renders completion by story slug and starts the next chapter", async () => {
 		await withMockFetch(
 			(url) => {
