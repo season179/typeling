@@ -8,11 +8,12 @@
  * field when a caller has it. Centralised so every screen themes a story the
  * same way.
  */
-export type StoryTheme = "rainbow" | "science";
+export type StoryTheme = "rainbow" | "science" | "meadow";
 
 const SLUG_THEME: Record<string, StoryTheme> = {
 	"rainbow-door-s1": "rainbow",
 	"pixel-garden-s1": "science",
+	"boy-who-cried-wolf-s1": "meadow",
 };
 
 export function themeForStory(storySlug?: string, storyTheme = ""): StoryTheme {
@@ -23,5 +24,6 @@ export function themeForStory(storySlug?: string, storyTheme = ""): StoryTheme {
 	}
 	const haystack = `${slug} ${storyTheme}`.toLowerCase();
 	if (/pixel|garden|science|robot/.test(haystack)) return "science";
+	if (/meadow|wolf|sheep|shepherd|farm|hill/.test(haystack)) return "meadow";
 	return "rainbow";
 }

@@ -30,6 +30,7 @@ const STATUS_MAP: Record<
 const ACCENT: Record<StoryTheme, string> = {
 	rainbow: "#f45fc4",
 	science: "#2288ff",
+	meadow: "#4aa24a",
 };
 
 function formatMs(ms: number): string {

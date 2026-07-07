@@ -170,6 +170,19 @@
 	--game-shadow: rgba(22, 61, 94, 0.2);
 }
 
+.theme-meadow {
+	--game-bg-a: #eafbe0;
+	--game-bg-b: #d6efff;
+	--game-bg-c: #fff0bf;
+	--game-ink: #243a1c;
+	--game-muted: #5d7050;
+	--game-primary: #4aa24a;
+	--game-secondary: #f4b63a;
+	--game-accent: #b6e25a;
+	--game-up: #2fbf6b;
+	--game-shadow: rgba(40, 70, 28, 0.2);
+}
+
 .game-sky {
 	position: absolute;
 	inset: 0;
@@ -1067,6 +1080,11 @@
 .science-card .story-token {
 	border-radius: 0.8rem;
 	background: linear-gradient(135deg, #2288ff, #20d6a1);
+}
+
+.meadow-card .story-token {
+	border-radius: 38% 38% 46% 46%;
+	background: linear-gradient(135deg, #4aa24a, #f4b63a);
 }
 
 @media (max-width: 700px) {

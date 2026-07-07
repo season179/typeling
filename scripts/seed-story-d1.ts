@@ -6,7 +6,11 @@ import { join, resolve } from "node:path";
 import { seasonSchema } from "../src/lib/schemas/season";
 
 const DATABASE_NAME = "typeling-content";
-const SEASON_FILES = ["seasons/rainbow-door-s1.json", "seasons/pixel-garden-s1.json"];
+const SEASON_FILES = [
+	"seasons/rainbow-door-s1.json",
+	"seasons/pixel-garden-s1.json",
+	"seasons/boy-who-cried-wolf-s1.json",
+];
 
 function usage(): never {
 	console.error(

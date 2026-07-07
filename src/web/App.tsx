@@ -115,14 +115,11 @@ export default function App() {
 			</header>
 			<div className="story-select flex flex-wrap justify-center gap-4">
 				{stories.map((story) => {
-					const isScience =
-						themeForStory(story.slug, story.theme) === "science";
+					const theme = themeForStory(story.slug, story.theme);
 					return (
 						<div
 							key={story.slug}
-							className={`story-card rounded-lg border-2 border-gray-200 p-6 text-left transition-all hover:border-blue-400 hover:shadow-md ${
-								isScience ? "science-card" : "rainbow-card"
-							}`}
+							className={`story-card rounded-lg border-2 border-gray-200 p-6 text-left transition-all hover:border-blue-400 hover:shadow-md ${theme}-card`}
 						>
 							<span className="story-token" aria-hidden="true" />
 							<span className="block text-xl font-semibold">{story.name}</span>

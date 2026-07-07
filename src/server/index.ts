@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { z } from "zod";
+import boyWhoCriedWolfSeasonData from "../../seasons/boy-who-cried-wolf-s1.json";
 import pixelGardenSeasonData from "../../seasons/pixel-garden-s1.json";
 import rainbowDoorSeasonData from "../../seasons/rainbow-door-s1.json";
 import { graduationStatus } from "../lib/graduation";
@@ -90,6 +91,7 @@ function stripClientSessionIdentity(body: unknown): unknown {
 const bundledSeasons: Season[] = [
 	rainbowDoorSeasonData,
 	pixelGardenSeasonData,
+	boyWhoCriedWolfSeasonData,
 ].map((season) => seasonSchema.parse(season));
 
 type OpenEpisode = {
