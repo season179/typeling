@@ -66,7 +66,6 @@ For timing-sensitive typing checks, prefer reducer/unit coverage plus focused sm
 - Progress is email-scoped and stored in D1 (`users`, `user_story_progress`, `typing_sessions`). Stories are decoupled from children: navigation and the API key off `storySlug`, and per-user progress/WPM is keyed by `(email, season_slug)`. All writes pass Zod validation first.
 - Identity comes from Better Auth's Google sign-in (handled at `/api/auth/*`), mapped to a lowercase-normalised email. The auth instance is built per request from the Workers `env` bindings (`.dev.vars` in dev, `wrangler secret` in prod). There is no localhost dev fallback — local dev signs in with Google; tests and overrides inject identity via the `IDENTITY` binding seam.
 - Generated story text must be British English, kid-safe, and within `[A-Za-z0-9 .,!?'";:\-()\n]+`; violations are hard failures.
-- Generated stories must avoid real child names; use fictional protagonist names instead.
 - For audio/TTS work, create deterministic derived artifacts first, then speaker-labelled transcripts, then model calls. Do not mutate source season JSON as the first step.
 
 ## Review Posture
